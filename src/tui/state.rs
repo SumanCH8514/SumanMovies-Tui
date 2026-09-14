@@ -835,7 +835,10 @@ impl AppState {
             .history
             .recent
             .iter()
-            .filter(|item| item.is_in_progress())
+            .filter(|item| {
+                item.is_in_progress()
+                    && crate::models::ProviderKind::parse(&item.provider).is_some()
+            })
             .collect();
         items.sort_by_key(|item| std::cmp::Reverse(item.timestamp));
         items.truncate(5);
@@ -845,7 +848,10 @@ impl AppState {
     pub fn continue_watching_available(&self) -> bool {
         self.streaming_enabled
             && !self.is_tv_mode
-            && self.history.recent.iter().any(|item| item.is_in_progress())
+            && self.history.recent.iter().any(|item| {
+                item.is_in_progress()
+                    && crate::models::ProviderKind::parse(&item.provider).is_some()
+            })
     }
 
     pub fn effective_home_deck_tab(&self) -> HomeDeckTab {

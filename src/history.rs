@@ -240,6 +240,7 @@ impl HistoryManager {
             if path.exists() {
                 if let Ok(content) = fs::read_to_string(&path) {
                     if let Ok(mut hist) = serde_json::from_str::<Self>(&content) {
+                        hist.recent.retain(|item| crate::providers::models::ProviderKind::parse(&item.provider).is_some());
                         hist.hydrate_watched_index();
                         hist
                     } else {

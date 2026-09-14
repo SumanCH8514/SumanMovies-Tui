@@ -1129,7 +1129,8 @@ impl App {
                     self.state.selected_episode = 1;
                 }
                 self.state.is_fetching_streams = false;
-                self.state.stream_error = None;
+                self.state.stream_error = Some(err.clone());
+                self.state.has_streams_settled = true;
                 self.state.details_error = Some(err.clone());
                 self.state
                     .set_status_default(format!("Details fetch failed: {}", err));

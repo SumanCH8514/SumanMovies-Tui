@@ -147,6 +147,9 @@ impl App {
         let subject_id = item.subject_id.clone();
         let title = item.title.clone();
 
+        if let Some(prov) = crate::models::ProviderKind::parse(&item.provider) {
+            self.state.active_provider = prov;
+        }
         self.state.active_screen = Screen::Details;
         self.state.active_subject_id = Some(subject_id.clone());
         self.state.selected_details = Some(crate::models::MediaDetails::from_search_result(
@@ -186,10 +189,16 @@ impl App {
         let Some(item) = items.get(index).cloned().cloned() else {
             return;
         };
+        let Some(provider) = crate::models::ProviderKind::parse(&item.provider) else {
+            self.state
+                .set_status_default(format!("Provider '{}' is unavailable", item.provider));
+            return;
+        };
         let subject_id = item.subject_id.clone();
         let title = item.title.clone();
         let search_res = item.to_search_result();
 
+        self.state.active_provider = provider;
         self.state.active_screen = Screen::Details;
         self.state.active_subject_id = Some(subject_id.clone());
         self.state.selected_details = Some(crate::models::MediaDetails::from_search_result(
@@ -200,6 +209,7 @@ impl App {
         self.state.is_loading = true;
         self.state.is_fetching_streams = false;
         self.state.stream_error = None;
+        self.state.has_streams_settled = false;
         self.state.resource_list_state.select(None);
         self.state.language_list_state.select(Some(0));
 
