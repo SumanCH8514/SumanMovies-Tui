@@ -2,6 +2,7 @@
 
 const { spawn } = require('child_process');
 const path = require('path');
+const fs = require('fs');
 const { setupAll, findExecutable, getStorageDir, update, uninstall } = require('../lib/installer');
 
 async function main() {
@@ -16,18 +17,28 @@ async function main() {
       uninstall({ purge });
       process.exit(0);
     }
-    let binPath = findExecutable('sumanmovies');
-    let mpvPath = findExecutable('mpv');
-    let ytdlpPath = findExecutable('yt-dlp');
-    let ffmpegPath = findExecutable('ffmpeg');
 
-    if (!binPath || !mpvPath || !ytdlpPath || !ffmpegPath) {
+    const storageDir = getStorageDir();
+    const setupMarker = path.join(storageDir, '.initialized');
+    let binPath = findExecutable('sumanmovies');
+
+    if (!binPath || !fs.existsSync(setupMarker)) {
       console.log('\n  🎬 SumanMovies - Initializing required dependencies...');
       binPath = await setupAll();
+      try {
+        fs.writeFileSync(setupMarker, new Date().toISOString(), 'utf8');
+      } catch (_) {}
       console.log('  ✨ Setup complete!\n');
     }
 
-    const storageDir = getStorageDir();
+    if (!binPath) {
+      binPath = findExecutable('sumanmovies');
+    }
+
+    if (!binPath) {
+      throw new Error('SumanMovies binary could not be found or executed. Try running: sumanmovies --update');
+    }
+
     const currentPath = process.env.PATH || '';
     if (!currentPath.includes(storageDir)) {
       process.env.PATH = `${storageDir}${path.delimiter}${currentPath}`;

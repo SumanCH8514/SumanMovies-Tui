@@ -19,6 +19,9 @@ function getStorageDir() {
 function findExecutable(name) {
   const isWin = process.platform === 'win32';
   const candNames = isWin ? [`${name}.exe`, `${name}.com`, name] : [name];
+  if (name === 'sumanmovies') {
+    candNames.push(isWin ? 'sumanmovies-tui.exe' : 'sumanmovies-tui');
+  }
 
   for (const binName of candNames) {
     const localPkgBin = path.join(__dirname, '..', 'dist', binName);
@@ -57,13 +60,17 @@ function downloadFile(url, destPath) {
     }, (response) => {
       if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
         file.close();
-        if (fs.existsSync(destPath)) fs.unlinkSync(destPath);
+        if (fs.existsSync(destPath)) {
+          try { fs.unlinkSync(destPath); } catch (_) {}
+        }
         return downloadFile(response.headers.location, destPath).then(resolve).catch(reject);
       }
 
       if (response.statusCode !== 200) {
         file.close();
-        if (fs.existsSync(destPath)) fs.unlinkSync(destPath);
+        if (fs.existsSync(destPath)) {
+          try { fs.unlinkSync(destPath); } catch (_) {}
+        }
         return reject(new Error(`Failed to download: HTTP ${response.statusCode}`));
       }
 
@@ -71,11 +78,20 @@ function downloadFile(url, destPath) {
       file.on('finish', () => {
         file.close(resolve);
       });
+      file.on('error', (err) => {
+        file.close();
+        if (fs.existsSync(destPath)) {
+          try { fs.unlinkSync(destPath); } catch (_) {}
+        }
+        reject(err);
+      });
     });
 
     request.on('error', (err) => {
       file.close();
-      if (fs.existsSync(destPath)) fs.unlinkSync(destPath);
+      if (fs.existsSync(destPath)) {
+        try { fs.unlinkSync(destPath); } catch (_) {}
+      }
       reject(err);
     });
   });
@@ -84,17 +100,22 @@ function downloadFile(url, destPath) {
 async function ensureSumanMoviesBinary(force = false) {
   const isWin = process.platform === 'win32';
   const binName = isWin ? 'sumanmovies.exe' : 'sumanmovies';
+  const altBinName = isWin ? 'sumanmovies-tui.exe' : 'sumanmovies-tui';
   const storageDir = getStorageDir();
   const targetPath = path.join(storageDir, binName);
+  const altPath = path.join(storageDir, altBinName);
 
-  if (!force && fs.existsSync(targetPath)) {
-    return targetPath;
+  if (!force) {
+    if (fs.existsSync(targetPath)) return targetPath;
+    if (fs.existsSync(altPath)) return altPath;
   }
 
-  if (force && fs.existsSync(targetPath)) {
-    try {
-      fs.unlinkSync(targetPath);
-    } catch (e) {}
+  if (force) {
+    for (const p of [targetPath, altPath]) {
+      if (fs.existsSync(p)) {
+        try { fs.unlinkSync(p); } catch (e) {}
+      }
+    }
   }
 
   const localDist = path.join(__dirname, '..', 'dist', binName);
@@ -121,37 +142,85 @@ async function ensureSumanMoviesBinary(force = false) {
 
   console.log('  > Downloading SumanMovies binary...');
   try {
-    const platform = isWin ? 'Windows' : (process.platform === 'darwin' ? 'macOS' : 'Linux');
+    const isMac = process.platform === 'darwin';
+    const isAndroid = process.platform === 'android' || fs.existsSync('/data/data/com.termux');
     const arch = process.arch === 'arm64' ? 'arm64' : 'x64';
-    const archiveName = `SumanMovies_${platform}_${arch}.${isWin ? 'zip' : 'tar.gz'}`;
-    const tempZip = path.join(storageDir, 'temp.zip');
-    
+
+    let archiveName;
+    if (isWin) {
+      archiveName = `SumanMovies_Windows_${arch}.zip`;
+    } else if (isMac) {
+      archiveName = 'SumanMovies_macOS_Universal.tar.gz';
+    } else if (isAndroid) {
+      archiveName = `SumanMovies_Android_${arch}.tar.gz`;
+    } else {
+      archiveName = `SumanMovies_Linux_${arch}.tar.gz`;
+    }
+
+    const isTarGz = archiveName.endsWith('.tar.gz');
+    const tempFile = path.join(storageDir, isTarGz ? 'temp.tar.gz' : 'temp.zip');
+
+    // Clean up any stale temp files before download
+    for (const stale of ['temp.zip', 'temp.tar.gz', 'temp']) {
+      const sp = path.join(storageDir, stale);
+      if (fs.existsSync(sp)) {
+        try { fs.unlinkSync(sp); } catch (_) {}
+      }
+    }
+
     const downloadUrl = `https://github.com/${REPO}/releases/latest/download/${archiveName}`;
-    await downloadFile(downloadUrl, tempZip);
+    await downloadFile(downloadUrl, tempFile);
 
     if (isWin) {
-      execSync(`powershell -NoProfile -Command "Expand-Archive -Path '${tempZip}' -DestinationPath '${storageDir}' -Force"`, { stdio: 'ignore' });
+      execSync(`powershell -NoProfile -Command "Expand-Archive -Path '${tempFile}' -DestinationPath '${storageDir}' -Force"`, { stdio: 'ignore' });
       for (const cand of ['sumanmovies-tui.exe', 'sumanmovies.exe']) {
         const extracted = path.join(storageDir, cand);
         if (fs.existsSync(extracted)) {
-          if (extracted !== targetPath) fs.renameSync(extracted, targetPath);
+          if (extracted !== targetPath && !fs.existsSync(targetPath)) {
+            try { fs.copyFileSync(extracted, targetPath); } catch (_) {}
+          }
           break;
         }
       }
     } else {
-      execSync(`unzip -o "${tempZip}" -d "${storageDir}"`, { stdio: 'ignore' });
-      for (const cand of ['sumanmovies-tui', 'sumanmovies']) {
+      if (isTarGz) {
+        execSync(`tar -xzf "${tempFile}" -C "${storageDir}"`, { stdio: 'ignore' });
+      } else {
+        try {
+          execSync(`tar -xf "${tempFile}" -C "${storageDir}"`, { stdio: 'ignore' });
+        } catch (_) {
+          execSync(`unzip -o "${tempFile}" -d "${storageDir}"`, { stdio: 'ignore' });
+        }
+      }
+
+      for (const cand of ['sumanmovies', 'sumanmovies-tui']) {
         const extracted = path.join(storageDir, cand);
         if (fs.existsSync(extracted)) {
-          if (extracted !== targetPath) fs.renameSync(extracted, targetPath);
-          fs.chmodSync(targetPath, 0o755);
-          break;
+          try { fs.chmodSync(extracted, 0o755); } catch (_) {}
+          if (extracted !== targetPath && !fs.existsSync(targetPath)) {
+            try {
+              fs.copyFileSync(extracted, targetPath);
+              fs.chmodSync(targetPath, 0o755);
+            } catch (_) {}
+          }
         }
       }
     }
-    if (fs.existsSync(tempZip)) fs.unlinkSync(tempZip);
-    console.log('  + SumanMovies binary configured.');
-    return targetPath;
+
+    if (fs.existsSync(tempFile)) {
+      try { fs.unlinkSync(tempFile); } catch (_) {}
+    }
+
+    if (fs.existsSync(targetPath)) {
+      console.log('  + SumanMovies binary configured.');
+      return targetPath;
+    }
+    if (fs.existsSync(altPath)) {
+      console.log('  + SumanMovies binary configured.');
+      return altPath;
+    }
+
+    throw new Error(`Extraction finished but binary not found at ${targetPath}`);
   } catch (e) {
     throw new Error(`Could not download or install ${binName}: ${e.message}`);
   }
@@ -209,7 +278,7 @@ async function ensureMpv() {
       if (fs.existsSync('/data/data/com.termux/files/usr/bin/pkg')) {
         execSync('pkg install -y mpv', { stdio: 'inherit' });
       } else {
-        execSync('sudo apt-get update && sudo apt-get install -y mpv', { stdio: 'inherit' });
+        execSync('sudo apt-get install -y mpv', { stdio: 'inherit' });
       }
     } catch (e) {
       console.log('  ! Note: Please install mpv via your package manager (e.g. sudo apt install mpv)');
@@ -389,7 +458,7 @@ async function ensureFfmpeg() {
       if (fs.existsSync('/data/data/com.termux/files/usr/bin/pkg')) {
         execSync('pkg install -y ffmpeg', { stdio: 'inherit' });
       } else {
-        execSync('sudo apt-get update && sudo apt-get install -y ffmpeg', { stdio: 'inherit' });
+        execSync('sudo apt-get install -y ffmpeg', { stdio: 'inherit' });
       }
     } catch (e) {
       console.log('  ! Note: Please install ffmpeg via your package manager (e.g. sudo apt install ffmpeg)');
@@ -419,7 +488,7 @@ async function setupAll(force = false) {
 async function update() {
   console.log('\n  🔄 Checking for SumanMovies updates...');
   
-  let currentVersion = '1.0.2';
+  let currentVersion = '1.0.3';
   try {
     const pkg = require('../package.json');
     currentVersion = pkg.version;
