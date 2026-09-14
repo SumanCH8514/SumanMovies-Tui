@@ -46,6 +46,7 @@ impl App {
                 if self.state.favorites_focus {
                     let idx = self.state.favorites_landing_state.selected()?;
                     match self.state.effective_home_deck_tab() {
+                        crate::tui::state::HomeDeckTab::Discover => None,
                         crate::tui::state::HomeDeckTab::ContinueWatching => {
                             let items = self.state.continue_watching_items();
                             let item = items.get(idx)?;

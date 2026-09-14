@@ -445,10 +445,6 @@ pub(crate) fn render_landing_deck(frame: &mut Frame, area: Rect, state: &AppStat
     let has_cw = state.continue_watching_available();
     let has_fav = state.favorites_available() && !state.favorites.items.is_empty();
 
-    if !has_cw && !has_fav {
-        return;
-    }
-
     let modal_active = state.has_active_modal();
     let is_focused = state.favorites_focus && !modal_active;
 
@@ -463,7 +459,24 @@ pub(crate) fn render_landing_deck(frame: &mut Frame, area: Rect, state: &AppStat
         Vec::new()
     };
 
+    let presets: &[(&str, &str)] = if state.is_addon_mode {
+        &[
+            ("Top Movies", "Cinemeta Curated Catalog"),
+            ("Top Series", "Popular & Episodic TV"),
+            ("Addon Catalogs", "Installed Community Manifests"),
+            ("Community Streams", "Multi-Source Aggregated Feeds"),
+        ]
+    } else {
+        &[
+            ("Trending Now", "Popular & In-Theaters"),
+            ("Top Rated Series", "Critically Acclaimed TV"),
+            ("Latest Releases", "Recent 4K & HD Additions"),
+            ("Most Watched", "Community Favorites"),
+        ]
+    };
+
     let (item_count, total_count) = match tab {
+        crate::tui::state::HomeDeckTab::Discover => (presets.len(), presets.len()),
         crate::tui::state::HomeDeckTab::ContinueWatching => {
             let total = state
                 .history
@@ -516,33 +529,74 @@ pub(crate) fn render_landing_deck(frame: &mut Frame, area: Rect, state: &AppStat
             theme.surface1,
         )
     };
-    if has_cw && has_fav {
-        let sep = if state.basic_terminal { " | " } else { " │ " };
-        match tab {
+
+    let available_tabs = state.available_home_deck_tabs();
+    let sep = if state.basic_terminal { " | " } else { " │ " };
+    let compass = if state.basic_terminal { "* " } else { "✦ " };
+    let is_compact = card_width < 60;
+
+    for (idx, &t) in available_tabs.iter().enumerate() {
+        if idx > 0 {
+            title_spans.push(Span::styled(sep, sep_style));
+        }
+        let is_active = t == tab;
+        let style = if is_active { active_style } else { inactive_style };
+        match t {
+            crate::tui::state::HomeDeckTab::Discover => {
+                let label = if is_compact {
+                    if is_active { format!(" {compass}Discover ") } else { " Discover".to_string() }
+                } else {
+                    if is_active { format!(" {compass}Discover Categories ") } else { " Discover Categories".to_string() }
+                };
+                title_spans.push(Span::styled(label, style));
+            }
             crate::tui::state::HomeDeckTab::ContinueWatching => {
-                title_spans.push(Span::styled(" Continue Watching ", active_style));
-                title_spans.push(Span::styled(sep, sep_style));
-                title_spans.push(Span::styled("Favorites", inactive_style));
-                title_spans.push(Span::styled(" (Tab) ", hint_style));
+                let label = if is_compact {
+                    if is_active { " Watching ".to_string() } else { " Watching".to_string() }
+                } else {
+                    if is_active { " Continue Watching ".to_string() } else { " Continue Watching".to_string() }
+                };
+                title_spans.push(Span::styled(label, style));
             }
             crate::tui::state::HomeDeckTab::Favorites => {
-                title_spans.push(Span::styled(" Continue Watching", inactive_style));
-                title_spans.push(Span::styled(" (Tab)", hint_style));
-                title_spans.push(Span::styled(sep, sep_style));
-                title_spans.push(Span::styled(" Favorites ", active_style));
+                let label = if is_active { " Favorites ".to_string() } else { " Favorites".to_string() };
+                title_spans.push(Span::styled(label, style));
+                if !is_active && is_focused && available_tabs.len() <= 2 {
+                    title_spans.push(Span::styled(" (Tab) ", hint_style));
+                }
             }
         }
-    } else if has_cw {
-        title_spans.push(Span::styled(" Continue Watching ", active_style));
-    } else {
-        title_spans.push(Span::styled(" Favorites ", active_style));
     }
 
-    let block = Block::default()
+    let left_title_len: usize = title_spans
+        .iter()
+        .map(|s| crate::tui::text::width(&s.content))
+        .sum();
+
+    let mut block = Block::default()
         .title(Line::from(title_spans))
         .borders(Borders::ALL)
         .border_type(crate::tui::overlay::border_type(state.basic_terminal))
         .border_style(border_style);
+    if tab == crate::tui::state::HomeDeckTab::Discover {
+        if (card_width as usize) >= left_title_len + 13 {
+            block = block.title(
+                Line::from(vec![Span::styled(
+                    "[ /browse ] ",
+                    if modal_active {
+                        theme.muted
+                    } else {
+                        theme.accent.add_modifier(Modifier::BOLD)
+                    },
+                )])
+                .alignment(Alignment::Right),
+            );
+        }
+    } else if available_tabs.len() > 1 && (card_width as usize) >= left_title_len + 7 {
+        block = block.title(
+            Line::from(vec![Span::styled("(Tab) ", hint_style)]).alignment(Alignment::Right),
+        );
+    }
 
     frame.render_widget(block, card_area);
 
@@ -562,6 +616,71 @@ pub(crate) fn render_landing_deck(frame: &mut Frame, area: Rect, state: &AppStat
     };
 
     match tab {
+        crate::tui::state::HomeDeckTab::Discover => {
+            for (i, &(title, desc)) in presets.iter().enumerate() {
+                if curr_y >= inner_area.bottom() {
+                    break;
+                }
+                let is_selected = selected == Some(i);
+                let pointer = if is_selected {
+                    if state.basic_terminal { ">  " } else { "▌  " }
+                } else {
+                    if state.basic_terminal { " - " } else { " · " }
+                };
+                let pointer_w = crate::tui::text::width(pointer);
+                let title_w = crate::tui::text::width(title);
+                let margins_len = 2 + pointer_w + 1;
+                let max_desc_w = (inner_area.width as usize).saturating_sub(title_w + margins_len + 1);
+                let display_desc = if max_desc_w >= 4 && crate::tui::text::width(desc) > max_desc_w {
+                    crate::tui::text::truncate_width(desc, max_desc_w)
+                } else if max_desc_w < 4 {
+                    std::borrow::Cow::Borrowed("")
+                } else {
+                    std::borrow::Cow::Borrowed(desc)
+                };
+                let tag_len = crate::tui::text::width(&display_desc);
+                let pad_len = (inner_area.width as usize).saturating_sub(margins_len + title_w + tag_len);
+
+                let (title_style, desc_style, pointer_style) = if is_selected {
+                    (
+                        theme.title.add_modifier(Modifier::BOLD),
+                        theme.subtext1,
+                        theme.accent,
+                    )
+                } else {
+                    (
+                        theme.text.add_modifier(Modifier::BOLD),
+                        theme.text_dim,
+                        theme.accent,
+                    )
+                };
+
+                let line = Line::from(vec![
+                    Span::raw("  "),
+                    Span::styled(pointer, pointer_style),
+                    Span::styled(title, title_style),
+                    Span::raw(" ".repeat(pad_len)),
+                    Span::styled(display_desc, desc_style),
+                    Span::raw(" "),
+                ]);
+
+                let row_area = Rect {
+                    x: inner_area.x,
+                    y: curr_y,
+                    width: inner_area.width,
+                    height: 1,
+                };
+                if is_selected {
+                    let selected_bg = theme.surface0.fg.unwrap_or(theme.base);
+                    frame.render_widget(
+                        Block::default().style(Style::default().bg(selected_bg)),
+                        row_area,
+                    );
+                }
+                frame.render_widget(Paragraph::new(line), row_area);
+                curr_y += 1;
+            }
+        }
         crate::tui::state::HomeDeckTab::ContinueWatching => {
             for (i, item) in cw_items.iter().enumerate() {
                 if curr_y >= inner_area.bottom() {
@@ -717,6 +836,7 @@ pub(crate) fn render_landing_deck(frame: &mut Frame, area: Rect, state: &AppStat
     if overflow > 0 && curr_y < inner_area.bottom() {
         let sep = if state.basic_terminal { "-" } else { "·" };
         let cmd = match tab {
+            crate::tui::state::HomeDeckTab::Discover => "/browse",
             crate::tui::state::HomeDeckTab::ContinueWatching => "/history",
             crate::tui::state::HomeDeckTab::Favorites => "/favorites",
         };
@@ -740,6 +860,83 @@ pub(crate) fn render_landing_deck(frame: &mut Frame, area: Rect, state: &AppStat
             pill_area,
         );
     }
+}
+
+pub fn home_deck_tab_at_col(
+    state: &AppState,
+    card_area: Rect,
+    col: u16,
+) -> Option<crate::tui::state::HomeDeckTab> {
+    if col < card_area.left() || col >= card_area.right() {
+        return None;
+    }
+    let available_tabs = state.available_home_deck_tabs();
+    if available_tabs.is_empty() {
+        return None;
+    }
+    let tab = state.effective_home_deck_tab();
+    let is_compact = card_area.width < 60;
+    let compass = if state.basic_terminal { "* " } else { "✦ " };
+    let compass_w = crate::tui::text::width(compass);
+
+    let mut curr_x = card_area.x + 1;
+
+    for (idx, &t) in available_tabs.iter().enumerate() {
+        let is_active = t == tab;
+        let label_w = match t {
+            crate::tui::state::HomeDeckTab::Discover => {
+                if is_compact {
+                    if is_active {
+                        1 + compass_w + 8 + 1
+                    } else {
+                        1 + 8
+                    }
+                } else if is_active {
+                    1 + compass_w + 19 + 1
+                } else {
+                    1 + 19
+                }
+            }
+            crate::tui::state::HomeDeckTab::ContinueWatching => {
+                if is_compact {
+                    if is_active {
+                        10
+                    } else {
+                        9
+                    }
+                } else if is_active {
+                    19
+                } else {
+                    18
+                }
+            }
+            crate::tui::state::HomeDeckTab::Favorites => {
+                if is_active {
+                    11
+                } else {
+                    10
+                }
+            }
+        } as u16;
+
+        let start_x = if idx == 0 {
+            card_area.x
+        } else {
+            curr_x.saturating_sub(1)
+        };
+        let end_x = if idx == available_tabs.len() - 1 {
+            card_area.right()
+        } else {
+            curr_x + label_w + 2
+        };
+
+        if col >= start_x && col < end_x {
+            return Some(t);
+        }
+        curr_x += label_w + 3;
+    }
+
+    None
 }
 
 pub(crate) fn render_discover_landing(
@@ -2851,6 +3048,7 @@ fn item_slot_rects(item_area: Rect, poster_width: u16) -> (Rect, Rect, Rect) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tui::state::HomeDeckTab;
     use ratatui::{Terminal, backend::TestBackend};
 
     #[test]
@@ -3523,6 +3721,149 @@ mod tests {
         assert!(rendered.contains("Severance"));
         assert!(rendered.contains("S01E03"));
         assert!(rendered.contains("40%"));
+    }
+
+    #[test]
+    fn test_home_deck_tabs_ordering_and_cycling() {
+        let mut state = AppState {
+            streaming_enabled: true,
+            ..Default::default()
+        };
+        state.history.recent.push(crate::history::WatchHistoryItem {
+            provider: "moviebox".to_string(),
+            subject_id: "show-1".to_string(),
+            title: "Severance".to_string(),
+            cover_url: None,
+            stype: 2,
+            release_year: "2022".to_string(),
+            season: 1,
+            episode: 1,
+            progress_seconds: 500,
+            duration_seconds: Some(3000),
+            completed: false,
+            timestamp: 100,
+        });
+        state.favorites.items.push(crate::favorites::FavoriteItem {
+            provider: "moviebox".to_string(),
+            subject_id: "fav-1".to_string(),
+            title: "Inception".to_string(),
+            cover_url: None,
+            stype: 1,
+            release_year: "2010".to_string(),
+            added_at: 100,
+        });
+
+        let tabs = state.available_home_deck_tabs();
+        assert_eq!(tabs.len(), 3);
+        assert_eq!(tabs[0], HomeDeckTab::Discover);
+        assert_eq!(tabs[1], HomeDeckTab::ContinueWatching);
+        assert_eq!(tabs[2], HomeDeckTab::Favorites);
+
+        state.home_deck_tab = HomeDeckTab::Discover;
+        state.cycle_home_deck_tab();
+        assert_eq!(state.home_deck_tab, HomeDeckTab::ContinueWatching);
+        state.cycle_home_deck_tab();
+        assert_eq!(state.home_deck_tab, HomeDeckTab::Favorites);
+        state.cycle_home_deck_tab();
+        assert_eq!(state.home_deck_tab, HomeDeckTab::Discover);
+
+        state.cycle_home_deck_tab_prev();
+        assert_eq!(state.home_deck_tab, HomeDeckTab::Favorites);
+        state.cycle_home_deck_tab_prev();
+        assert_eq!(state.home_deck_tab, HomeDeckTab::ContinueWatching);
+        state.cycle_home_deck_tab_prev();
+        assert_eq!(state.home_deck_tab, HomeDeckTab::Discover);
+    }
+
+    #[test]
+    fn test_home_deck_tab_at_col_hit_testing() {
+        let mut state = AppState {
+            streaming_enabled: true,
+            ..Default::default()
+        };
+        state.history.recent.push(crate::history::WatchHistoryItem {
+            provider: "moviebox".to_string(),
+            subject_id: "show-1".to_string(),
+            title: "Severance".to_string(),
+            cover_url: None,
+            stype: 2,
+            release_year: "2022".to_string(),
+            season: 1,
+            episode: 1,
+            progress_seconds: 500,
+            duration_seconds: Some(3000),
+            completed: false,
+            timestamp: 100,
+        });
+        state.favorites.items.push(crate::favorites::FavoriteItem {
+            provider: "moviebox".to_string(),
+            subject_id: "fav-1".to_string(),
+            title: "Inception".to_string(),
+            cover_url: None,
+            stype: 1,
+            release_year: "2010".to_string(),
+            added_at: 100,
+        });
+
+        let card_area = Rect::new(10, 5, 64, 10);
+        state.home_deck_tab = HomeDeckTab::Discover;
+
+        // Click near left border or on Discover tab
+        let tab = home_deck_tab_at_col(&state, card_area, 10);
+        assert_eq!(tab, Some(HomeDeckTab::Discover));
+        let tab = home_deck_tab_at_col(&state, card_area, 20);
+        assert_eq!(tab, Some(HomeDeckTab::Discover));
+
+        // Click on Continue Watching area
+        let tab = home_deck_tab_at_col(&state, card_area, 40);
+        assert_eq!(tab, Some(HomeDeckTab::ContinueWatching));
+
+        // Click on Favorites area
+        let tab = home_deck_tab_at_col(&state, card_area, 60);
+        assert_eq!(tab, Some(HomeDeckTab::Favorites));
+
+        // Click out of bounds
+        assert_eq!(home_deck_tab_at_col(&state, card_area, 5), None);
+        assert_eq!(home_deck_tab_at_col(&state, card_area, 80), None);
+    }
+
+    #[test]
+    fn test_landing_deck_discover_categories_rendering() {
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut state = AppState {
+            streaming_enabled: true,
+            home_deck_tab: HomeDeckTab::Discover,
+            ..Default::default()
+        };
+        state.favorites_landing_state.select(Some(0));
+        let theme = Theme::mocha();
+
+        terminal
+            .draw(|frame| {
+                let area = Rect::new(0, 0, 100, 30);
+                render_landing_deck(frame, area, &state, &theme);
+            })
+            .unwrap();
+
+        let buffer = terminal.backend().buffer();
+        let mut rendered = String::new();
+        for y in 0..30 {
+            for x in 0..100 {
+                rendered.push_str(buffer[(x, y)].symbol());
+            }
+            rendered.push('\n');
+        }
+
+        assert!(rendered.contains("Discover Categories"));
+        assert!(rendered.contains("Trending Now"));
+        assert!(rendered.contains("Popular & In-Theaters"));
+        assert!(rendered.contains("Top Rated Series"));
+        assert!(rendered.contains("Critically Acclaimed TV"));
+        assert!(rendered.contains("Latest Releases"));
+        assert!(rendered.contains("Recent 4K & HD Additions"));
+        assert!(rendered.contains("Most Watched"));
+        assert!(rendered.contains("Community Favorites"));
     }
 
     #[test]

@@ -628,7 +628,23 @@ impl App {
                 {
                     let rel_row = row - deck_card_area.top();
                     if rel_row == 0 {
-                        self.state.cycle_home_deck_tab();
+                        let current_tab = self.state.effective_home_deck_tab();
+                        if current_tab == crate::tui::state::HomeDeckTab::Discover
+                            && col >= deck_card_area.right().saturating_sub(13)
+                        {
+                            self.action_sender.send(Action::ShowBrowseMenu).ok();
+                            return None;
+                        }
+                        if let Some(target_tab) =
+                            crate::tui::screens::home::home_deck_tab_at_col(&self.state, deck_card_area, col)
+                        {
+                            if target_tab != self.state.home_deck_tab || !self.state.favorites_focus {
+                                self.state.home_deck_tab = target_tab;
+                                self.state.favorites_landing_state.select(Some(0));
+                            }
+                        } else {
+                            self.state.cycle_home_deck_tab();
+                        }
                         self.state.favorites_focus = true;
                         self.state.input_mode = InputMode::Normal;
                     } else if rel_row >= 1 && rel_row <= item_count {
@@ -641,8 +657,26 @@ impl App {
                         self.state.favorites_focus = true;
                         self.state.input_mode = InputMode::Normal;
                         self.state.favorites_landing_state.select(Some(idx));
-                        if prev_selected == Some(idx) {
+                        if self.state.effective_home_deck_tab()
+                            == crate::tui::state::HomeDeckTab::Discover
+                        {
+                            let preset = match idx {
+                                0 => Some(BrowsePreset::Trending),
+                                1 => Some(BrowsePreset::TopRatedAllTime),
+                                2 => Some(BrowsePreset::TopRatedRecent),
+                                3 => Some(BrowsePreset::MostWatched),
+                                _ => None,
+                            };
+                            if let Some(preset) = preset {
+                                if self.state.is_addon_mode {
+                                    self.action_sender.send(Action::ShowBrowseMenu).ok();
+                                } else {
+                                    self.action_sender.send(Action::SelectBrowse(preset)).ok();
+                                }
+                            }
+                        } else if prev_selected == Some(idx) {
                             match self.state.effective_home_deck_tab() {
+                                crate::tui::state::HomeDeckTab::Discover => {}
                                 crate::tui::state::HomeDeckTab::ContinueWatching => {
                                     self.action_sender
                                         .send(Action::OpenContinueWatching(idx))
@@ -655,6 +689,9 @@ impl App {
                         }
                     } else if overflow > 0 && rel_row == item_count + 1 {
                         match self.state.effective_home_deck_tab() {
+                            crate::tui::state::HomeDeckTab::Discover => {
+                                self.action_sender.send(Action::ShowBrowseMenu).ok();
+                            }
                             crate::tui::state::HomeDeckTab::ContinueWatching => {
                                 self.action_sender
                                     .send(Action::Search {

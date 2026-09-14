@@ -28,6 +28,7 @@ pub enum AppMode {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum HomeDeckTab {
+    Discover,
     #[default]
     ContinueWatching,
     Favorites,
@@ -854,17 +855,29 @@ impl AppState {
             })
     }
 
+    pub fn available_home_deck_tabs(&self) -> Vec<HomeDeckTab> {
+        let mut tabs = vec![HomeDeckTab::Discover];
+        if self.continue_watching_available() {
+            tabs.push(HomeDeckTab::ContinueWatching);
+        }
+        if self.favorites_available() && !self.favorites.items.is_empty() {
+            tabs.push(HomeDeckTab::Favorites);
+        }
+        tabs
+    }
+
     pub fn effective_home_deck_tab(&self) -> HomeDeckTab {
         let cw_has = self.continue_watching_available();
         let fav_has = self.favorites_available() && !self.favorites.items.is_empty();
         match self.home_deck_tab {
+            HomeDeckTab::Discover => HomeDeckTab::Discover,
             HomeDeckTab::ContinueWatching => {
                 if cw_has {
                     HomeDeckTab::ContinueWatching
                 } else if fav_has {
                     HomeDeckTab::Favorites
                 } else {
-                    HomeDeckTab::ContinueWatching
+                    HomeDeckTab::Discover
                 }
             }
             HomeDeckTab::Favorites => {
@@ -873,19 +886,20 @@ impl AppState {
                 } else if cw_has {
                     HomeDeckTab::ContinueWatching
                 } else {
-                    HomeDeckTab::Favorites
+                    HomeDeckTab::Discover
                 }
             }
         }
     }
 
     pub fn landing_deck_visible(&self) -> bool {
-        (self.continue_watching_available() || self.favorites_landing_visible())
+        !self.is_tv_mode
             && !(self.input_mode == InputMode::Editing && !self.search_suggestions.is_empty())
     }
 
     pub fn landing_deck_items_count(&self) -> usize {
         match self.effective_home_deck_tab() {
+            HomeDeckTab::Discover => 4,
             HomeDeckTab::ContinueWatching => self.continue_watching_items().len(),
             HomeDeckTab::Favorites => self.favorites_landing_items().len(),
         }
@@ -893,6 +907,7 @@ impl AppState {
 
     pub fn landing_deck_total_items_count(&self) -> usize {
         match self.effective_home_deck_tab() {
+            HomeDeckTab::Discover => 4,
             HomeDeckTab::ContinueWatching => self
                 .history
                 .recent
@@ -904,13 +919,31 @@ impl AppState {
     }
 
     pub fn cycle_home_deck_tab(&mut self) {
-        let cw_has = self.continue_watching_available();
-        let fav_has = self.favorites_available() && !self.favorites.items.is_empty();
-        if cw_has && fav_has {
-            self.home_deck_tab = match self.effective_home_deck_tab() {
-                HomeDeckTab::ContinueWatching => HomeDeckTab::Favorites,
-                HomeDeckTab::Favorites => HomeDeckTab::ContinueWatching,
-            };
+        let tabs = self.available_home_deck_tabs();
+        if tabs.len() > 1 {
+            let current = self.effective_home_deck_tab();
+            let next_idx = tabs
+                .iter()
+                .position(|&t| t == current)
+                .map(|i| (i + 1) % tabs.len())
+                .unwrap_or(0);
+            self.home_deck_tab = tabs[next_idx];
+            if self.favorites_focus {
+                self.favorites_landing_state.select(Some(0));
+            }
+        }
+    }
+
+    pub fn cycle_home_deck_tab_prev(&mut self) {
+        let tabs = self.available_home_deck_tabs();
+        if tabs.len() > 1 {
+            let current = self.effective_home_deck_tab();
+            let prev_idx = tabs
+                .iter()
+                .position(|&t| t == current)
+                .map(|i| (i + tabs.len() - 1) % tabs.len())
+                .unwrap_or(0);
+            self.home_deck_tab = tabs[prev_idx];
             if self.favorites_focus {
                 self.favorites_landing_state.select(Some(0));
             }

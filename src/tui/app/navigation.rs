@@ -1,5 +1,6 @@
 use super::App;
 use crate::providers::models::{MediaDetails, ProviderKind, Release};
+use crate::models::BrowsePreset;
 use crate::tui::{
     action::Action,
     state::{InputMode, Screen},
@@ -657,7 +658,7 @@ impl App {
             Action::MoveLeft => {
                 if self.state.active_screen == Screen::Home {
                     if self.state.favorites_focus {
-                        self.state.cycle_home_deck_tab();
+                        self.state.cycle_home_deck_tab_prev();
                         return None;
                     }
                     let current = self.state.search_list_state.selected().unwrap_or(0);
@@ -760,6 +761,22 @@ impl App {
                 if self.state.favorites_focus {
                     if let Some(idx) = self.state.favorites_landing_state.selected() {
                         match self.state.effective_home_deck_tab() {
+                            crate::tui::state::HomeDeckTab::Discover => {
+                                let preset = match idx {
+                                    0 => Some(BrowsePreset::Trending),
+                                    1 => Some(BrowsePreset::TopRatedAllTime),
+                                    2 => Some(BrowsePreset::TopRatedRecent),
+                                    3 => Some(BrowsePreset::MostWatched),
+                                    _ => None,
+                                };
+                                if let Some(preset) = preset {
+                                    if self.state.is_addon_mode {
+                                        self.action_sender.send(Action::ShowBrowseMenu).ok();
+                                    } else {
+                                        self.action_sender.send(Action::SelectBrowse(preset)).ok();
+                                    }
+                                }
+                            }
                             crate::tui::state::HomeDeckTab::ContinueWatching => {
                                 self.open_continue_watching(idx);
                             }

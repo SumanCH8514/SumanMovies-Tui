@@ -849,9 +849,14 @@ impl App {
                         KeyCode::Right => {
                             self.action_sender.send(Action::MoveRight).ok();
                         }
-                        KeyCode::Tab | KeyCode::BackTab => {
+                        KeyCode::Tab => {
                             if self.state.landing_deck_visible() {
                                 self.state.cycle_home_deck_tab();
+                            }
+                        }
+                        KeyCode::BackTab => {
+                            if self.state.landing_deck_visible() {
+                                self.state.cycle_home_deck_tab_prev();
                             }
                         }
                         KeyCode::Home | KeyCode::Char('g') => {
