@@ -44,6 +44,23 @@ async function main() {
       process.env.PATH = `${storageDir}${path.delimiter}${currentPath}`;
     }
 
+    const inWezterm = process.env.TERM_PROGRAM === 'WezTerm' || !!process.env.WEZTERM_PANE;
+    const wantsWezterm = args.includes('--wezterm') || args.includes('-w') || process.env.SUMANMOVIES_WEZTERM === '1';
+    const noWezterm = args.includes('--no-wezterm') || args.includes('-nw');
+
+    if (wantsWezterm && !inWezterm && !noWezterm) {
+      const weztermBin = findExecutable('wezterm');
+      if (weztermBin) {
+        const passArgs = args.filter(a => a !== '--wezterm' && a !== '-w');
+        const child = spawn(weztermBin, ['start', '--', binPath, ...passArgs], {
+          stdio: 'inherit',
+          windowsHide: false
+        });
+        child.on('exit', (code) => process.exit(code || 0));
+        return;
+      }
+    }
+
     const child = spawn(binPath, args, {
       stdio: 'inherit',
       env: process.env,

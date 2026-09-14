@@ -468,6 +468,105 @@ async function ensureFfmpeg() {
   return findExecutable('ffmpeg');
 }
 
+async function ensureWezTerm() {
+  const existing = findExecutable('wezterm');
+  if (existing) {
+    return existing;
+  }
+
+  const storageDir = getStorageDir();
+  const isWin = process.platform === 'win32';
+  const isMac = process.platform === 'darwin';
+
+  if (isWin) {
+    const candidatePaths = [
+      'C:\\Program Files\\WezTerm\\wezterm.exe',
+      'C:\\Program Files (x86)\\WezTerm\\wezterm.exe',
+      path.join(process.env.LOCALAPPDATA || '', 'Programs', 'WezTerm', 'wezterm.exe'),
+      path.join(process.env.LOCALAPPDATA || '', 'Microsoft', 'WinGet', 'Links', 'wezterm.exe'),
+      path.join(os.homedir(), '.local', 'bin', 'wezterm.exe'),
+    ];
+    for (const cand of candidatePaths) {
+      if (fs.existsSync(cand)) {
+        return cand;
+      }
+    }
+
+    try {
+      console.log('  > Setting up WezTerm (GPU-accelerated terminal for HD artwork)...');
+      execSync('winget install --id wez.wezterm --silent --accept-source-agreements --accept-package-agreements', { stdio: 'ignore' });
+      for (const cand of candidatePaths) {
+        if (fs.existsSync(cand)) {
+          console.log('  + WezTerm installed successfully via winget.');
+          return cand;
+        }
+      }
+      const found = findExecutable('wezterm');
+      if (found) {
+        console.log('  + WezTerm installed successfully via winget.');
+        return found;
+      }
+    } catch (e) {
+      console.log('  ! Note: WezTerm can also be installed manually (winget install wez.wezterm)');
+    }
+  } else if (isMac) {
+    try {
+      console.log('  > Installing WezTerm via Homebrew...');
+      execSync('brew install --cask wezterm', { stdio: 'inherit' });
+      return findExecutable('wezterm');
+    } catch (e) {
+      console.log('  ! Note: Install WezTerm via: brew install --cask wezterm');
+    }
+  } else {
+    // Linux
+    console.log('  > Setting up WezTerm (GPU-accelerated terminal for HD artwork)...');
+    try {
+      // 1. Try apt repository if on Debian/Ubuntu
+      if (fs.existsSync('/usr/bin/apt-get') || fs.existsSync('/bin/apt-get')) {
+        try {
+          execSync(
+            'curl -fsSL https://apt.fury.io/wez/gpg.key | sudo gpg --yes --dearmor -o /usr/share/keyrings/wezterm-fury.gpg 2>/dev/null && ' +
+            'echo "deb [signed-by=/usr/share/keyrings/wezterm-fury.gpg] https://apt.fury.io/wez/ * *" | sudo tee /etc/apt/sources.list.d/wezterm.list >/dev/null && ' +
+            'sudo apt-get update -qq && sudo apt-get install -y wezterm',
+            { stdio: 'inherit' }
+          );
+          const found = findExecutable('wezterm');
+          if (found) {
+            console.log('  + WezTerm installed successfully via apt.');
+            return found;
+          }
+        } catch (_) {}
+      }
+
+      // 2. Try flatpak if available
+      if (fs.existsSync('/usr/bin/flatpak')) {
+        try {
+          execSync('flatpak install -y flathub org.wezfurlong.wezterm', { stdio: 'ignore' });
+        } catch (_) {}
+      }
+
+      // 3. Fallback: Download official portable AppImage directly to storageDir
+      const appImagePath = path.join(storageDir, 'wezterm');
+      if (!fs.existsSync(appImagePath)) {
+        try {
+          console.log('  > Downloading portable WezTerm AppImage for HD graphics...');
+          const appImageUrl = 'https://github.com/wez/wezterm/releases/download/20240203-110809-50462022/WezTerm-20240203-110809-50462022-Ubuntu20.04.AppImage';
+          await downloadFile(appImageUrl, appImagePath);
+          fs.chmodSync(appImagePath, 0o755);
+          console.log('  + Portable WezTerm downloaded and configured.');
+          return appImagePath;
+        } catch (err) {}
+      } else {
+        return appImagePath;
+      }
+    } catch (e) {
+      console.log('  ! Note: WezTerm can be installed manually (e.g. sudo apt install wezterm)');
+    }
+  }
+
+  return findExecutable('wezterm');
+}
+
 async function setupAll(force = false) {
   console.log('\n  📦 Initializing SumanMovies and all required dependencies...');
   
@@ -475,12 +574,14 @@ async function setupAll(force = false) {
   const mpvPath = await ensureMpv();
   const ytdlpPath = await ensureYtDlp();
   const ffmpegPath = await ensureFfmpeg();
+  const weztermPath = await ensureWezTerm();
 
   console.log('\n  ✨ All Required Dependencies Checked:');
   console.log(`    • SumanMovies Engine : ${binPath ? '✓ Installed' : '✗ Missing'}`);
   console.log(`    • MPV Media Player   : ${mpvPath ? '✓ Ready' : '⚠ Missing (playback requires mpv or vlc)'}`);
   console.log(`    • yt-dlp Downloader  : ${ytdlpPath ? '✓ Ready' : '⚠ Missing (required for DASH stream downloads)'}`);
-  console.log(`    • FFmpeg Processor   : ${ffmpegPath ? '✓ Ready' : '⚠ Missing (required for audio/video merge)'}\n`);
+  console.log(`    • FFmpeg Processor   : ${ffmpegPath ? '✓ Ready' : '⚠ Missing (required for audio/video merge)'}`);
+  console.log(`    • WezTerm HD Terminal: ${weztermPath ? '✓ Ready (Full-HD Poster Artwork Enabled)' : '⚠ Optional (Install for High-Definition Posters)'}\n`);
 
   return binPath;
 }
@@ -488,7 +589,7 @@ async function setupAll(force = false) {
 async function update() {
   console.log('\n  🔄 Checking for SumanMovies updates...');
   
-  let currentVersion = '1.0.3';
+  let currentVersion = '1.0.4';
   try {
     const pkg = require('../package.json');
     currentVersion = pkg.version;
@@ -585,6 +686,7 @@ module.exports = {
   ensureMpv,
   ensureYtDlp,
   ensureFfmpeg,
+  ensureWezTerm,
   setupAll,
   update,
   uninstall

@@ -1,11 +1,12 @@
 {
   "name": "sumanmovies",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "SumanMovies - Terminal Movie & TV Streaming Experience",
   "main": "bin/sumanmovies.js",
   "bin": {
     "sumanmovies": "bin/sumanmovies.js",
     "SumanMovies": "bin/sumanmovies.js",
+    "sumanmovies-wezterm": "bin/wezterm.js",
     "sumanmovies-update": "bin/update.js",
     "sumanmovies-uninstall": "bin/uninstall.js"
   },
