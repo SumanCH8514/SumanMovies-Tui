@@ -459,6 +459,7 @@ impl App {
                 }
                 self.state.is_resolving_playback = true;
                 if self.current_subject_provider() == ProviderKind::FourKHdHub
+                    || self.current_subject_provider() == ProviderKind::AnimeXin
                     || self.current_subject_provider() == ProviderKind::Addons
                     || self.current_subject_provider().is_bdix()
                 {
@@ -481,6 +482,55 @@ impl App {
                                 release.provider.label()
                             ),
                         );
+                        if release.provider == ProviderKind::AnimeXin {
+                            let client = match self.service.animexin_client.clone() {
+                                Some(client) => client,
+                                None => {
+                                    self.state.is_resolving_playback = false;
+                                    self.action_sender
+                                        .send(Action::SetStatus(
+                                            "Error: AnimeXin provider is unavailable".to_string(),
+                                        ))
+                                        .ok();
+                                    return None;
+                                }
+                            };
+                            let sender = self.action_sender.clone();
+                            tokio::spawn(async move {
+                                let result = tokio::time::timeout(
+                                    std::time::Duration::from_secs(18),
+                                    client.resolve_release(&release),
+                                )
+                                .await;
+                                match result {
+                                    Ok(Ok(source)) => {
+                                        sender
+                                            .send(Action::StartDownload(
+                                                subtitle_url,
+                                                Some(source.url),
+                                                source.headers,
+                                            ))
+                                            .ok();
+                                    }
+                                    Ok(Err(error)) => {
+                                        log::error!("AnimeXin download resolve failed: {error}");
+                                        sender
+                                            .send(Action::SetStatus(format!("Error: AnimeXin: {error}")))
+                                            .ok();
+                                    }
+                                    Err(_) => {
+                                        log::error!("AnimeXin download resolve timed out");
+                                        sender
+                                            .send(Action::SetStatus(
+                                                "Error: AnimeXin stream resolution timed out. Select another release or mirror.".to_string(),
+                                            ))
+                                            .ok();
+                                    }
+                                }
+                            });
+                            return None;
+                        }
+
                         let client = if release.provider == ProviderKind::Addons
                             || release.provider == ProviderKind::BdixCircleFtp
                             || release.provider == ProviderKind::BdixDhakaFlix

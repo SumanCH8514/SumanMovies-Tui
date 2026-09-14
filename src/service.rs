@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use crate::models::BrowseMetrics;
 use crate::providers::Provider;
+use crate::providers::animexin::AnimeXinClient;
 use crate::providers::bdix::circleftp::CircleFtpClient;
 use crate::providers::bdix::dhakaflix::client::DhakaFlixClient;
 use crate::providers::fourkhdhub::FourKHdHubClient;
@@ -13,6 +14,7 @@ use crate::providers::moviebox::client::MovieBoxClient;
 pub struct MovieBoxService {
     pub client: MovieBoxClient,
     pub fourk_client: Option<FourKHdHubClient>,
+    pub animexin_client: Option<AnimeXinClient>,
     pub circleftp_client: CircleFtpClient,
     pub dhakaflix_client: DhakaFlixClient,
     pub addon_client: crate::providers::addons::AddonClient,
@@ -35,6 +37,7 @@ impl MovieBoxService {
         Self {
             client: MovieBoxClient::new(),
             fourk_client: FourKHdHubClient::new().ok(),
+            animexin_client: AnimeXinClient::new().ok(),
             circleftp_client: CircleFtpClient::new(),
             dhakaflix_client: DhakaFlixClient::new(),
             addon_client: crate::providers::addons::AddonClient::new(),
@@ -51,6 +54,11 @@ impl MovieBoxService {
             ProviderKind::MovieBox => Provider::capabilities(&self.client),
             ProviderKind::FourKHdHub => self
                 .fourk_client
+                .as_ref()
+                .map(Provider::capabilities)
+                .unwrap_or_default(),
+            ProviderKind::AnimeXin => self
+                .animexin_client
                 .as_ref()
                 .map(Provider::capabilities)
                 .unwrap_or_default(),
@@ -82,6 +90,12 @@ impl MovieBoxService {
                     ProviderError::Unavailable("4KHDHub is unavailable".to_string())
                 })?;
                 Provider::search(fourk, query, page).await
+            }
+            ProviderKind::AnimeXin => {
+                let client = self.animexin_client.as_ref().ok_or_else(|| {
+                    ProviderError::Unavailable("AnimeXin is unavailable".to_string())
+                })?;
+                Provider::search(client, query, page).await
             }
             ProviderKind::BdixCircleFtp => {
                 Provider::search(&self.circleftp_client, query, page).await
@@ -153,6 +167,12 @@ impl MovieBoxService {
                     ProviderError::Unavailable("4KHDHub is unavailable".to_string())
                 })?;
                 Provider::details(fourk, subject_id).await
+            }
+            ProviderKind::AnimeXin => {
+                let client = self.animexin_client.as_ref().ok_or_else(|| {
+                    ProviderError::Unavailable("AnimeXin is unavailable".to_string())
+                })?;
+                Provider::details(client, subject_id).await
             }
             ProviderKind::BdixCircleFtp => {
                 Provider::details(&self.circleftp_client, subject_id).await

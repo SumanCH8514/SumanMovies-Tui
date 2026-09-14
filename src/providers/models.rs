@@ -8,6 +8,8 @@ pub enum ProviderKind {
     MovieBox,
     #[serde(rename = "fourkhdhub", alias = "four_k_hd_hub", alias = "4khdhub")]
     FourKHdHub,
+    #[serde(rename = "animexin", alias = "anime_xin")]
+    AnimeXin,
     #[serde(rename = "bdix_circleftp", alias = "bdix_circle_ftp")]
     BdixCircleFtp,
     #[serde(rename = "bdix_dhakaflix", alias = "bdix_dhaka_flix")]
@@ -17,9 +19,10 @@ pub enum ProviderKind {
 }
 
 impl ProviderKind {
-    pub const ENABLED: [Self; 4] = [
+    pub const ENABLED: [Self; 5] = [
         Self::MovieBox,
         Self::FourKHdHub,
+        Self::AnimeXin,
         Self::BdixCircleFtp,
         Self::BdixDhakaFlix,
     ];
@@ -28,6 +31,7 @@ impl ProviderKind {
         match self {
             Self::MovieBox => "moviebox",
             Self::FourKHdHub => "fourkhdhub",
+            Self::AnimeXin => "animexin",
             Self::BdixCircleFtp => "bdix_circleftp",
             Self::BdixDhakaFlix => "bdix_dhakaflix",
             Self::Addons => "addons",
@@ -38,6 +42,7 @@ impl ProviderKind {
         match self {
             Self::MovieBox => "MovieBox",
             Self::FourKHdHub => "4KHDHub",
+            Self::AnimeXin => "AnimeXin",
             Self::BdixCircleFtp => "CircleFTP (BDIX)",
             Self::BdixDhakaFlix => "DhakaFlix (BDIX)",
             Self::Addons => "Addons",
@@ -48,6 +53,7 @@ impl ProviderKind {
         match value.trim().to_ascii_lowercase().as_str() {
             "moviebox" => Some(Self::MovieBox),
             "4khdhub" | "fourkhdhub" => Some(Self::FourKHdHub),
+            "animexin" | "anime_xin" => Some(Self::AnimeXin),
             "bdix_circleftp" | "circleftp (bdix)" => Some(Self::BdixCircleFtp),
             "bdix_dhakaflix" | "dhakaflix (bdix)" => Some(Self::BdixDhakaFlix),
             "addons" | "addon" => Some(Self::Addons),
@@ -254,6 +260,7 @@ impl Release {
             .map(|m| m.label.as_str())
             .unwrap_or_else(|| match self.provider {
                 ProviderKind::FourKHdHub => "4KHDHub",
+                ProviderKind::AnimeXin => "AnimeXin",
                 ProviderKind::BdixCircleFtp => "CircleFTP",
                 ProviderKind::BdixDhakaFlix => "DhakaFlix",
                 ProviderKind::Addons => "Addon",
