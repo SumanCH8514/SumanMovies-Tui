@@ -135,7 +135,7 @@ impl App {
                     .collect::<Vec<_>>()
                     .join(", ");
                 let provider_name = source.provider.label();
-                let action_hint = if source.provider == ProviderKind::FourKHdHub || source.provider == ProviderKind::AnimeXin {
+                let action_hint = if source.provider == ProviderKind::FourKHdHub {
                     "Install mpv."
                 } else {
                     "Install mpv or press Ctrl+P for 4KHDHub."
@@ -495,7 +495,6 @@ impl App {
                 self.state.last_playback_launch = std::time::Instant::now();
                 self.state.is_resolving_playback = true;
                 if self.current_subject_provider() == ProviderKind::FourKHdHub
-                    || self.current_subject_provider() == ProviderKind::AnimeXin
                     || self.current_subject_provider() == ProviderKind::Addons
                     || self.current_subject_provider().is_bdix()
                 {
@@ -525,48 +524,6 @@ impl App {
                             subtitle: None,
                             source_label: first_mirror.label.clone(),
                         };
-                        if release.provider == ProviderKind::AnimeXin {
-                            let client = match self.service.animexin_client.clone() {
-                                Some(client) => client,
-                                None => {
-                                    self.state.is_resolving_playback = false;
-                                    self.action_sender
-                                        .send(Action::SetStatus(
-                                            "Error: AnimeXin provider is unavailable".to_string(),
-                                        ))
-                                        .ok();
-                                    return None;
-                                }
-                            };
-                            let sender = self.action_sender.clone();
-                            tokio::spawn(async move {
-                                let result = tokio::time::timeout(
-                                    std::time::Duration::from_secs(18),
-                                    client.resolve_release(&release),
-                                )
-                                .await;
-                                match result {
-                                    Ok(Ok(source)) => {
-                                        sender.send(Action::DispatchPlayback(source)).ok();
-                                    }
-                                    Ok(Err(error)) => {
-                                        log::error!("AnimeXin resolve failed: {error}");
-                                        sender
-                                            .send(Action::SetStatus(format!("Error: AnimeXin: {error}")))
-                                            .ok();
-                                    }
-                                    Err(_) => {
-                                        log::error!("AnimeXin resolve timed out");
-                                        sender
-                                            .send(Action::SetStatus(
-                                                "Error: AnimeXin stream resolution timed out. Select another mirror or server.".to_string(),
-                                            ))
-                                            .ok();
-                                    }
-                                }
-                            });
-                            return None;
-                        }
 
                         let client = if release.provider == ProviderKind::Addons
                             || release.provider == ProviderKind::BdixCircleFtp

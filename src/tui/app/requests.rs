@@ -636,7 +636,6 @@ impl App {
                 let prov = self.provider_for_subject(&id);
 
                 if prov == ProviderKind::FourKHdHub
-                    || prov == ProviderKind::AnimeXin
                     || prov == ProviderKind::BdixCircleFtp
                     || prov == ProviderKind::BdixDhakaFlix
                 {
@@ -1394,12 +1393,10 @@ impl App {
                 }
 
                 if context.provider == ProviderKind::FourKHdHub
-                    || context.provider == ProviderKind::AnimeXin
                     || context.provider.is_bdix()
                 {
                     let sender = self.action_sender.clone();
                     let fourk_client = self.service.fourk_client.clone();
-                    let animexin_client = self.service.animexin_client.clone();
                     let circleftp_client = self.service.circleftp_client.clone();
                     let dhakaflix_client = self.service.dhakaflix_client.clone();
                     let id = subject_id.clone();
@@ -1414,18 +1411,6 @@ impl App {
                                 } else {
                                     Err(crate::providers::models::ProviderError::Unavailable(
                                         "4KHDHub provider is unavailable".to_string(),
-                                    ))
-                                }
-                            }
-                            ProviderKind::AnimeXin => {
-                                if let Some(client) = animexin_client.as_ref() {
-                                    crate::providers::ReleaseProvider::episode_streams(
-                                        client, &id, season, episode,
-                                    )
-                                    .await
-                                } else {
-                                    Err(crate::providers::models::ProviderError::Unavailable(
-                                        "AnimeXin provider is unavailable".to_string(),
                                     ))
                                 }
                             }

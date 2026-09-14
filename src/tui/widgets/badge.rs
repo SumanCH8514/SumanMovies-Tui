@@ -150,7 +150,6 @@ pub fn provider_origin_tag(provider: ProviderKind) -> &'static str {
     match provider {
         ProviderKind::MovieBox => "[MovieBox]",
         ProviderKind::FourKHdHub => "[4KHD]",
-        ProviderKind::AnimeXin => "[AnimeXin]",
         ProviderKind::BdixCircleFtp => "[CircleFTP]",
         ProviderKind::BdixDhakaFlix => "[DhakaFlix]",
         ProviderKind::Addons => "[Addon]",
@@ -172,7 +171,6 @@ pub fn provider_badge_span<'a>(
         let style = match provider {
             ProviderKind::MovieBox => theme.lavender,
             ProviderKind::FourKHdHub => theme.rating,
-            ProviderKind::AnimeXin => theme.flamingo,
             ProviderKind::BdixCircleFtp => theme.teal,
             ProviderKind::BdixDhakaFlix => theme.sapphire,
             ProviderKind::Addons => theme.accent,
@@ -445,7 +443,6 @@ mod tests {
     fn test_provider_origin_tag() {
         assert_eq!(provider_origin_tag(ProviderKind::MovieBox), "[MovieBox]");
         assert_eq!(provider_origin_tag(ProviderKind::FourKHdHub), "[4KHD]");
-        assert_eq!(provider_origin_tag(ProviderKind::AnimeXin), "[AnimeXin]");
         assert_eq!(
             provider_origin_tag(ProviderKind::BdixCircleFtp),
             "[CircleFTP]"

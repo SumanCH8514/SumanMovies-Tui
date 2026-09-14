@@ -1129,7 +1129,6 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &mut AppState, theme: &Theme) 
                             "MovieBox CDN".to_string()
                         }
                         crate::providers::models::ProviderKind::FourKHdHub => "4KHDHub".to_string(),
-                        crate::providers::models::ProviderKind::AnimeXin => "AnimeXin".to_string(),
                         crate::providers::models::ProviderKind::BdixCircleFtp => {
                             "CircleFTP".to_string()
                         }

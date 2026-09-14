@@ -1,5 +1,4 @@
 pub mod addons;
-pub mod animexin;
 pub mod bdix;
 pub mod fourkhdhub;
 pub mod models;
