@@ -214,6 +214,16 @@ impl App {
             }
         }
 
+        let no_halfblocks = std::env::var("SUMANMOVIES_NO_HALFBLOCKS")
+            .or_else(|_| std::env::var("MOVIEBOX_NO_HALFBLOCKS"))
+            .is_ok_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
+
+        if no_halfblocks && matches!(picker.protocol_type(), ratatui_image::picker::ProtocolType::Halfblocks) {
+            self.state.image_supported = false;
+            self.state.image_picker = None;
+            return;
+        }
+
         self.accept_picker(picker);
     }
 
@@ -244,11 +254,11 @@ impl App {
     }
 
     fn forced_protocol() -> Option<ForcedProtocol> {
-        match std::env::var("MOVIEBOX_IMAGE_PROTOCOL")
+        let val = std::env::var("SUMANMOVIES_IMAGE_PROTOCOL")
+            .or_else(|_| std::env::var("MOVIEBOX_IMAGE_PROTOCOL"))
             .unwrap_or_default()
-            .to_ascii_lowercase()
-            .as_str()
-        {
+            .to_ascii_lowercase();
+        match val.as_str() {
             "none" | "off" | "false" => Some(ForcedProtocol::None),
 
             "sixel" => Some(ForcedProtocol::Type(
@@ -268,7 +278,9 @@ impl App {
     }
 
     fn cell_size_override() -> Option<ratatui_image::FontSize> {
-        let raw = std::env::var("MOVIEBOX_CELL_SIZE").ok()?;
+        let raw = std::env::var("SUMANMOVIES_CELL_SIZE")
+            .or_else(|_| std::env::var("MOVIEBOX_CELL_SIZE"))
+            .ok()?;
         let raw = raw.trim().to_ascii_lowercase();
         let (width, height) = raw.split_once(['x', '*'])?;
         let width: u16 = width.trim().parse().ok()?;
