@@ -235,68 +235,9 @@ pub fn parse_details(id: &str, html: &str) -> Result<MediaDetails, AnimeXinError
 
 pub fn parse_releases(html: &str, season: usize, episode: usize) -> Result<Vec<Release>, AnimeXinError> {
     let document = Html::parse_document(html);
-    let select_sel = Selector::parse("select.mirror option, select[name='mirror'] option").map_err(|e| {
-        AnimeXinError::Parse(format!("selector error: {e:?}"))
-    })?;
-
     let mut releases = Vec::new();
 
-    for option in document.select(&select_sel) {
-        let label = option.text().collect::<String>().trim().to_string();
-        let Some(val) = option.value().attr("value") else {
-            continue;
-        };
-        let b64_clean = val.trim();
-        if b64_clean.is_empty() || label.to_ascii_lowercase().contains("select video server") {
-            continue;
-        }
-
-        let decoded_bytes = match base64::engine::general_purpose::STANDARD.decode(b64_clean) {
-            Ok(bytes) => bytes,
-            Err(_) => continue,
-        };
-        let snippet = String::from_utf8_lossy(&decoded_bytes);
-
-        if let Some(src) = extract_src(&snippet) {
-            let normalized_src = if src.starts_with("//") {
-                format!("https:{src}")
-            } else {
-                src.to_string()
-            };
-
-            let language = if label.to_ascii_lowercase().contains("english") || label.to_ascii_lowercase().contains("eng") {
-                Some("English".to_string())
-            } else if label.to_ascii_lowercase().contains("indonesia") || label.to_ascii_lowercase().contains("indo") {
-                Some("Indonesian".to_string())
-            } else {
-                Some("Multi".to_string())
-            };
-
-            let filename = format!("AnimeXin - S{season:02}E{episode:02} - {label}.mp4");
-
-            let mirror = SourceMirror {
-                label: label.clone(),
-                resolver_url: normalized_src,
-                headers: Vec::new(),
-                direct_file: false,
-            };
-
-            releases.push(Release {
-                provider: ProviderKind::AnimeXin,
-                filename,
-                quality: Some("1080p".to_string()),
-                codec: Some("H.264".to_string()),
-                language,
-                size_bytes: None,
-                season: Some(season),
-                episode: Some(episode),
-                mirrors: vec![mirror],
-                resource_id: None,
-            });
-        }
-    }
-
-    // Also check download links for MediaFire or direct mirrors
+    // 1. Prioritize Recommended English Subtitle Download Mirrors ([Mediafire], [Mirror / GoFile / VikingFile])
     let ddl_section_sel = Selector::parse(".soraddlx").ok();
     let h3_sel = Selector::parse(".sorattlx h3").ok();
     let url_block_sel = Selector::parse(".soraurlx").ok();
@@ -312,6 +253,15 @@ pub fn parse_releases(html: &str, season: usize, episode: usize) -> Result<Vec<R
                 .next()
                 .map(|el| el.text().collect::<String>().trim().to_string())
                 .unwrap_or_default();
+
+            let lang_lower = lang_title.to_ascii_lowercase();
+            // User requirement: ONLY English subtitle releases
+            if !lang_lower.contains("english") && !lang_lower.contains("eng") {
+                continue;
+            }
+            if lang_lower.contains("indonesia") || lang_lower.contains("indo") {
+                continue;
+            }
 
             for url_block in sec.select(&url_sel) {
                 let quality = url_block
@@ -329,11 +279,21 @@ pub fn parse_releases(html: &str, season: usize, episode: usize) -> Result<Vec<R
                         continue;
                     }
 
-                    let full_label = format!("{lang_title} {ddl_label} ({quality}p)");
-                    let filename = format!("AnimeXin - S{season:02}E{episode:02} - {full_label}.mp4");
+                    // Format user-friendly labels with recommended sources highlighted
+                    let clean_label = if href.contains("mediafire.com") {
+                        format!("[Mediafire] {quality}p (Direct MP4)")
+                    } else if href.contains("mirrored.to") {
+                        format!("[Mirror] {quality}p (GoFile / VikingFile)")
+                    } else if href.contains("terabox") {
+                        format!("[Terabox] {quality}p")
+                    } else {
+                        format!("[{ddl_label}] {quality}p")
+                    };
+
+                    let filename = format!("AnimeXin - S{season:02}E{episode:02} - {clean_label}.mp4");
 
                     let mirror = SourceMirror {
-                        label: full_label,
+                        label: clean_label,
                         resolver_url: href.to_string(),
                         headers: Vec::new(),
                         direct_file: true,
@@ -344,7 +304,7 @@ pub fn parse_releases(html: &str, season: usize, episode: usize) -> Result<Vec<R
                         filename,
                         quality: Some(format!("{quality}p")),
                         codec: Some("H.264".to_string()),
-                        language: Some(lang_title.clone()),
+                        language: Some("English".to_string()),
                         size_bytes: None,
                         season: Some(season),
                         episode: Some(episode),
@@ -355,6 +315,82 @@ pub fn parse_releases(html: &str, season: usize, episode: usize) -> Result<Vec<R
             }
         }
     }
+
+    // 2. Also check video player embeds (Strictly English only)
+    let select_sel = Selector::parse("select.mirror option, select[name='mirror'] option").map_err(|e| {
+        AnimeXinError::Parse(format!("selector error: {e:?}"))
+    })?;
+
+    for option in document.select(&select_sel) {
+        let label = option.text().collect::<String>().trim().to_string();
+        let label_lower = label.to_ascii_lowercase();
+
+        // User requirement: ONLY English subtitles
+        if !label_lower.contains("english") && !label_lower.contains("eng") {
+            continue;
+        }
+        if label_lower.contains("indonesia") || label_lower.contains("indo") {
+            continue;
+        }
+        if label_lower.contains("select video server") {
+            continue;
+        }
+
+        let Some(val) = option.value().attr("value") else {
+            continue;
+        };
+        let b64_clean = val.trim();
+        if b64_clean.is_empty() {
+            continue;
+        }
+
+        let decoded_bytes = match base64::engine::general_purpose::STANDARD.decode(b64_clean) {
+            Ok(bytes) => bytes,
+            Err(_) => continue,
+        };
+        let snippet = String::from_utf8_lossy(&decoded_bytes);
+
+        if let Some(src) = extract_src(&snippet) {
+            let normalized_src = if src.starts_with("//") {
+                format!("https:{src}")
+            } else {
+                src.to_string()
+            };
+
+            let filename = format!("AnimeXin - S{season:02}E{episode:02} - {label}.mp4");
+
+            let mirror = SourceMirror {
+                label: label.clone(),
+                resolver_url: normalized_src,
+                headers: Vec::new(),
+                direct_file: false,
+            };
+
+            releases.push(Release {
+                provider: ProviderKind::AnimeXin,
+                filename,
+                quality: Some("1080p".to_string()),
+                codec: Some("H.264".to_string()),
+                language: Some("English".to_string()),
+                size_bytes: None,
+                season: Some(season),
+                episode: Some(episode),
+                mirrors: vec![mirror],
+                resource_id: None,
+            });
+        }
+    }
+
+    // Prioritize Mediafire first, then Mirrored.to (GoFile / VikingFile), then other English sources
+    releases.sort_by_key(|r| {
+        if r.filename.contains("[Mediafire]") {
+            0
+        } else if r.filename.contains("[Mirror]") {
+            1
+        } else {
+            2
+        }
+    });
 
     Ok(releases)
 }
@@ -386,21 +422,37 @@ mod tests {
     }
 
     #[test]
-    fn test_decode_mirror_options() {
+    fn test_decode_mirror_options_strictly_english() {
         let html = r#"
         <select class="mirror" name="mirror">
             <option value="">Select Video Server</option>
             <option value="PGlmcmFtZSBzcmM9Imh0dHBzOi8vcnVtYmxlLmNvbS9lbWJlZC92N2Q5dDR1LyI+PC9pZnJhbWU+">Hardsub English Rumble AX</option>
+            <option value="PGlmcmFtZSBzcmM9Imh0dHBzOi8vcnVtYmxlLmNvbS9lbWJlZC9pbmRvLyI+PC9pZnJhbWU+">Hardsub Indonesia Rumble AX</option>
         </select>
+        <div class="soraddlx">
+            <div class="sorattlx"><h3>Subtitle Indonesia</h3></div>
+            <div class="soraurlx">
+                <strong>1080</strong>
+                <a href="https://www.mediafire.com/file/indo/renegade.mp4/file">Mediafire</a>
+            </div>
+        </div>
+        <div class="soraddlx">
+            <div class="sorattlx"><h3>Subtitle English</h3></div>
+            <div class="soraurlx">
+                <strong>1080</strong>
+                <a href="https://www.mediafire.com/file/eng/renegade.mp4/file">Mediafire</a>
+                <a href="https://www.mirrored.to/files/BF2F0625/eng.mp4_links">Mirror</a>
+            </div>
+        </div>
         "#;
         let releases = parse_releases(html, 1, 158).expect("parse releases");
-        assert_eq!(releases.len(), 1);
-        assert_eq!(releases[0].season, Some(1));
-        assert_eq!(releases[0].episode, Some(158));
-        assert_eq!(releases[0].mirrors[0].label, "Hardsub English Rumble AX");
-        assert_eq!(
-            releases[0].mirrors[0].resolver_url,
-            "https://rumble.com/embed/v7d9t4u/"
-        );
+        // Only English releases should be parsed (Mediafire Eng, Mirror Eng, Rumble Eng)
+        assert_eq!(releases.len(), 3);
+        assert_eq!(releases[0].mirrors[0].label, "[Mediafire] 1080p (Direct MP4)");
+        assert_eq!(releases[1].mirrors[0].label, "[Mirror] 1080p (GoFile / VikingFile)");
+        assert_eq!(releases[2].mirrors[0].label, "Hardsub English Rumble AX");
+        for r in &releases {
+            assert_eq!(r.language.as_deref(), Some("English"));
+        }
     }
 }

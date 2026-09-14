@@ -118,33 +118,42 @@ fn test_animexin_releases_parser() {
             <div class="sorattlx"><h3>Subtitle English</h3></div>
             <div class="soraurlx">
                 <strong>1080</strong>
+                <a href="https://www.mirrored.to/files/xyz/renegade.mp4_links">Mirror</a>
                 <a href="https://www.mediafire.com/file/xyz123/renegade.mp4/file">Mediafire</a>
+            </div>
+        </div>
+        <div class="soraddlx">
+            <div class="sorattlx"><h3>Subtitle Indonesia</h3></div>
+            <div class="soraurlx">
+                <strong>1080</strong>
+                <a href="https://www.mediafire.com/file/indo123/renegade_indo.mp4/file">Mediafire</a>
             </div>
         </div>
         "#
     );
 
     let releases = parser::parse_releases(&html, 1, 158).expect("parse releases");
+    
+    // Strict English subtitle verification: Indonesian options must NOT be present
     assert_eq!(releases.len(), 3);
 
-    // Rumble mirror
-    assert_eq!(releases[0].mirrors[0].label, "Hardsub English Rumble AX");
-    assert_eq!(
-        releases[0].mirrors[0].resolver_url,
-        "https://rumble.com/embed/v7d9t4u/?pub=4qfz5q"
-    );
+    // 1. Mediafire prioritized first
+    assert!(releases[0].filename.contains("[Mediafire]"));
+    assert_eq!(releases[0].mirrors[0].resolver_url, "https://www.mediafire.com/file/xyz123/renegade.mp4/file");
     assert_eq!(releases[0].language.as_deref(), Some("English"));
 
-    // Odysee mirror
-    assert_eq!(releases[1].mirrors[0].label, "Hardsub Indonesia Odysee AX");
-    assert_eq!(
-        releases[1].mirrors[0].resolver_url,
-        "https://odysee.com/$/embed/renegade-ep-158"
-    );
-    assert_eq!(releases[1].language.as_deref(), Some("Indonesian"));
+    // 2. Mirror (GoFile / VikingFile) prioritized second
+    assert!(releases[1].filename.contains("[Mirror]"));
+    assert_eq!(releases[1].mirrors[0].resolver_url, "https://www.mirrored.to/files/xyz/renegade.mp4_links");
+    assert_eq!(releases[1].language.as_deref(), Some("English"));
 
-    // Mediafire mirror
-    assert_eq!(releases[2].mirrors[0].resolver_url, "https://www.mediafire.com/file/xyz123/renegade.mp4/file");
+    // 3. English embed player option
+    assert_eq!(releases[2].mirrors[0].label, "Hardsub English Rumble AX");
+    assert_eq!(
+        releases[2].mirrors[0].resolver_url,
+        "https://rumble.com/embed/v7d9t4u/?pub=4qfz5q"
+    );
+    assert_eq!(releases[2].language.as_deref(), Some("English"));
 }
 
 #[test]
@@ -166,5 +175,32 @@ async fn test_animexin_live_search() {
         let first = &items[0];
         assert!(!first.title.is_empty());
         println!("Live search found {} items. First: {}", items.len(), first.title);
+    }
+}
+
+#[tokio::test]
+async fn test_animexin_live_resolve_mediafire() {
+    let client = AnimeXinClient::new().expect("client creation");
+    let test_url = "https://www.mediafire.com/file/yej3igtkjq7inqg/AX_renegade_ep_158_eng.mp4/file";
+    if let Ok(stream_url) = client.resolve_mediafire(test_url).await {
+        assert!(stream_url.starts_with("http"));
+        assert!(stream_url.contains("download"));
+        assert!(stream_url.contains(".mp4"));
+        println!("Resolved direct mediafire mp4: {}", stream_url);
+    }
+}
+
+#[tokio::test]
+async fn test_animexin_live_resolve_mirrored() {
+    let client = AnimeXinClient::new().expect("client creation");
+    let test_url = "https://www.mirrored.to/files/BF2F0625/AX_renegade_ep_158_eng.mp4_links";
+    if let Ok(final_url) = client.resolve_mirrored(test_url).await {
+        assert!(final_url.starts_with("http"));
+        assert!(
+            final_url.contains("gofile.io")
+                || final_url.contains("vikingfile.com")
+                || final_url.contains("vik1ngfile.site")
+        );
+        println!("Resolved Mirrored.to final link: {}", final_url);
     }
 }
