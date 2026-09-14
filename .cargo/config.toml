@@ -1,0 +1,18 @@
+[target.x86_64-pc-windows-gnu]
+linker = "rust-lld"
+
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.aarch64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.aarch64-unknown-linux-musl]
+rustflags = ["-C", "relocation-model=pic", "-C", "link-arg=-pie"]
+
+[env]
+PATH = { value = "C:/Program Files (x86)/Dev-Cpp/MinGW64/bin;$PATH", relative = false }
+CC_x86_64_pc_windows_gnu = { value = "C:/Program Files (x86)/Dev-Cpp/MinGW64/bin/gcc.exe", force = true }
+CFLAGS_x86_64_pc_windows_gnu = { value = "-std=c11 -D_WIN32_WINNT=0x0601 -DERROR_COMMITMENT_MINIMUM=0x1234", force = true }
+
+

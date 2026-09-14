@@ -1,0 +1,35 @@
+{
+  "name": "sumanmovies",
+  "version": "1.0.2",
+  "description": "SumanMovies - Terminal Movie & TV Streaming Experience",
+  "main": "bin/sumanmovies.js",
+  "bin": {
+    "sumanmovies": "bin/sumanmovies.js",
+    "SumanMovies": "bin/sumanmovies.js",
+    "sumanmovies-update": "bin/update.js",
+    "sumanmovies-uninstall": "bin/uninstall.js"
+  },
+  "scripts": {
+    "postinstall": "node scripts/postinstall.js",
+    "preuninstall": "node scripts/uninstall.js",
+    "uninstall": "node scripts/uninstall.js",
+    "update": "node scripts/update.js",
+    "start": "node bin/sumanmovies.js"
+  },
+  "keywords": [
+    "sumanmovies",
+    "movies",
+    "tv",
+    "streaming",
+    "tui",
+    "terminal",
+    "cli",
+    "mpv"
+  ],
+  "author": "Suman",
+  "license": "MIT",
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "preferGlobal": true
+}
