@@ -285,40 +285,53 @@ impl YouTubeClient {
 
     pub async fn releases(&self, id: &str) -> Result<Vec<Release>, ProviderError> {
         let video_id = extract_youtube_video_id(id).unwrap_or_else(|| id.to_string());
-        let ytdlp_bin = Self::ytdlp_path()?;
+        let _ytdlp_bin = Self::ytdlp_path()?;
         let canonical_url = format!("https://www.youtube.com/watch?v={video_id}");
 
-        let mut cmd = Command::new(&ytdlp_bin);
-        cmd.arg("--dump-json")
-            .arg("--no-playlist")
-            .arg("--no-warnings")
-            .arg("--extractor-args")
-            .arg("youtube:player_client=ios,android,web")
-            .arg(&canonical_url);
+        // Attempt fast yt-dlp metadata probe to get available heights and approximate filesizes
+        let mut heights_with_size: BTreeMap<u64, (Option<u64>, Option<String>)> = BTreeMap::new();
+        let mut audio_size: Option<u64> = None;
 
-        #[cfg(target_os = "windows")]
-        {
-            cmd.creation_flags(crate::player::CREATE_NO_WINDOW);
-        }
+        if let Ok(ytdlp_path) = Self::ytdlp_path() {
+            let mut cmd = Command::new(ytdlp_path);
+            cmd.arg("--dump-json")
+                .arg("--no-playlist")
+                .arg("--no-warnings")
+                .arg(&canonical_url);
 
-        cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
-
-        let raw_details: Option<YtDlpVideoDetails> = if let Ok(Ok(output)) =
-            tokio::time::timeout(std::time::Duration::from_secs(20), cmd.output()).await
-        {
-            if output.status.success() && !output.stdout.is_empty() {
-                let json_str = String::from_utf8_lossy(&output.stdout);
-                serde_json::from_str(&json_str).ok()
-            } else {
-                None
+            #[cfg(target_os = "windows")]
+            {
+                cmd.creation_flags(crate::player::CREATE_NO_WINDOW);
             }
-        } else {
-            None
-        };
+            cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+
+            if let Ok(Ok(output)) = tokio::time::timeout(std::time::Duration::from_secs(8), cmd.output()).await {
+                if output.status.success() && !output.stdout.is_empty() {
+                    let json_str = String::from_utf8_lossy(&output.stdout);
+                    if let Ok(details) = serde_json::from_str::<YtDlpVideoDetails>(&json_str) {
+                        if let Some(formats) = details.formats {
+                            for fmt in &formats {
+                                if let Some(h) = fmt.height {
+                                    if h > 0 {
+                                        let size = fmt.filesize.or(fmt.filesize_approx);
+                                        let codec = fmt.vcodec.clone();
+                                        heights_with_size.entry(h).or_insert((size, codec));
+                                    }
+                                } else if fmt.acodec.as_deref().is_some_and(|c| c != "none") {
+                                    if audio_size.is_none() {
+                                        audio_size = fmt.filesize.or(fmt.filesize_approx);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         let mut releases: Vec<Release> = Vec::new();
 
-        // 1. Primary Release: Multi-Resolution Best Stream
+        // 1. Primary Multi-Res / Best Stream
         releases.push(Release {
             provider: ProviderKind::YouTube,
             filename: format!("YouTube - {video_id} (Best Multi-Res)"),
@@ -328,93 +341,71 @@ impl YouTubeClient {
             size_bytes: None,
             season: None,
             episode: None,
-            mirrors: vec![
-                SourceMirror {
-                    label: "YouTube (yt-dlp Stream)".to_string(),
-                    resolver_url: canonical_url.clone(),
-                    headers: vec![("User-Agent".to_string(), "Mozilla/5.0".to_string())],
-                    direct_file: false,
-                },
-            ],
+            mirrors: vec![SourceMirror {
+                label: "YouTube (yt-dlp Stream)".to_string(),
+                resolver_url: canonical_url.clone(),
+                headers: vec![("User-Agent".to_string(), "Mozilla/5.0".to_string())],
+                direct_file: false,
+            }],
             resource_id: Some(video_id.clone()),
         });
 
-        // 2. Parse individual format resolutions if available
-        if let Some(details) = raw_details {
-            if let Some(formats) = details.formats {
-                // Group formats by height (e.g. 2160, 1440, 1080, 720, 480, 360)
-                let mut progressive_by_height: BTreeMap<u64, &crate::providers::youtube::parser::YtDlpFormat> = BTreeMap::new();
-                let mut best_audio: Option<&crate::providers::youtube::parser::YtDlpFormat> = None;
+        // 2. Add resolutions detected or default discrete resolution tiers
+        let resolutions = if !heights_with_size.is_empty() {
+            let mut list: Vec<u64> = heights_with_size.keys().cloned().collect();
+            list.sort_by(|a, b| b.cmp(a));
+            list
+        } else {
+            vec![1080, 720, 480, 360]
+        };
 
-                for fmt in &formats {
-                    let has_vcodec = fmt.vcodec.as_deref().is_some_and(|c| c != "none" && !c.is_empty());
-                    let has_acodec = fmt.acodec.as_deref().is_some_and(|c| c != "none" && !c.is_empty());
+        for height in resolutions {
+            let quality_label = format!("{height}p");
+            let size_bytes = heights_with_size.get(&height).and_then(|(sz, _)| *sz);
+            let codec = heights_with_size
+                .get(&height)
+                .and_then(|(_, cd)| cd.clone())
+                .unwrap_or_else(|| "H.264/VP9".to_string());
+            let format_flag = format!("bestvideo[height<={height}]+bestaudio/best[height<={height}]/best");
+            let stream_url = format!("{canonical_url}#ytdl-format={format_flag}");
 
-                    if let Some(h) = fmt.height {
-                        if h > 0 && (has_vcodec || fmt.url.is_some()) {
-                            progressive_by_height.insert(h, fmt);
-                        }
-                    } else if !has_vcodec && has_acodec {
-                        best_audio = Some(fmt);
-                    }
-                }
-
-                // Add discrete resolution options in descending order
-                for (height, fmt) in progressive_by_height.iter().rev() {
-                    let quality_label = format!("{height}p");
-                    let stream_url = fmt.url.clone().or_else(|| fmt.manifest_url.clone()).unwrap_or_else(|| canonical_url.clone());
-                    let mut headers_vec = Vec::new();
-                    if let Some(ref hdrs) = fmt.http_headers {
-                        for (k, v) in hdrs {
-                            headers_vec.push((k.clone(), v.clone()));
-                        }
-                    }
-                    if headers_vec.is_empty() {
-                        headers_vec.push(("User-Agent".to_string(), "Mozilla/5.0".to_string()));
-                    }
-
-                    releases.push(Release {
-                        provider: ProviderKind::YouTube,
-                        filename: format!("YouTube - {video_id} ({quality_label})"),
-                        quality: Some(quality_label),
-                        codec: fmt.vcodec.clone().or_else(|| Some("H.264/VP9".to_string())),
-                        language: Some("Original".to_string()),
-                        size_bytes: fmt.filesize.or(fmt.filesize_approx),
-                        season: None,
-                        episode: None,
-                        mirrors: vec![SourceMirror {
-                            label: format!("YouTube {height}p Direct"),
-                            resolver_url: stream_url,
-                            headers: headers_vec,
-                            direct_file: true,
-                        }],
-                        resource_id: Some(video_id.clone()),
-                    });
-                }
-
-                // Add Audio Only option if audio stream exists
-                if let Some(audio_fmt) = best_audio {
-                    let stream_url = audio_fmt.url.clone().unwrap_or_else(|| canonical_url.clone());
-                    releases.push(Release {
-                        provider: ProviderKind::YouTube,
-                        filename: format!("YouTube - {video_id} (Audio Only)"),
-                        quality: Some("Audio".to_string()),
-                        codec: audio_fmt.acodec.clone().or_else(|| Some("M4A/Opus".to_string())),
-                        language: Some("Original".to_string()),
-                        size_bytes: audio_fmt.filesize.or(audio_fmt.filesize_approx),
-                        season: None,
-                        episode: None,
-                        mirrors: vec![SourceMirror {
-                            label: "YouTube Audio Stream".to_string(),
-                            resolver_url: stream_url,
-                            headers: vec![("User-Agent".to_string(), "Mozilla/5.0".to_string())],
-                            direct_file: true,
-                        }],
-                        resource_id: Some(video_id.clone()),
-                    });
-                }
-            }
+            releases.push(Release {
+                provider: ProviderKind::YouTube,
+                filename: format!("YouTube - {video_id} ({quality_label})"),
+                quality: Some(quality_label.clone()),
+                codec: Some(codec),
+                language: Some("Original".to_string()),
+                size_bytes,
+                season: None,
+                episode: None,
+                mirrors: vec![SourceMirror {
+                    label: format!("YouTube {quality_label}"),
+                    resolver_url: stream_url,
+                    headers: vec![("User-Agent".to_string(), "Mozilla/5.0".to_string())],
+                    direct_file: false,
+                }],
+                resource_id: Some(video_id.clone()),
+            });
         }
+
+        // 3. Audio-only Stream
+        releases.push(Release {
+            provider: ProviderKind::YouTube,
+            filename: format!("YouTube - {video_id} (Audio Only)"),
+            quality: Some("Audio".to_string()),
+            codec: Some("M4A/Opus".to_string()),
+            language: Some("Original".to_string()),
+            size_bytes: audio_size,
+            season: None,
+            episode: None,
+            mirrors: vec![SourceMirror {
+                label: "YouTube Audio Only".to_string(),
+                resolver_url: format!("{canonical_url}#ytdl-format=bestaudio/best"),
+                headers: vec![("User-Agent".to_string(), "Mozilla/5.0".to_string())],
+                direct_file: false,
+            }],
+            resource_id: Some(video_id.clone()),
+        });
 
         Ok(releases)
     }

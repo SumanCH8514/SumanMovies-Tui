@@ -84,11 +84,18 @@ pub fn extract_youtube_video_id(input: &str) -> Option<String> {
         && !trimmed.contains('?')
         && !trimmed.contains('&')
         && !trimmed.contains(' ')
+        && !trimmed.contains(':')
     {
         return Some(trimmed.to_string());
     }
 
-    if let Ok(parsed) = url::Url::parse(trimmed) {
+    let url_str = if !trimmed.contains("://") {
+        format!("https://{trimmed}")
+    } else {
+        trimmed.to_string()
+    };
+
+    if let Ok(parsed) = url::Url::parse(&url_str) {
         if let Some(host) = parsed.host_str() {
             if host.contains("youtube.com") {
                 if parsed.path().starts_with("/watch") {
@@ -99,19 +106,22 @@ pub fn extract_youtube_video_id(input: &str) -> Option<String> {
                     }
                 } else if parsed.path().starts_with("/shorts/") {
                     let id = parsed.path().trim_start_matches("/shorts/").split('/').next()?;
-                    if id.len() == 11 {
-                        return Some(id.to_string());
+                    let clean_id = id.split('?').next().unwrap_or(id).split('&').next().unwrap_or(id);
+                    if clean_id.len() == 11 {
+                        return Some(clean_id.to_string());
                     }
                 } else if parsed.path().starts_with("/embed/") {
                     let id = parsed.path().trim_start_matches("/embed/").split('/').next()?;
-                    if id.len() == 11 {
-                        return Some(id.to_string());
+                    let clean_id = id.split('?').next().unwrap_or(id).split('&').next().unwrap_or(id);
+                    if clean_id.len() == 11 {
+                        return Some(clean_id.to_string());
                     }
                 }
             } else if host.contains("youtu.be") {
                 let id = parsed.path().trim_start_matches('/').split('/').next()?;
-                if id.len() == 11 {
-                    return Some(id.to_string());
+                let clean_id = id.split('?').next().unwrap_or(id).split('&').next().unwrap_or(id);
+                if clean_id.len() == 11 {
+                    return Some(clean_id.to_string());
                 }
             }
         }

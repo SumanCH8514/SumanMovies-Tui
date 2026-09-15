@@ -253,24 +253,33 @@ fn append_android_intent_extras(
     }
 }
 
+pub fn split_ytdl_format(url: &str) -> (&str, Option<&str>) {
+    if let Some(idx) = url.find("#ytdl-format=") {
+        (&url[..idx], Some(&url[idx + 13..]))
+    } else {
+        (url, None)
+    }
+}
+
 fn android_intent_command(
     url: &str,
     subtitle: Option<&str>,
     headers: &[(String, String)],
     title: Option<&str>,
 ) -> Command {
+    let (clean_url, _) = split_ytdl_format(url);
     match android_opener() {
         Some(AndroidOpener::TermuxOpen(path)) => {
             let mut cmd = Command::new(path);
             cmd.arg("--chooser")
                 .arg("--content-type")
                 .arg("video/*")
-                .arg(url);
+                .arg(clean_url);
             cmd
         }
         Some(AndroidOpener::TermuxOpenUrl(path)) => {
             let mut cmd = Command::new(path);
-            cmd.arg(url);
+            cmd.arg(clean_url);
             cmd
         }
         Some(AndroidOpener::TermuxAm(path)) => {
@@ -279,7 +288,7 @@ fn android_intent_command(
                 .arg("-a")
                 .arg("android.intent.action.VIEW")
                 .arg("-d")
-                .arg(url)
+                .arg(clean_url)
                 .arg("-t")
                 .arg("video/*");
             append_android_intent_extras(&mut cmd, subtitle, headers, title);
@@ -293,7 +302,7 @@ fn android_intent_command(
                 .arg("-a")
                 .arg("android.intent.action.VIEW")
                 .arg("-d")
-                .arg(url)
+                .arg(clean_url)
                 .arg("-t")
                 .arg("video/*");
             append_android_intent_extras(&mut cmd, subtitle, headers, title);
@@ -308,7 +317,7 @@ fn android_intent_command(
             cmd.arg("--chooser")
                 .arg("--content-type")
                 .arg("video/*")
-                .arg(url);
+                .arg(clean_url);
             cmd
         }
     }
@@ -324,6 +333,7 @@ fn mpv_command(
     tracker: Option<(&str, &str, usize, usize)>,
     title: Option<&str>,
 ) -> Command {
+    let (clean_url, ytdl_format) = split_ytdl_format(url);
     let fallback = if cfg!(target_os = "windows") {
         "mpv.exe"
     } else {
@@ -396,7 +406,14 @@ fn mpv_command(
         command.arg(format!("{opt}={sub_path}"));
     }
 
-    command.arg(url);
+    if clean_url.contains("youtube.com") || clean_url.contains("youtu.be") {
+        command.arg(format!("{prefix}ytdl=yes"));
+        if let Some(fmt) = ytdl_format {
+            command.arg(format!("{prefix}ytdl-format={fmt}"));
+        }
+    }
+
+    command.arg(clean_url);
 
     command
 }

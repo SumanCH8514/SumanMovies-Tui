@@ -799,7 +799,13 @@ pub(crate) fn render_landing_deck(frame: &mut Frame, area: Rect, state: &AppStat
                     break;
                 }
                 let is_selected = selected == Some(i);
-                let type_tag = if item.stype == 2 { "Series" } else { "Movie" };
+                let type_tag = if item.provider == crate::providers::models::ProviderKind::YouTube.cache_key() {
+                    "Video"
+                } else if item.stype == 2 {
+                    "Series"
+                } else {
+                    "Movie"
+                };
                 let right_tag = if item.release_year.is_empty() {
                     type_tag.to_string()
                 } else {
@@ -2001,6 +2007,8 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &mut AppState, theme: &Theme) 
 
                 let mut type_tag = if state.is_tv_mode || res.stype == 3 {
                     "TV Channel".to_string()
+                } else if res.provider == crate::providers::models::ProviderKind::YouTube {
+                    "Video".to_string()
                 } else if res.stype == 1 {
                     "Movie".to_string()
                 } else if res.stype == 2 {

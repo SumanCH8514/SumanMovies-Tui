@@ -326,7 +326,13 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &mut AppState, theme: &Theme) 
         })
         .unwrap_or("N/A");
     let is_series = details.is_series() && !state.available_seasons.is_empty();
-    let type_str = if is_series { "Series" } else { "Movie" };
+    let type_str = if details.id.provider == crate::providers::models::ProviderKind::YouTube {
+        "Video"
+    } else if is_series {
+        "Series"
+    } else {
+        "Movie"
+    };
 
     let genres = if !details.genres.is_empty() {
         details.genres.join(", ")
