@@ -8,11 +8,13 @@ use crate::providers::bdix::dhakaflix::client::DhakaFlixClient;
 use crate::providers::fourkhdhub::FourKHdHubClient;
 use crate::providers::models::{CatalogItem, MediaDetails, ProviderError, ProviderKind};
 use crate::providers::moviebox::client::MovieBoxClient;
+use crate::providers::youtube::YouTubeClient;
 
 #[derive(Clone)]
 pub struct MovieBoxService {
     pub client: MovieBoxClient,
     pub fourk_client: Option<FourKHdHubClient>,
+    pub youtube_client: YouTubeClient,
     pub circleftp_client: CircleFtpClient,
     pub dhakaflix_client: DhakaFlixClient,
     pub addon_client: crate::providers::addons::AddonClient,
@@ -35,6 +37,7 @@ impl MovieBoxService {
         Self {
             client: MovieBoxClient::new(),
             fourk_client: FourKHdHubClient::new().ok(),
+            youtube_client: YouTubeClient::new(),
             circleftp_client: CircleFtpClient::new(),
             dhakaflix_client: DhakaFlixClient::new(),
             addon_client: crate::providers::addons::AddonClient::new(),
@@ -54,6 +57,7 @@ impl MovieBoxService {
                 .as_ref()
                 .map(Provider::capabilities)
                 .unwrap_or_default(),
+            ProviderKind::YouTube => Provider::capabilities(&self.youtube_client),
             ProviderKind::BdixCircleFtp => Provider::capabilities(&self.circleftp_client),
             ProviderKind::BdixDhakaFlix => Provider::capabilities(&self.dhakaflix_client),
             ProviderKind::Addons => Provider::capabilities(&self.addon_client),
@@ -83,6 +87,7 @@ impl MovieBoxService {
                 })?;
                 Provider::search(fourk, query, page).await
             }
+            ProviderKind::YouTube => Provider::search(&self.youtube_client, query, page).await,
             ProviderKind::BdixCircleFtp => {
                 Provider::search(&self.circleftp_client, query, page).await
             }
@@ -154,6 +159,7 @@ impl MovieBoxService {
                 })?;
                 Provider::details(fourk, subject_id).await
             }
+            ProviderKind::YouTube => Provider::details(&self.youtube_client, subject_id).await,
             ProviderKind::BdixCircleFtp => {
                 Provider::details(&self.circleftp_client, subject_id).await
             }

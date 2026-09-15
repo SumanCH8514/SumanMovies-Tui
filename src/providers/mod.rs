@@ -4,6 +4,7 @@ pub mod fourkhdhub;
 pub mod models;
 pub mod moviebox;
 pub mod tv;
+pub mod youtube;
 
 pub use tv as m3u;
 
