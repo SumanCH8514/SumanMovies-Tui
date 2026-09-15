@@ -303,6 +303,7 @@ impl App {
         }
 
         let sender = self.action_sender.clone();
+        let media_title = history_item.as_ref().map(|item| item.title.clone());
         let cell_size = self
             .state
             .image_picker
@@ -360,6 +361,7 @@ impl App {
                 window,
                 resume_seconds,
                 tracker_ref,
+                media_title.as_deref(),
             );
             command.stdin(std::process::Stdio::null());
             command.stdout(std::process::Stdio::null());

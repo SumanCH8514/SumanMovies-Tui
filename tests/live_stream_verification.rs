@@ -132,6 +132,7 @@ async fn test_inspect_live_mpd_manifest() {
             None,
             None,
             None,
+            None,
         );
         cmd.arg("--vo=null")
             .arg("--ao=null")
@@ -177,6 +178,7 @@ async fn test_live_moviebox_mpv_end_to_end_playback() {
         &mirror.resolver_url,
         None,
         &mirror.headers,
+        None,
         None,
         None,
         None,
@@ -238,6 +240,7 @@ async fn test_live_moviebox_dynamic_movie_mpv_playback() {
         None,
         None,
         None,
+        Some(&movie.title),
     );
 
     cmd.arg("--vo=null").arg("--ao=null").arg("--frames=20");
@@ -394,6 +397,7 @@ async fn test_live_fourkhdhub_movie_resolution() {
                     &source.url,
                     None,
                     &source.headers,
+                    None,
                     None,
                     None,
                     None,
