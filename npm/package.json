@@ -1,6 +1,6 @@
 {
   "name": "sumanmovies",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "SumanMovies - Terminal Movie & TV Streaming Experience",
   "main": "bin/sumanmovies.js",
   "bin": {

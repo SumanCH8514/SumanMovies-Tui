@@ -609,7 +609,7 @@ async function setupAll(force = false) {
 async function update() {
   console.log('\n  🔄 Checking for SumanMovies updates...');
   
-  let currentVersion = '1.0.4';
+  let currentVersion = '1.0.5';
   try {
     const pkg = require('../package.json');
     currentVersion = pkg.version;
