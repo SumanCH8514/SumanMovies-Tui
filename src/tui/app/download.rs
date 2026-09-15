@@ -51,16 +51,23 @@ impl App {
         let episode = self.state.selected_episode;
         let safe_title = crate::download::safe_file_stem(&clean_title);
 
-        let extension = link
-            .split('?')
-            .next()
-            .and_then(|path| path.rsplit('.').next())
-            .filter(|ext| {
-                let lower = ext.to_ascii_lowercase();
-                matches!(lower.as_str(), "mp4" | "mkv" | "webm" | "ts")
-            })
-            .unwrap_or("mp4")
-            .to_ascii_lowercase();
+        let (clean_link_raw, ytdl_format_opt) = crate::player::split_ytdl_format(&link);
+        let is_audio_only = ytdl_format_opt.is_some_and(|f| f.contains("bestaudio"));
+
+        let extension = if is_audio_only {
+            "m4a".to_string()
+        } else {
+            clean_link_raw
+                .split('?')
+                .next()
+                .and_then(|path| path.rsplit('.').next())
+                .filter(|ext| {
+                    let lower = ext.to_ascii_lowercase();
+                    matches!(lower.as_str(), "mp4" | "mkv" | "webm" | "ts" | "m4a" | "mp3")
+                })
+                .unwrap_or("mp4")
+                .to_ascii_lowercase()
+        };
 
         let base_dir = self.resolve_download_base_dir();
         let (target_dir, base_name) = if is_series {
@@ -70,6 +77,15 @@ impl App {
                     .join(&safe_title)
                     .join(format!("Season {season}")),
                 format!("{safe_title} - S{season:02}E{episode:02} - SumanMovies"),
+            )
+        } else if link.contains("youtube.com") || link.contains("youtu.be") {
+            (
+                base_dir.join("YouTube").join(&safe_title),
+                if is_audio_only {
+                    format!("{safe_title} (Audio) - SumanMovies")
+                } else {
+                    format!("{safe_title} - SumanMovies")
+                },
             )
         } else {
             (
@@ -235,6 +251,9 @@ impl App {
                     return;
                 };
 
+                let (clean_link, ytdl_format) = crate::player::split_ytdl_format(&link);
+                let format_spec = ytdl_format.unwrap_or("bestvideo+bestaudio/best");
+
                 let mut cmd = tokio::process::Command::new(ytdlp_bin);
                 for (k, v) in &headers {
                     if k.eq_ignore_ascii_case("user-agent") {
@@ -244,13 +263,13 @@ impl App {
                     }
                 }
                 cmd.arg("-f")
-                    .arg("bestvideo+bestaudio/best")
+                    .arg(format_spec)
                     .arg("--newline")
                     .arg("--part")
                     .arg("-o")
                     .arg(&destination)
                     .arg("--force-overwrites")
-                    .arg(&link);
+                    .arg(clean_link);
                 #[cfg(target_os = "windows")]
                 {
                     cmd.creation_flags(crate::player::CREATE_NO_WINDOW);
