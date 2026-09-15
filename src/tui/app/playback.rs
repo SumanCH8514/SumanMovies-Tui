@@ -303,7 +303,7 @@ impl App {
         }
 
         let sender = self.action_sender.clone();
-        let media_title = history_item.as_ref().map(|item| item.title.clone());
+        let media_title = history_item.as_ref().map(|item| item.display_playback_title());
         let cell_size = self
             .state
             .image_picker
