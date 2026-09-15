@@ -308,17 +308,28 @@ impl App {
                 for item in items {
                     let id = item.id.value.clone();
                     let raw_title = item.title.clone();
-                    let clean_title = crate::providers::moviebox::clean_moviebox_title(&raw_title);
+                    let clean_title = if context.provider == ProviderKind::YouTube {
+                        raw_title.clone()
+                    } else {
+                        crate::providers::moviebox::clean_moviebox_title(&raw_title)
+                    };
 
-                    let normalized_query = query
-                        .to_lowercase()
-                        .replace(|c: char| !c.is_alphanumeric(), "");
-                    let normalized_title = raw_title
-                        .to_lowercase()
-                        .replace(|c: char| !c.is_alphanumeric(), "");
-                    if !normalized_title.contains(&normalized_query) && !normalized_query.is_empty()
+                    if context.provider != ProviderKind::YouTube
+                        && !query.starts_with("http://")
+                        && !query.starts_with("https://")
+                        && !query.contains("youtu.be")
                     {
-                        continue;
+                        let normalized_query = query
+                            .to_lowercase()
+                            .replace(|c: char| !c.is_alphanumeric(), "");
+                        let normalized_title = raw_title
+                            .to_lowercase()
+                            .replace(|c: char| !c.is_alphanumeric(), "");
+                        if !normalized_title.contains(&normalized_query)
+                            && !normalized_query.is_empty()
+                        {
+                            continue;
+                        }
                     }
 
                     let stype = if item.media_type == crate::models::MediaType::Series {

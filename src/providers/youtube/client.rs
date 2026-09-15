@@ -33,6 +33,28 @@ impl YouTubeClient {
         })
     }
 
+    pub async fn fetch_oembed(video_id: &str) -> Option<(String, String, String)> {
+        let url = format!("https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={video_id}&format=json");
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(4))
+            .build()
+            .ok()?;
+        let res = client.get(&url).send().await.ok()?;
+        let json: serde_json::Value = res.json().await.ok()?;
+        let title = json.get("title")?.as_str()?.to_string();
+        let author = json
+            .get("author_name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("YouTube")
+            .to_string();
+        let thumb = json
+            .get("thumbnail_url")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| format!("https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"));
+        Some((title, author, thumb))
+    }
+
     pub async fn search(&self, query: &str) -> Result<Vec<CatalogItem>, ProviderError> {
         let trimmed = query.trim();
         if trimmed.is_empty() {
@@ -41,13 +63,20 @@ impl YouTubeClient {
 
         // 1. If direct YouTube video ID or URL was provided
         if let Some(video_id) = extract_youtube_video_id(trimmed) {
-            let poster = format!("https://i.ytimg.com/vi/{video_id}/hqdefault.jpg");
+            let (title, poster) = if let Some((o_title, _author, o_thumb)) = Self::fetch_oembed(&video_id).await {
+                (o_title, o_thumb)
+            } else {
+                (
+                    format!("YouTube Video ({video_id})"),
+                    format!("https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"),
+                )
+            };
             return Ok(vec![CatalogItem {
                 id: ProviderMediaId {
                     provider: ProviderKind::YouTube,
-                    value: video_id.clone(),
+                    value: video_id,
                 },
-                title: format!("YouTube Video ({video_id})"),
+                title,
                 media_type: MediaType::Movie,
                 year: None,
                 poster_url: Some(poster),
@@ -206,8 +235,30 @@ impl YouTubeClient {
                 seasons: Vec::new(),
                 dubs: Vec::new(),
             })
+        } else if let Some((o_title, o_author, o_thumb)) = Self::fetch_oembed(&video_id).await {
+            Ok(MediaDetails {
+                id: ProviderMediaId {
+                    provider: ProviderKind::YouTube,
+                    value: video_id.clone(),
+                },
+                title: o_title,
+                media_type: MediaType::Movie,
+                year: None,
+                description: Some(format!("Channel: {o_author}\nWatch directly with yt-dlp stream acceleration.")),
+                tagline: None,
+                imdb_rating: None,
+                director: Some(o_author),
+                stars: None,
+                prints: Some("YouTube (yt-dlp Stream)".to_string()),
+                audios: Some("Original Audio".to_string()),
+                poster_url: Some(o_thumb),
+                duration: None,
+                genres: vec!["YouTube".to_string()],
+                seasons: Vec::new(),
+                dubs: Vec::new(),
+            })
         } else {
-            // Fallback basic metadata if yt-dlp dump-json was throttled or unavailable
+            // Fallback basic metadata if offline or unresolvable
             Ok(MediaDetails {
                 id: ProviderMediaId {
                     provider: ProviderKind::YouTube,
