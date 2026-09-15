@@ -1,8 +1,8 @@
 class SumanmoviesTui < Formula
-  VERSION = "1.0.1"
-  MACOS_SHA256 = "92d4181b7c02d1e10d35b602cbc1602257d1fa6b9227df305de123d13d4bfa31"
-  LINUX_X64_SHA256 = "ef136e02df801dacf135039bd08a2ac896bd3380df1a88ea52d85368903a4bd9"
-  LINUX_ARM64_SHA256 = "ce9205dab01b42ffda33f0873e0eb920a9e32e4b24967c285c55f9ca5fd31358"
+  VERSION = "1.0.2"
+  MACOS_SHA256 = "f47817f953123a15b11c3c245d07c7306a02ff099ca46fb5ce82529708518cbe"
+  LINUX_X64_SHA256 = "384a75d6a38e77733c03ce982aa00e8217e9e223f1c5201eb5edf6f6efde8f2c"
+  LINUX_ARM64_SHA256 = "5be4775f4d54a5ba88b13aea2d4387fbe524daa3ab9a751902f67e0e5a12f5fa"
 
   desc "Stream movies, shows, anime, and live TV from your terminal"
   homepage "https://github.com/SumanCH8514/SumanMovies-Tui"
