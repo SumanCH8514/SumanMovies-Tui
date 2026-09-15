@@ -105,6 +105,40 @@ async function ensureSumanMoviesBinary(force = false) {
   const targetPath = path.join(storageDir, binName);
   const altPath = path.join(storageDir, altBinName);
 
+  const workspaceRelease = path.resolve(__dirname, '..', '..', 'target', 'release', binName);
+  if (fs.existsSync(workspaceRelease)) {
+    let shouldCopy = force || !fs.existsSync(targetPath);
+    if (!shouldCopy) {
+      try {
+        const wsMtime = fs.statSync(workspaceRelease).mtimeMs;
+        const targetMtime = fs.statSync(targetPath).mtimeMs;
+        if (wsMtime > targetMtime) shouldCopy = true;
+      } catch (_) {}
+    }
+    if (shouldCopy) {
+      fs.copyFileSync(workspaceRelease, targetPath);
+      if (!isWin) fs.chmodSync(targetPath, 0o755);
+      return targetPath;
+    }
+  }
+
+  const localDist = path.join(__dirname, '..', 'dist', binName);
+  if (fs.existsSync(localDist)) {
+    let shouldCopy = force || !fs.existsSync(targetPath);
+    if (!shouldCopy) {
+      try {
+        const distMtime = fs.statSync(localDist).mtimeMs;
+        const targetMtime = fs.statSync(targetPath).mtimeMs;
+        if (distMtime > targetMtime) shouldCopy = true;
+      } catch (_) {}
+    }
+    if (shouldCopy) {
+      fs.copyFileSync(localDist, targetPath);
+      if (!isWin) fs.chmodSync(targetPath, 0o755);
+      return targetPath;
+    }
+  }
+
   if (!force) {
     if (fs.existsSync(targetPath)) return targetPath;
     if (fs.existsSync(altPath)) return altPath;
@@ -118,26 +152,12 @@ async function ensureSumanMoviesBinary(force = false) {
     }
   }
 
-  const localDist = path.join(__dirname, '..', 'dist', binName);
-  if (fs.existsSync(localDist)) {
-    fs.copyFileSync(localDist, targetPath);
-    if (!isWin) fs.chmodSync(targetPath, 0o755);
-    return targetPath;
-  }
-
   if (isWin && process.env.LOCALAPPDATA) {
     const localBuilt = path.join(process.env.LOCALAPPDATA, 'Programs', 'SumanMovies', 'bin', binName);
     if (fs.existsSync(localBuilt)) {
       fs.copyFileSync(localBuilt, targetPath);
       return targetPath;
     }
-  }
-
-  const workspaceRelease = path.resolve(__dirname, '..', '..', 'target', 'release', binName);
-  if (fs.existsSync(workspaceRelease)) {
-    fs.copyFileSync(workspaceRelease, targetPath);
-    if (!isWin) fs.chmodSync(targetPath, 0o755);
-    return targetPath;
   }
 
   console.log('  > Downloading SumanMovies binary...');
