@@ -510,11 +510,12 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &mut AppState, theme: &Theme) 
                 theme.subtext1,
             )
         };
-    let mut badge_spans = vec![
-        Span::styled(year, b_year_s),
-        Span::styled(bullet_sep, b_sep_s),
-        Span::styled(type_str, b_type_s),
-    ];
+    let mut badge_spans = Vec::new();
+    if year != "N/A" && !year.trim().is_empty() {
+        badge_spans.push(Span::styled(year, b_year_s));
+        badge_spans.push(Span::styled(bullet_sep, b_sep_s));
+    }
+    badge_spans.push(Span::styled(type_str, b_type_s));
 
     if !duration.trim().is_empty() && duration != "N/A" {
         badge_spans.push(Span::styled(bullet_sep, b_sep_s));
