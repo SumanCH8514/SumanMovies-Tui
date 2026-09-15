@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.0.3] - 2026-09-15
+
+### Added
+- **YouTube Provider Integration (`yt-dlp`)**:
+  - Integrated native YouTube video streaming, direct playback, and downloading powered by `yt-dlp`.
+  - Supports searching via free-text queries (`ytsearch20:<query>`) as well as direct URLs (`youtube.com/watch?v=...`, `youtu.be/...`, `youtube.com/shorts/...`, embeds).
+  - Fast oEmbed metadata scraping: Instantly fetches official video title, channel name, and high-definition thumbnails in ~100ms.
+  - Custom UI tagging: Displays distinct `Video` badge (instead of `Movie`) and red `[YouTube]` provider branding across search, favorites, and details views.
+- **Multi-Resolution Streams & Audio-Only Option**:
+  - Automatically queries available video streams and provides full quality choices:
+    - `Multi (Best Multi-Res)`
+    - `1080p (Full HD)`
+    - `720p (HD)`
+    - `480p (SD)`
+    - `360p`
+    - `Audio Only (Music/Podcast)`
+  - YouTube streams are sorted by descending resolution with `Multi` at the top and `Audio Only` at the bottom.
+- **Enhanced Player & Download Pipelines**:
+  - **MPV Stream Separation**: Cleanly extracts embedded format selectors (`#ytdl-format=...`) and passes dedicated `--ytdl-format` parameters to MPV without breaking CLI argument parsing.
+  - **Direct Video & Audio Downloads**: Routes YouTube items through `yt-dlp` with automatic format selection and saves audio tracks cleanly in `.m4a` format.
+
+### Fixed
+- **Stream Deduplication Collision**:
+  - Resolved an issue in stream deduplication where stripping query parameters collapsed all YouTube quality variants into a single stream.
+- **Badge & Year Formatting**:
+  - Cleaned up movie/video metadata badges on the detail screen to prevent redundant bullet points or missing year placeholders.
+
 ## [1.0.2] - 2026-09-15
 
 ### Added
