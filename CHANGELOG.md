@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.0.2] - 2026-09-15
+
+### Added
+- **Custom Player Metadata Title Branding (`SumanMovies TUI Api Service • <Title>`)**:
+  - Automatically overrides container-embedded release group titles and torrent watermarks (e.g. `www.1TamilMV.li`) across all players without modifying or re-encoding media streams.
+  - **MPV & IINA**: Configured `--force-media-title` and `--title` (and `--mpv-force-media-title` / `--mpv-title`) flags to guarantee pristine on-screen display (OSD) and window title presentation.
+  - **VLC**: Configured `--meta-title` flag for consistent window and playlist metadata titles.
+  - **Android**: Forwarded `-e title` extra in intent launches for native players (VLC Android, MPV Android, Nova, MX Player, Just Player).
+- **Graceful Fallback Handling**:
+  - Automatically defaults to `SumanMovies TUI Api Service` when a stream title is not available, or `SumanMovies TUI Api Service • <Movie Title>` during catalog playback.
+
+### Fixed
+- **Clean Stream Playback & Subtitle Preservation**:
+  - Verified 100% untouched video, multi-channel audio tracks, and automatic subtitle synchronizations remain completely intact while replacing visual metadata titles.
+
 ## [1.0.1] - 2026-09-15
 
 ### Added
