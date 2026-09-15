@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sumanmovies"
+version = "1.0.2"
+description = "SumanMovies - Terminal Movie & TV Streaming Experience (Python Edition)"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Suman", email = "dev.suman.ch@gmail.com" }]
+license = { text = "MIT" }
+keywords = ["sumanmovies", "tui", "streaming", "movies", "cli", "textual"]
+dependencies = [
+    "textual>=0.80.0",
+    "httpx[http2]>=0.27.0",
+    "beautifulsoup4>=4.12.0",
+    "pydantic>=2.0.0",
+    "rich>=13.7.0",
+    "cryptography>=42.0.0",
+    "platformdirs>=4.0.0",
+]
+
+[project.scripts]
+sumanmovies = "sumanmovies.cli:main"
