@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.0.1] - 2026-09-15
+
+### Added
+- **Unified Landing Deck with Discover Categories Tab**:
+  - Integrated **Discover Categories** as the first tab on the home landing deck (`✦ Discover Categories │ Continue Watching │ Favorites`).
+  - **Interactive Click Navigation**: Added precise horizontal hit-testing to allow instant switching between *Discover Categories*, *Continue Watching*, and *Favorites* with a single mouse click.
+  - **One-Click Category Launching**: Clicking on any preset row (*Trending Now*, *Top Rated Series*, *Latest Releases*, *Most Watched*) immediately navigates and opens that browse catalog.
+  - **Bidirectional Keyboard Cycling**: Support for `Tab` / `Shift+Tab` and `Left` / `Right` arrow key navigation to cycle between deck tabs smoothly.
+- **Automated WezTerm Terminal & Poster Artwork Setup (`npm`)**:
+  - Integrated automatic detection and setup of the WezTerm terminal emulator for full-HD Kitty-protocol graphical artwork and high-definition poster rendering.
+  - Added CLI flag `--wezterm` / `-w` to launch SumanMovies inside a dedicated high-definition terminal instance.
+- **Smart Binary Synchronization in NPM Installer**:
+  - Enhanced `npm/lib/installer.js` with timestamp validation to automatically prioritize fresh local workspace builds and synchronize binaries without stale cache lockups.
+
+### Fixed
+- **Clippy & Code Formatting Cleanliness**:
+  - Resolved `permissions_set_readonly_false`, `manual_map`, and string format lints across the codebase.
+  - Formatted all modules cleanly with `cargo fmt`.
+
 ## [1.0.0] - 2026-09-12
 
 ### Added
