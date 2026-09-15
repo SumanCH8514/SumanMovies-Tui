@@ -427,11 +427,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_youtube_direct_id_search() {
+    async fn test_youtube_releases_resolution_tiers() {
         let client = YouTubeClient::new();
-        let items = client.search("dQw4w9WgXcQ").await.expect("search direct id");
-        assert_eq!(items.len(), 1);
-        assert_eq!(items[0].id.value, "dQw4w9WgXcQ");
-        assert_eq!(items[0].id.provider, ProviderKind::YouTube);
+        let releases = client.releases("h2hRsBY1kVM").await.expect("releases");
+        assert!(releases.len() >= 2);
+        assert_eq!(releases[0].filename, "YouTube - h2hRsBY1kVM (Best Multi-Res)");
     }
 }
