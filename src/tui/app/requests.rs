@@ -1779,9 +1779,14 @@ impl App {
                                 let base_link = link.split('?').next().unwrap_or(link);
                                 let i_base_link = i_link.split('?').next().unwrap_or(i_link);
 
-                                if (!base_link.is_empty() && base_link == i_base_link)
-                                    || (!item.filename.is_empty() && item.filename == i.filename)
-                                {
+                                let is_same = if item.provider == ProviderKind::YouTube {
+                                    item.quality == i.quality || item.filename == i.filename
+                                } else {
+                                    (!base_link.is_empty() && base_link == i_base_link)
+                                        || (!item.filename.is_empty() && item.filename == i.filename)
+                                };
+
+                                if is_same {
                                     if !item.mirrors.is_empty() && i.mirrors.is_empty() {
                                         i.mirrors = item.mirrors.clone();
                                     }
@@ -1816,7 +1821,18 @@ impl App {
                 }
 
                 let mut filtered = raw_list;
-                filtered.sort_by_key(|b| std::cmp::Reverse(b.resolution_u64()));
+                filtered.sort_by(|a, b| {
+                    let score = |r: &crate::providers::models::Release| -> i64 {
+                        if r.is_multi_resolution() {
+                            1_000_000
+                        } else if r.quality.as_deref() == Some("Audio") {
+                            -1
+                        } else {
+                            r.resolution_u64() as i64
+                        }
+                    };
+                    score(b).cmp(&score(a))
+                });
 
                 let count = filtered.len();
                 if count > 0 {
