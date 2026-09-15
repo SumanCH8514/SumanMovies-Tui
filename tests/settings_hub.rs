@@ -1,4 +1,5 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use ratatui::layout::Rect;
 use sumanmovies_tui::{
     player::PlayerKind,
     tui::{
@@ -11,7 +12,6 @@ use sumanmovies_tui::{
         },
     },
 };
-use ratatui::layout::Rect;
 
 #[test]
 fn test_settings_command_parsing_and_aliases() {

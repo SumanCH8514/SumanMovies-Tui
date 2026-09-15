@@ -1,10 +1,10 @@
+use ratatui::Terminal;
+use ratatui::backend::TestBackend;
+use std::time::Instant;
 use sumanmovies_tui::cache::md5_hex;
 use sumanmovies_tui::providers::tv::parser::M3UParser;
 use sumanmovies_tui::tui::app::App;
 use sumanmovies_tui::tui::text::truncate_width;
-use ratatui::Terminal;
-use ratatui::backend::TestBackend;
-use std::time::Instant;
 
 fn baseline_truncate_width(value: &str, max_width: usize) -> String {
     use unicode_segmentation::UnicodeSegmentation;

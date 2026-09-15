@@ -499,6 +499,7 @@ fn resilient_remove_file(path: &Path) -> std::io::Result<()> {
             if let Ok(metadata) = fs::metadata(path) {
                 let mut permissions = metadata.permissions();
                 if permissions.readonly() {
+                    #[allow(clippy::permissions_set_readonly_false)]
                     permissions.set_readonly(false);
                     if fs::set_permissions(path, permissions).is_ok() {
                         return fs::remove_file(path);

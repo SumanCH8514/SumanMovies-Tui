@@ -1,12 +1,12 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use ratatui::Terminal;
+use ratatui::backend::TestBackend;
 use sumanmovies_tui::models::SearchResult;
 use sumanmovies_tui::providers::models::ProviderKind;
 use sumanmovies_tui::tui::action::Action;
 use sumanmovies_tui::tui::app::App;
 use sumanmovies_tui::tui::state::{InputMode, Screen};
 use sumanmovies_tui::tui::theme::ThemeKind;
-use ratatui::Terminal;
-use ratatui::backend::TestBackend;
 
 #[tokio::test]
 async fn test_backspace_from_home_focuses_search_input() {

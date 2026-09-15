@@ -583,17 +583,16 @@ impl App {
                         .as_ref()
                         .is_some_and(|d| d.is_series())
                         || self.state.selected_season > 0
-                        || self.get_selected_release().is_some_and(|r| r.season.is_some() || r.episode.is_some());
+                        || self
+                            .get_selected_release()
+                            .is_some_and(|r| r.season.is_some() || r.episode.is_some());
                     let resolve_msg = if is_series {
                         "Resolving episode stream..."
                     } else {
                         "Resolving movie stream..."
                     };
-                    self.state.notify(
-                        NotificationKind::Info,
-                        "Preparing download",
-                        resolve_msg,
-                    );
+                    self.state
+                        .notify(NotificationKind::Info, "Preparing download", resolve_msg);
                     let service = self.service.clone();
                     let sender = self.action_sender.clone();
                     let sibling_ids: Vec<String> = self
@@ -680,7 +679,8 @@ impl App {
                         .join("Series")
                         .join(&safe_title)
                         .join(format!("Season {season}"));
-                    let base_name = format!("{safe_title} - S{season:02}E{episode:02} - SumanMovies");
+                    let base_name =
+                        format!("{safe_title} - S{season:02}E{episode:02} - SumanMovies");
 
                     if is_media_already_downloaded(&target_dir, &base_name) {
                         self.state.notify(
@@ -1219,12 +1219,12 @@ mod tests {
             .join("Series")
             .join(series_title)
             .join(format!("Season {season}"))
-            .join(format!("One Piece - S22E45 - SumanMovies.mp4"));
+            .join("One Piece - S22E45 - SumanMovies.mp4");
         let expected_series_sub = base_dir
             .join("Series")
             .join(series_title)
             .join(format!("Season {season}"))
-            .join(format!("One Piece - S22E45 - SumanMovies.en.srt"));
+            .join("One Piece - S22E45 - SumanMovies.en.srt");
         assert_eq!(series_file, expected_series_file);
         assert_eq!(series_sub, expected_series_sub);
     }

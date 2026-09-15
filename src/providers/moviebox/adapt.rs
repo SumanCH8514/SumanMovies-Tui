@@ -97,19 +97,32 @@ pub fn moviebox_subject_json_to_catalog_item(s: &serde_json::Value) -> Option<Ca
     let poster_url = s
         .get("cover")
         .and_then(|c| {
-            if let Some(u) = c.get("url").and_then(|u| u.as_str()) {
-                Some(u.to_string())
-            } else if let Some(u) = c.as_str() {
-                Some(u.to_string())
-            } else {
-                None
-            }
+            c.get("url")
+                .and_then(|u| u.as_str())
+                .map(|u| u.to_string())
+                .or_else(|| c.as_str().map(|u| u.to_string()))
         })
-        .or_else(|| s.get("coverUrl").and_then(|u| u.as_str()).map(|s| s.to_string()))
-        .or_else(|| s.get("poster").and_then(|u| u.as_str()).map(|s| s.to_string()))
+        .or_else(|| {
+            s.get("coverUrl")
+                .and_then(|u| u.as_str())
+                .map(|s| s.to_string())
+        })
+        .or_else(|| {
+            s.get("poster")
+                .and_then(|u| u.as_str())
+                .map(|s| s.to_string())
+        })
         .or_else(|| s.get("pic").and_then(|u| u.as_str()).map(|s| s.to_string()))
-        .or_else(|| s.get("thumbnail").and_then(|u| u.as_str()).map(|s| s.to_string()))
-        .or_else(|| s.get("image").and_then(|u| u.as_str()).map(|s| s.to_string()))
+        .or_else(|| {
+            s.get("thumbnail")
+                .and_then(|u| u.as_str())
+                .map(|s| s.to_string())
+        })
+        .or_else(|| {
+            s.get("image")
+                .and_then(|u| u.as_str())
+                .map(|s| s.to_string())
+        })
         .or_else(|| s.get("img").and_then(|u| u.as_str()).map(|s| s.to_string()))
         .or_else(|| {
             s.get("banners")

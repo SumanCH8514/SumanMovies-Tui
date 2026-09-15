@@ -1,3 +1,5 @@
+use ratatui::layout::Rect;
+use std::io::Write;
 use sumanmovies_tui::models::NotificationKind;
 use sumanmovies_tui::tui::action::Action;
 use sumanmovies_tui::tui::app::App;
@@ -9,8 +11,6 @@ use sumanmovies_tui::updater::apply::{
 use sumanmovies_tui::updater::extract::extract_binary;
 use sumanmovies_tui::updater::verify::{compute_sha256, parse_sha256sums, verify_checksum};
 use sumanmovies_tui::updater::{Release, ReleaseAsset, TargetPlatform};
-use ratatui::layout::Rect;
-use std::io::Write;
 
 #[tokio::test]
 async fn test_update_check_single_flight() {
@@ -236,7 +236,13 @@ fn test_tar_gz_extraction_and_permissions() {
         tar.finish().unwrap();
     }
 
-    extract_binary(&archive_path, "test.tar.gz", "sumanmovies-tui", &staged_path).unwrap();
+    extract_binary(
+        &archive_path,
+        "test.tar.gz",
+        "sumanmovies-tui",
+        &staged_path,
+    )
+    .unwrap();
     assert!(staged_path.exists());
     assert_eq!(
         std::fs::read(&staged_path).unwrap(),
@@ -259,7 +265,13 @@ fn test_zip_extraction_and_permissions() {
         zip.finish().unwrap();
     }
 
-    extract_binary(&archive_path, "test.zip", "sumanmovies-tui.exe", &staged_path).unwrap();
+    extract_binary(
+        &archive_path,
+        "test.zip",
+        "sumanmovies-tui.exe",
+        &staged_path,
+    )
+    .unwrap();
     assert!(staged_path.exists());
     assert_eq!(
         std::fs::read(&staged_path).unwrap(),

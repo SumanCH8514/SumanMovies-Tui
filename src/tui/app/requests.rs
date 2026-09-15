@@ -1393,9 +1393,7 @@ impl App {
                     return None;
                 }
 
-                if context.provider == ProviderKind::FourKHdHub
-                    || context.provider.is_bdix()
-                {
+                if context.provider == ProviderKind::FourKHdHub || context.provider.is_bdix() {
                     let sender = self.action_sender.clone();
                     let fourk_client = self.service.fourk_client.clone();
                     let circleftp_client = self.service.circleftp_client.clone();

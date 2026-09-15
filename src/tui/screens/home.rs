@@ -540,26 +540,50 @@ pub(crate) fn render_landing_deck(frame: &mut Frame, area: Rect, state: &AppStat
             title_spans.push(Span::styled(sep, sep_style));
         }
         let is_active = t == tab;
-        let style = if is_active { active_style } else { inactive_style };
+        let style = if is_active {
+            active_style
+        } else {
+            inactive_style
+        };
         match t {
             crate::tui::state::HomeDeckTab::Discover => {
                 let label = if is_compact {
-                    if is_active { format!(" {compass}Discover ") } else { " Discover".to_string() }
+                    if is_active {
+                        format!(" {compass}Discover ")
+                    } else {
+                        " Discover".to_string()
+                    }
                 } else {
-                    if is_active { format!(" {compass}Discover Categories ") } else { " Discover Categories".to_string() }
+                    if is_active {
+                        format!(" {compass}Discover Categories ")
+                    } else {
+                        " Discover Categories".to_string()
+                    }
                 };
                 title_spans.push(Span::styled(label, style));
             }
             crate::tui::state::HomeDeckTab::ContinueWatching => {
                 let label = if is_compact {
-                    if is_active { " Watching ".to_string() } else { " Watching".to_string() }
+                    if is_active {
+                        " Watching ".to_string()
+                    } else {
+                        " Watching".to_string()
+                    }
                 } else {
-                    if is_active { " Continue Watching ".to_string() } else { " Continue Watching".to_string() }
+                    if is_active {
+                        " Continue Watching ".to_string()
+                    } else {
+                        " Continue Watching".to_string()
+                    }
                 };
                 title_spans.push(Span::styled(label, style));
             }
             crate::tui::state::HomeDeckTab::Favorites => {
-                let label = if is_active { " Favorites ".to_string() } else { " Favorites".to_string() };
+                let label = if is_active {
+                    " Favorites ".to_string()
+                } else {
+                    " Favorites".to_string()
+                };
                 title_spans.push(Span::styled(label, style));
                 if !is_active && is_focused && available_tabs.len() <= 2 {
                     title_spans.push(Span::styled(" (Tab) ", hint_style));
@@ -630,8 +654,10 @@ pub(crate) fn render_landing_deck(frame: &mut Frame, area: Rect, state: &AppStat
                 let pointer_w = crate::tui::text::width(pointer);
                 let title_w = crate::tui::text::width(title);
                 let margins_len = 2 + pointer_w + 1;
-                let max_desc_w = (inner_area.width as usize).saturating_sub(title_w + margins_len + 1);
-                let display_desc = if max_desc_w >= 4 && crate::tui::text::width(desc) > max_desc_w {
+                let max_desc_w =
+                    (inner_area.width as usize).saturating_sub(title_w + margins_len + 1);
+                let display_desc = if max_desc_w >= 4 && crate::tui::text::width(desc) > max_desc_w
+                {
                     crate::tui::text::truncate_width(desc, max_desc_w)
                 } else if max_desc_w < 4 {
                     std::borrow::Cow::Borrowed("")
@@ -639,7 +665,8 @@ pub(crate) fn render_landing_deck(frame: &mut Frame, area: Rect, state: &AppStat
                     std::borrow::Cow::Borrowed(desc)
                 };
                 let tag_len = crate::tui::text::width(&display_desc);
-                let pad_len = (inner_area.width as usize).saturating_sub(margins_len + title_w + tag_len);
+                let pad_len =
+                    (inner_area.width as usize).saturating_sub(margins_len + title_w + tag_len);
 
                 let (title_style, desc_style, pointer_style) = if is_selected {
                     (
@@ -899,11 +926,7 @@ pub fn home_deck_tab_at_col(
             }
             crate::tui::state::HomeDeckTab::ContinueWatching => {
                 if is_compact {
-                    if is_active {
-                        10
-                    } else {
-                        9
-                    }
+                    if is_active { 10 } else { 9 }
                 } else if is_active {
                     19
                 } else {
@@ -1703,7 +1726,8 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &mut AppState, theme: &Theme) 
                 .style(logo_style);
             frame.render_widget(title_art, horizontal_chunks[1]);
 
-            let subtitle = Paragraph::new(build_landing_subtitle_line(logo_width, theme, modal_active));
+            let subtitle =
+                Paragraph::new(build_landing_subtitle_line(logo_width, theme, modal_active));
             frame.render_widget(subtitle, version_chunks[1]);
         }
 
@@ -4295,14 +4319,22 @@ mod tests {
 
         // Compact layout (47 cols)
         let line_compact = build_landing_subtitle_line(47, &theme, false);
-        let text_compact: String = line_compact.spans.iter().map(|s| s.content.as_ref()).collect();
+        let text_compact: String = line_compact
+            .spans
+            .iter()
+            .map(|s| s.content.as_ref())
+            .collect();
         assert!(text_compact.contains("Cinema.SumanOnline.Com"));
         assert!(text_compact.contains(&format!("v{}", env!("CARGO_PKG_VERSION"))));
         assert_eq!(text_compact.chars().count(), 47);
 
         // Compact TV layout (50 cols)
         let line_compact_tv = build_landing_subtitle_line(50, &theme, false);
-        let text_compact_tv: String = line_compact_tv.spans.iter().map(|s| s.content.as_ref()).collect();
+        let text_compact_tv: String = line_compact_tv
+            .spans
+            .iter()
+            .map(|s| s.content.as_ref())
+            .collect();
         assert!(text_compact_tv.contains("Cinema.SumanOnline.Com"));
         assert!(text_compact_tv.contains(&format!("v{}", env!("CARGO_PKG_VERSION"))));
         assert_eq!(text_compact_tv.chars().count(), 50);

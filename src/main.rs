@@ -126,12 +126,18 @@ async fn main() -> std::io::Result<()> {
         println!("    MOVIEBOX_VLC_PATH       Custom vlc binary path");
         println!("    MOVIEBOX_IINA_PATH      Custom iina-cli binary path");
         println!("    MOVIEBOX_FOURKHDHUB_URL Custom 4KHDHub base URL");
-        println!("    MOVIEBOX_NO_IMAGE       Disable poster image queries (1/true, alias: SUMANMOVIES_NO_IMAGE)");
-        println!("    SUMANMOVIES_NO_HALFBLOCKS Disable low-res blocky fallback in standard terminals");
+        println!(
+            "    MOVIEBOX_NO_IMAGE       Disable poster image queries (1/true, alias: SUMANMOVIES_NO_IMAGE)"
+        );
+        println!(
+            "    SUMANMOVIES_NO_HALFBLOCKS Disable low-res blocky fallback in standard terminals"
+        );
         println!(
             "    MOVIEBOX_IMAGE_PROTOCOL Force graphics protocol (kitty, sixel, iterm2, none, alias: SUMANMOVIES_IMAGE_PROTOCOL)"
         );
-        println!("    MOVIEBOX_CELL_SIZE      Override terminal cell size as WxH (e.g. 10x20, alias: SUMANMOVIES_CELL_SIZE)");
+        println!(
+            "    MOVIEBOX_CELL_SIZE      Override terminal cell size as WxH (e.g. 10x20, alias: SUMANMOVIES_CELL_SIZE)"
+        );
         return Ok(());
     }
     if args

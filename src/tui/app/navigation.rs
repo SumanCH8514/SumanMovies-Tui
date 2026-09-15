@@ -1,6 +1,6 @@
 use super::App;
-use crate::providers::models::{MediaDetails, ProviderKind, Release};
 use crate::models::BrowsePreset;
+use crate::providers::models::{MediaDetails, ProviderKind, Release};
 use crate::tui::{
     action::Action,
     state::{InputMode, Screen},

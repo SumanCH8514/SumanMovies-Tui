@@ -264,8 +264,9 @@ impl App {
                             self.action_sender.send(Action::StartSelfUpdate).ok();
                         }
                     } else if col < layout.open_btn_end_x {
-                        let url =
-                            format!("https://github.com/SumanCH8514/SumanMovies-Tui/releases/tag/v{ver}");
+                        let url = format!(
+                            "https://github.com/SumanCH8514/SumanMovies-Tui/releases/tag/v{ver}"
+                        );
                         let _ = open::that(&url);
                     }
                     self.state.update_available = None;
@@ -635,10 +636,13 @@ impl App {
                             self.action_sender.send(Action::ShowBrowseMenu).ok();
                             return None;
                         }
-                        if let Some(target_tab) =
-                            crate::tui::screens::home::home_deck_tab_at_col(&self.state, deck_card_area, col)
-                        {
-                            if target_tab != self.state.home_deck_tab || !self.state.favorites_focus {
+                        if let Some(target_tab) = crate::tui::screens::home::home_deck_tab_at_col(
+                            &self.state,
+                            deck_card_area,
+                            col,
+                        ) {
+                            if target_tab != self.state.home_deck_tab || !self.state.favorites_focus
+                            {
                                 self.state.home_deck_tab = target_tab;
                                 self.state.favorites_landing_state.select(Some(0));
                             }

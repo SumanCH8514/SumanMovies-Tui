@@ -218,7 +218,12 @@ impl App {
             .or_else(|_| std::env::var("MOVIEBOX_NO_HALFBLOCKS"))
             .is_ok_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
 
-        if no_halfblocks && matches!(picker.protocol_type(), ratatui_image::picker::ProtocolType::Halfblocks) {
+        if no_halfblocks
+            && matches!(
+                picker.protocol_type(),
+                ratatui_image::picker::ProtocolType::Halfblocks
+            )
+        {
             self.state.image_supported = false;
             self.state.image_picker = None;
             return;
@@ -270,9 +275,9 @@ impl App {
             "iterm2" => Some(ForcedProtocol::Type(
                 ratatui_image::picker::ProtocolType::Iterm2,
             )),
-            "halfblocks" | "halfblock" | "block" | "blocks" | "unicode" => Some(ForcedProtocol::Type(
-                ratatui_image::picker::ProtocolType::Halfblocks,
-            )),
+            "halfblocks" | "halfblock" | "block" | "blocks" | "unicode" => Some(
+                ForcedProtocol::Type(ratatui_image::picker::ProtocolType::Halfblocks),
+            ),
             _ => None,
         }
     }

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use sumanmovies_tui::models::MediaType;
 use sumanmovies_tui::providers::addons::adapter::{
     meta_detail_to_media_details, parse_audio_tracks, parse_codec, parse_quality,
@@ -6,7 +7,6 @@ use sumanmovies_tui::providers::addons::adapter::{
 use sumanmovies_tui::providers::addons::models::{
     AddonManifest, InstalledAddon, MetaDetail, StreamBehaviorHints, StreamItem,
 };
-use std::collections::HashMap;
 
 #[test]
 fn test_addon_manifest_fixture_deserialization() {
@@ -416,12 +416,16 @@ async fn test_addon_enable_disable_and_removal_lifecycle() {
     assert_eq!(app.state().installed_addons.len(), initial_count + 1);
 
     let idx = initial_count;
-    app.handle_action(sumanmovies_tui::tui::action::Action::AddonToggleEnabled(idx))
-        .await;
+    app.handle_action(sumanmovies_tui::tui::action::Action::AddonToggleEnabled(
+        idx,
+    ))
+    .await;
     assert!(!app.state().installed_addons[idx].enabled);
 
-    app.handle_action(sumanmovies_tui::tui::action::Action::AddonToggleEnabled(idx))
-        .await;
+    app.handle_action(sumanmovies_tui::tui::action::Action::AddonToggleEnabled(
+        idx,
+    ))
+    .await;
     assert!(app.state().installed_addons[idx].enabled);
 
     app.handle_action(sumanmovies_tui::tui::action::Action::AddonRemove(idx))
