@@ -3,10 +3,27 @@
 ## [Unreleased]
 
 ### Fixed
+- **Single-Line Input Windowing & Overflow Prevention**:
+  - Fixed text overflow in `render_single_line_input` (`src/tui/widgets/input.rs`) where appending ellipsis (`...`) without sufficient budget caused line length to exceed modal width and trigger word wrapping onto a second line.
+  - Reserved 3 columns for trailing ellipsis when characters remain past the cursor and removed `Wrap` on single-line input widgets, keeping prompt symbols and text strictly single-line across all cursor movements.
+- **Addons Manager Search Bar Anchor & Overlay Isolation**:
+  - Anchored Addons Manager popup directly in place of the landing search bar using unified `home_search_y` geometry in `src/tui/overlay.rs`.
+  - Gated the landing search bar, search suggestions, provider pill popup, and discovery decks in `src/tui/screens/home.rs` during active Addon Manager sessions, preventing background search bar leakage.
 - **MovieBox Deprecation Notice Stream Filtering**:
   - Filtered deprecation notice video URLs (`macdn.aoneroom.com/other/`, notice video hash `b164fbfb4347792950bdfbfb563d39d9`) from community resource releases in `src/providers/moviebox/adapt.rs`.
   - Prevented 21-second upgrade announcement video placeholders from leaking into stream selection as playable releases when episodes lack official DASH streams.
-
+### Changed
+- **Minimalist Addon Manager Modal Redesign & Balanced Geometry**:
+  - Streamlined Addon Manager popup into a content-fitted modal matching the provider popup design language, eliminating empty right-side letterboxing and arbitrary vertical blank gaps.
+  - Replaced noisy capability bracket badges (`[Core]`, `[Meta]`, `[Streams]`, `[Catalog]`), button bracket wrappers (`[ Add Manifest URL ]`), and arbitrary gap rows with continuous list rhythm, clean checkmarks (`✓`) for active addons, symmetric 2-cell horizontal padding, and full-width background highlight bars (`highlight_symbol("")`).
+  - Aligned mouse click hitboxes and keyboard navigation with simplified two-variant row indexing (`Addon(usize)` and `AddUrl`).
+- **Contextual `/config` Command Separation & Slash Command Cleanup**:
+  - Promoted `/config` to a dedicated slash command rather than an alias for `/settings`.
+  - Restricted `/config` suggestion visibility to contexts where a configuration modal exists: TV mode (playlist manager) and Addons provider (manifest manager).
+  - Added a contextual guidance notification when `/config` is entered while MovieBox or 4KHDHub is active, prompting users to use `/settings` for preferences or switch to Addons (`Ctrl+P`/`^P`) to configure addons.
+  - Restored missing `/browse` description in `SlashCommand::description_for` to display proper annotations in search suggestions.
+  - Added contextual `/config` command row to in-app help overlay (`?`) under TV Mode and Addons provider.
+  - Pruned redundant and confusing slash command aliases (`/pref`, `/preferences`, `/options`, and `/fav`), establishing `/settings` and `/favorites` as single canonical commands while retaining universal terminal conventions (`/?` for `/help`, `/q`/`/quit` for `/exit`).
 ### Refactored
 - **Streamlined MovieBox Episode Stream Resolution**:
   - Replaced speculative parallel `get_resources` and secondary `fetch_resource_page` fallbacks in `providers/moviebox/mod.rs` with direct `play-info/v2` resolution.

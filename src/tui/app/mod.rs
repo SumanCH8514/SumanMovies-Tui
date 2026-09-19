@@ -396,7 +396,6 @@ impl App {
             AddonManagerRow::AddUrl => {
                 self.action_sender.send(Action::AddonInputToggle(true)).ok();
             }
-            AddonManagerRow::Header(_) => {}
         }
     }
 }

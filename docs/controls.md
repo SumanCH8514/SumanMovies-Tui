@@ -122,7 +122,8 @@ Type these commands directly into the search bar:
 
 | Command | Applicable Mode | Action |
 | :--- | :--- | :--- |
-| `/settings` | All | Open interactive Settings & Preferences Hub (aliases `/config` [opens Addon Manager in Addons provider or TV playlist manager in TV mode], `/pref`, `/preferences`, `/options`) |
+| `/settings` | All | Open interactive Settings & Preferences Hub |
+| `/config` | Contextual | Open playlist manager in TV mode, or Addon Manager in Addons provider (prompts `/settings` on MovieBox/4KHDHub) |
 | `/browse` | Streaming | Browse curated views (Trending, Popular) or Addon catalogs (Top Movies, Top Series) |
 | `/history` | Streaming | View watch history with latest progress |
 | `/favorites` | Streaming | View all starred titles |

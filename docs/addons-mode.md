@@ -19,15 +19,16 @@ Stremio Addons are integrated directly into standard Streaming Mode as a first-c
 
 - `Ctrl+P`: Cycle providers in Streaming Mode to select **Addons**.
 - `/config`: Open the **Addon Manager** directly when the active provider is `Addons`.
+- `Tab` or click `[Addons]`: Open the **Addon Manager** popup directly from the search bar.
 - `Ctrl+S`: Return smoothly to **MovieBox** provider.
 - `/browse`: Browse curated addon catalogs (`Top Movies`, `Top Series`, `Top Rated Movies`, `Top Rated Series`).
+
 ## Addon Manager
 
-- Interactive modal listing installed addons with capability badges (`[Core]`, `[Meta]`, `[Streams]`, `[Catalog]`).
-- `[x] / [ ]`: Toggle addon enabled/disabled state (`Enter` or `Space`). Core provider remains locked.
-- `[ Add Manifest URL ]`: Install any public HTTP addon manifest by URL.
-- `[d]` or `[Delete]`: Remove the selected addon (protected for core addons).
-
+- Interactive modal anchored in place of the landing search bar, displaying installed addons and activation state.
+- `✓` / blank indent: Toggle addon enabled/disabled state (`Enter` or `Space`). Core provider remains protected with instant notice.
+- `+ Add manifest URL`: Install any public HTTP addon manifest by URL.
+- `d` or `Delete`: Remove the selected addon (protected for core metadata provider).
 ## Persistence
 
 Installed addons are atomically saved to `addons_config.json` inside the application config directory (`~/Library/Application Support/moviebox-tui/` on macOS, `~/.config/moviebox-tui/` on Linux, `%APPDATA%\moviebox-tui\` on Windows). If `addons_config.json` encounters corrupt data on disk, it is preserved and rotated to `addons_config.json.corrupt.{timestamp}` before initializing fallback defaults, preventing silent data loss.

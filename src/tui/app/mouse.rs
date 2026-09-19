@@ -469,21 +469,19 @@ impl App {
             let popup = crate::tui::overlay::addon_manager_layout(
                 area,
                 addons_count,
+                self.state.max_addon_name_width(),
                 self.state.addon_input_active,
             );
             if popup.contains(ratatui::layout::Position::new(col, row)) {
                 if !self.state.addon_input_active {
-                    let list_start_y = popup.y + 1;
-                    let button_y = list_start_y + addons_count as u16 + 1;
-                    if row > list_start_y && row < button_y {
-                        let clicked_addon_idx = (row - list_start_y - 1) as usize;
-                        if clicked_addon_idx < addons_count {
-                            self.state.addon_manager_selected = clicked_addon_idx + 1;
+                    let items_start_y = popup.y + 1;
+                    let total_items = addons_count + 1;
+                    if row >= items_start_y && row < items_start_y + total_items as u16 {
+                        let clicked_idx = (row - items_start_y) as usize;
+                        if clicked_idx < total_items {
+                            self.state.addon_manager_selected = clicked_idx;
                             self.addon_manager_activate();
                         }
-                    } else if row == button_y {
-                        self.state.addon_manager_selected = addons_count + 1;
-                        self.addon_manager_activate();
                     }
                 }
             } else {

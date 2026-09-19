@@ -45,6 +45,18 @@ pub fn picker_layout(
     )
 }
 
+pub(crate) fn home_search_y(area: Rect) -> u16 {
+    if area.height >= 24 {
+        if area.width < 76 {
+            area.y + 7
+        } else {
+            area.y + 11
+        }
+    } else {
+        area.y + 5
+    }
+}
+
 pub fn tv_config_layout(
     area: Rect,
     longest_source_width: usize,
@@ -54,29 +66,56 @@ pub fn tv_config_layout(
     let content_width = longest_source_width.max(48).max(crate::tui::text::width(
         "[ Add URL ] [ Add file ] [ Reload ] [ Done ]",
     ));
+    let min_width = 44u16.min(area.width.saturating_sub(2));
     let popup_width = 68u16
         .max(content_width.saturating_add(6) as u16)
-        .min(area.width.saturating_sub(4));
+        .min(area.width.saturating_sub(2))
+        .max(min_width);
     let popup_height = if input_active {
         5u16
     } else {
-        total_rows.min(10).saturating_add(4) as u16
+        (total_rows.min(10) as u16)
+            .saturating_add(4)
+            .min(area.height.saturating_sub(2))
     };
-    centered(area, popup_width, popup_height, 36, 74)
+    let available_width = area.width.saturating_sub(2).max(1);
+    let width = popup_width.min(available_width);
+    let x = area.x + area.width.saturating_sub(width) / 2;
+    let search_y = home_search_y(area);
+    let y = search_y.min(area.bottom().saturating_sub(popup_height));
+    Rect::new(x, y, width, popup_height)
 }
 
-pub fn addon_manager_layout(area: Rect, addons_count: usize, input_active: bool) -> Rect {
-    let popup_width = 76u16.min(area.width.saturating_sub(4)).max(56);
-    let popup_height = if input_active {
-        5u16
+pub fn addon_manager_layout(
+    area: Rect,
+    addons_count: usize,
+    max_name_len: usize,
+    input_active: bool,
+) -> Rect {
+    let (popup_width, popup_height) = if input_active {
+        let w = 48u16.min(area.width.saturating_sub(2)).max(28);
+        (w, 5u16)
     } else {
-        (addons_count as u16)
-            .saturating_add(4)
-            .min(area.height.saturating_sub(4))
-            .max(5)
+        let longest_line = (max_name_len as u16).saturating_add(6).max(22);
+        let w = longest_line
+            .saturating_add(2)
+            .min(area.width.saturating_sub(2))
+            .max(24);
+        let total_items = (addons_count as u16).saturating_add(1);
+        let h = total_items
+            .saturating_add(2)
+            .min(area.height.saturating_sub(2))
+            .max(3);
+        (w, h)
     };
-    centered(area, popup_width, popup_height, 36, 80)
+    let available_width = area.width.saturating_sub(2).max(1);
+    let width = popup_width.min(available_width);
+    let x = area.x + area.width.saturating_sub(width) / 2;
+    let search_y = home_search_y(area);
+    let y = search_y.min(area.bottom().saturating_sub(popup_height));
+    Rect::new(x, y, width, popup_height)
 }
+
 pub fn settings_modal_layout(area: Rect, category: crate::tui::state::SettingsCategory) -> Rect {
     let min_width = 44u16.min(area.width.saturating_sub(2));
     let popup_width = 68u16.min(area.width.saturating_sub(2)).max(min_width);
@@ -85,11 +124,7 @@ pub fn settings_modal_layout(area: Rect, category: crate::tui::state::SettingsCa
     let available_width = area.width.saturating_sub(2).max(1);
     let width = popup_width.min(available_width);
     let x = area.x + area.width.saturating_sub(width) / 2;
-    let search_y = if area.height >= 24 {
-        area.y + 2 + 6 + 1 + 2
-    } else {
-        area.y + 1 + 2 + 1 + 1
-    };
+    let search_y = home_search_y(area);
     let y = search_y.min(area.bottom().saturating_sub(popup_height));
     Rect::new(x, y, width, popup_height)
 }
@@ -100,11 +135,7 @@ pub fn help_modal_layout(area: Rect, desired_width: u16, desired_height: u16) ->
     let width = desired_width.clamp(46, 120).min(available_width);
     let height = desired_height.min(available_height).max(1);
     let x = area.x + area.width.saturating_sub(width) / 2;
-    let search_y = if area.height >= 24 {
-        area.y + 2 + 6 + 1 + 2
-    } else {
-        area.y + 1 + 2 + 1 + 1
-    };
+    let search_y = home_search_y(area);
     let y = search_y.min(area.bottom().saturating_sub(height));
     Rect::new(x, y, width, height)
 }
@@ -1056,5 +1087,31 @@ mod tests {
         let rects = notification_rects(mobile_portrait, &queue, false, false);
         assert_eq!(rects.len(), 1);
         assert!(rects[0].1.height >= 5);
+    }
+    #[test]
+    fn test_addon_manager_layout_anchors_at_search_bar_position() {
+        let standard_area = Rect::new(0, 0, 80, 24);
+        let layout = addon_manager_layout(standard_area, 2, 10, false);
+        assert_eq!(layout.y, 11);
+        assert_eq!(layout.height, 5);
+        assert_eq!(layout.width, 24);
+        assert_eq!(layout.x, 28);
+
+        let compact_area = Rect::new(0, 0, 70, 24);
+        let compact_layout = addon_manager_layout(compact_area, 1, 8, false);
+        assert_eq!(compact_layout.y, 7);
+        assert_eq!(compact_layout.height, 4);
+        assert_eq!(compact_layout.width, 24);
+        assert_eq!(compact_layout.x, 23);
+
+        let short_area = Rect::new(0, 0, 80, 20);
+        let short_layout = addon_manager_layout(short_area, 1, 8, false);
+        assert_eq!(short_layout.y, 5);
+
+        let input_layout = addon_manager_layout(standard_area, 2, 10, true);
+        assert_eq!(input_layout.height, 5);
+        assert_eq!(input_layout.y, 11);
+        assert_eq!(input_layout.width, 48);
+        assert_eq!(input_layout.x, 16);
     }
 }
