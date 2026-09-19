@@ -529,8 +529,8 @@ pub fn moviebox_resource_item_to_release(item: &serde_json::Value) -> Release {
         .get("resourceLink")
         .or_else(|| item.get("url"))
         .and_then(|l| l.as_str())
-        .filter(|s| !s.is_empty());
-
+        .filter(|s| !s.is_empty())
+        .filter(|s| !is_deprecation_notice_url(s));
     if let Some(link) = resource_link {
         let label = item
             .get("uploadBy")
@@ -565,6 +565,7 @@ pub fn is_deprecation_notice_url(url: &str) -> bool {
     let lower = url.to_ascii_lowercase();
     lower.contains("1c7de0bd3393702d9191801f15f88f8d")
         || lower.contains("9a0461bc39da389663bf3dbb17091d3f")
+        || lower.contains("b164fbfb4347792950bdfbfb563d39d9")
         || lower.contains("/notice.mp4")
         || lower.contains("notice")
         || (lower.contains("macdn.aoneroom.com") && lower.contains("/other/"))
@@ -773,10 +774,10 @@ pub fn moviebox_resource_json_to_releases(payload: &serde_json::Value) -> Vec<Re
     } else {
         &[]
     };
-
     items
         .iter()
         .map(moviebox_resource_item_to_release)
+        .filter(|r| !r.mirrors.is_empty())
         .collect()
 }
 
@@ -1281,5 +1282,29 @@ mod tests {
         });
         let release_str = moviebox_resource_item_to_release(&item_str);
         assert_eq!(release_str.resource_id.as_deref(), Some("1234567890"));
+    }
+    #[test]
+    fn test_moviebox_resource_item_filters_deprecation_notice_url() {
+        let notice_item = json!({
+            "resourceId": 4087841675127701904_i64,
+            "title": "Steins;Gate S01E07",
+            "url": "https://macdn.aoneroom.com/other/2026/09/04/b164fbfb4347792950bdfbfb563d39d9.mp4"
+        });
+        let release = moviebox_resource_item_to_release(&notice_item);
+        assert!(release.mirrors.is_empty());
+
+        let payload = json!({
+            "list": [
+                notice_item,
+                {
+                    "resourceId": 123,
+                    "title": "Valid Stream",
+                    "url": "https://example.com/stream.mp4"
+                }
+            ]
+        });
+        let releases = moviebox_resource_json_to_releases(&payload);
+        assert_eq!(releases.len(), 1);
+        assert_eq!(releases[0].filename, "Valid Stream");
     }
 }

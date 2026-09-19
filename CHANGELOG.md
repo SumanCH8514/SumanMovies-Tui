@@ -1,5 +1,17 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- **MovieBox Deprecation Notice Stream Filtering**:
+  - Filtered deprecation notice video URLs (`macdn.aoneroom.com/other/`, notice video hash `b164fbfb4347792950bdfbfb563d39d9`) from community resource releases in `src/providers/moviebox/adapt.rs`.
+  - Prevented 21-second upgrade announcement video placeholders from leaking into stream selection as playable releases when episodes lack official DASH streams.
+
+### Refactored
+- **Streamlined MovieBox Episode Stream Resolution**:
+  - Replaced speculative parallel `get_resources` and secondary `fetch_resource_page` fallbacks in `providers/moviebox/mod.rs` with direct `play-info/v2` resolution.
+  - Eliminated sprawling 60-page background resource pagination loop in `src/tui/app/requests.rs`, cutting redundant network requests and preventing dead community upload parsing.
+
 ## [0.1.21] - 2026-09-19
 
 ### Added

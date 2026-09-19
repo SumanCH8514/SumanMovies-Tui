@@ -1,5 +1,5 @@
 use super::{App, network};
-use crate::models::{Episode, MediaType, ProviderKind, Release, Season};
+use crate::models::{Episode, MediaType, ProviderKind, Season};
 use crate::tui::{
     action::Action,
     state::{InputMode, Screen, SearchResult},
@@ -1523,21 +1523,9 @@ impl App {
                     }
                 }
 
-                let mut absolute_episode = 0;
-                for s_val in &self.state.available_seasons {
-                    if s_val.number < season {
-                        absolute_episode += s_val.episodes.len().max(1);
-                    }
-                }
-                absolute_episode += episode.saturating_sub(1);
-                let estimated_page = (absolute_episode / 20) + 1;
-
                 let client = self.service.client.clone();
                 let sender = self.action_sender.clone();
-                let cancel_token = self.state.fetch_cancel.clone();
                 let id_clone = subject_id.clone();
-                let resolutions = pool.available_resolutions.clone();
-                let is_movie = season == 0 && episode == 0;
 
                 self.request_tasks.cancel_streams();
                 self.request_tasks.streams = Some(tokio::spawn(async move {
@@ -1545,170 +1533,30 @@ impl App {
                         .send(Action::SetStatus("Fetching streams...".to_string()))
                         .ok();
 
-                    if let Ok(streams) = crate::providers::ReleaseProvider::episode_streams(
+                    match crate::providers::ReleaseProvider::episode_streams(
                         &client, &id_clone, season, episode,
                     )
                     .await
                     {
-                        if !streams.is_empty() {
+                        Ok(streams) => {
                             sender
                                 .send(Action::EpisodeStreamsReady(
                                     context, request_id, id_clone, season, episode, streams,
                                 ))
                                 .ok();
-                            return;
                         }
-                    }
-
-                    let mut all_items: Vec<Release> = Vec::new();
-                    let mut found_target = false;
-                    let mut any_fetch_failed = false;
-
-                    if is_movie {
-                        let mut page = 1usize;
-                        loop {
-                            if cancel_token.load(std::sync::atomic::Ordering::Relaxed) {
-                                break;
-                            }
-                            match tokio::time::timeout(
-                                std::time::Duration::from_secs(15),
-                                client.fetch_resource_page(&id_clone, 0, 0, 0, page),
-                            )
-                            .await
-                            {
-                                Ok(Ok((items, pager))) => {
-                                    let has_more = pager
-                                        .get("hasMore")
-                                        .and_then(|v| v.as_bool())
-                                        .unwrap_or(false);
-                                    for item in items {
-                                        all_items.push(
-                                            crate::providers::moviebox::adapt::moviebox_resource_item_to_release(
-                                                &item,
-                                            ),
-                                        );
-                                    }
-                                    if !has_more {
-                                        break;
-                                    }
-                                    page += 1;
-                                    if page > 10 {
-                                        break;
-                                    }
-                                }
-                                _ => {
-                                    any_fetch_failed = true;
-                                    break;
-                                }
-                            }
+                        Err(err) => {
+                            sender
+                                .send(Action::EpisodeStreamsFailed(
+                                    context,
+                                    request_id,
+                                    id_clone,
+                                    season,
+                                    episode,
+                                    err.to_string(),
+                                ))
+                                .ok();
                         }
-                    } else {
-                        let concurrency_limit = std::sync::Arc::new(tokio::sync::Semaphore::new(2));
-                        let mut page = estimated_page;
-                        'outer: loop {
-                            if cancel_token.load(std::sync::atomic::Ordering::Relaxed) {
-                                break 'outer;
-                            }
-                            let mut page_handles = Vec::new();
-
-                            let res_to_fetch = if resolutions.is_empty() {
-                                vec![0]
-                            } else {
-                                resolutions.clone()
-                            };
-
-                            for &res in &res_to_fetch {
-                                let c = client.clone();
-                                let id = id_clone.clone();
-                                let ct = cancel_token.clone();
-                                let permit = concurrency_limit.clone();
-                                page_handles.push(tokio::spawn(async move {
-                                    let _permit = permit.acquire_owned().await.ok();
-                                    if ct.load(std::sync::atomic::Ordering::Relaxed) {
-                                        return (Vec::new(), serde_json::json!({}), false);
-                                    }
-                                    match tokio::time::timeout(
-                                        std::time::Duration::from_secs(15),
-                                        c.fetch_resource_page(&id, 0, 0, res, page),
-                                    )
-                                    .await
-                                    {
-                                        Ok(Ok((items, pager))) => (items, pager, true),
-                                        _ => (Vec::new(), serde_json::json!({}), false),
-                                    }
-                                }));
-                            }
-
-                            let mut page_empty = true;
-                            let mut has_more = false;
-                            for handle in page_handles {
-                                if let Ok((items, pager, ok)) = handle.await {
-                                    if !ok {
-                                        any_fetch_failed = true;
-                                    }
-                                    if !items.is_empty() {
-                                        page_empty = false;
-                                    }
-                                    if pager
-                                        .get("hasMore")
-                                        .and_then(|v| v.as_bool())
-                                        .unwrap_or(false)
-                                    {
-                                        has_more = true;
-                                    }
-                                    for item in items {
-                                        let release =
-                                            crate::providers::moviebox::adapt::moviebox_resource_item_to_release(
-                                                &item,
-                                            );
-                                        if release.season == Some(season)
-                                            && release.episode == Some(episode)
-                                        {
-                                            found_target = true;
-                                        }
-                                        all_items.push(release);
-                                    }
-                                }
-                            }
-
-                            if found_target || page_empty || !has_more {
-                                break 'outer;
-                            }
-                            page += 1;
-                            if page > 60 {
-                                break;
-                            }
-                        }
-                    }
-
-                    let target_ok = if is_movie {
-                        !all_items.is_empty()
-                    } else {
-                        found_target
-                    };
-
-                    if !target_ok || all_items.is_empty() {
-                        let provider_name = context.provider.label();
-                        let err_msg = if any_fetch_failed && all_items.is_empty() {
-                            format!("Network connection failed to {provider_name}")
-                        } else if any_fetch_failed {
-                            format!("Rate limited by {provider_name}")
-                        } else if all_items.is_empty() {
-                            format!("No stream sources available on {provider_name}")
-                        } else {
-                            format!("Episode S{season}E{episode} is not listed on {provider_name}")
-                        };
-                        sender
-                            .send(Action::EpisodeStreamsFailed(
-                                context, request_id, id_clone, season, episode, err_msg,
-                            ))
-                            .ok();
-                    } else {
-                        sender
-                            .send(Action::EpisodeStreamsReady(
-                                context, request_id, id_clone, season, episode, all_items,
-                            ))
-                            .ok();
                     }
                 }));
             }
