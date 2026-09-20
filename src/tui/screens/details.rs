@@ -2805,10 +2805,15 @@ mod tests {
             ],
         };
 
-        let area = Rect::new(0, 0, 120, 30);
+        let area = Rect::new(0, 0, 70, 24);
         let tier = DetailsLayoutTier::for_area(area);
-        let height = tier.header_height(area, Some(&details));
-        assert_eq!(height, 8);
+        let height_with_synopsis = tier.header_height(area, Some(&details));
+        assert_eq!(height_with_synopsis, 8);
+
+        let mut details_empty = details.clone();
+        details_empty.description = None;
+        let height_empty = tier.header_height(area, Some(&details_empty));
+        assert_eq!(height_empty, 5);
     }
 
     #[test]
