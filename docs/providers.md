@@ -8,7 +8,7 @@ shared typed models in `providers/models.rs` and the moviebox JSON schema used b
 
 | Provider | Module | Description |
 | :--- | :--- | :--- |
-| **MovieBox** | `providers/moviebox` | Primary provider. Requires request signing (crypto). |
+| **MovieBox** | `providers/moviebox` | Primary provider. Signed API requests with Edge-Cache and CloudFront DASH manifest resolution. |
 | **FourKHdHub** | `providers/fourkhdhub` | 4K releases; hubcloud mirror resolver. |
 | **BdixCircleFtp** | `providers/bdix/circleftp` | BDIX FTP directory scrapes. |
 | **BdixDhakaFlix** | `providers/bdix/dhakaflix` | BDIX indexer. |
@@ -40,7 +40,7 @@ All internal state (`AppState`), UI screens (`details.rs`, `home.rs`), and the a
 - `Release` (with `Vec<SourceMirror>` and optional `resource_id`) for streams.
 - `SubtitleOption` for external subtitles.
 
-Disk caching in `src/cache.rs` uses high-performance portable binary serialization via `rmp-serde` (MessagePack) with a 4-byte magic signature (`MBC1`) and versioned TTL envelope (`CacheEnvelope<T>`), eliminating all runtime JSON parsing and string allocation bottlenecks.
+Disk caching in `src/cache.rs` uses portable binary serialization via `rmp-serde` (MessagePack) with a 4-byte magic signature (`MBC1`) and versioned TTL envelope (`CacheEnvelope<T>`).
 
 Playback resolves to a `PlaybackSource { provider, url, headers, subtitle, source_label }`,
 which `app/playback.rs::launch_player` feeds to the external player.

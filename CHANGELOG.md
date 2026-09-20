@@ -8,6 +8,33 @@
   - Added multi-dub and language rip resolution supporting original, English, and localized dubs with composite subject ID routing (`{title_id}::{rip}`).
   - Added `ProviderKind::Dramachi` support across `MovieBoxService`, TUI search, details, stream resolution, downloads, settings, and badges (`[Dramachi]`).
 ### Fixed
+- **Logging Engine, Crash Diagnostics & Backtrace Capture**:
+  - Added stack backtrace capture (`std::backtrace::Backtrace::capture()`) and immediate log buffer flushing (`moviebox_tui::logging::flush()`) to `std::panic::set_hook` in `src/main.rs`, ensuring crash locations and backtraces are committed to disk before terminal restoration and process termination.
+  - Retained `LoggerHandle` globally in `src/logging.rs` with graceful fallback to default logging levels if `MOVIEBOX_LOG` contains an invalid level specification.
+  - Re-routed Windows logs directory (`crate::config::logs_dir()`) to Local AppData (`%LOCALAPPDATA%\moviebox-tui\logs`) to align with documentation and avoid roaming enterprise profile sync issues.
+  - Hardened `sanitize_url` in `src/logging.rs` to redact embedded user/password credentials (`user:pass@host`), preserve original URI schemes, and retain port numbers for localhost and custom IPTV ports.
+  - Sanitized and bounded player crash error messages (`clean_player_error`) in `src/tui/app/playback.rs`, preventing unbounded stderr streams and CDN auth tokens from leaking into error logs.
+  - Added desktop player launch banners and clean exit logs with duration tracking to `src/tui/app/playback.rs`.
+  - Added HTTP status code validation (`error_for_status()`) in `DramachiClient` and `CircleFtpClient`, preventing HTTP 403/502/Cloudflare errors from masquerading as misleading JSON parse failures.
+  - Added diagnostic logging for system DNS fallback to public resolvers and probe failure statuses in `src/net.rs`.
+  - Added warning logs for disk write and serialization failures in `src/cache.rs::set_typed_cache`.
+- **BDIX DhakaFlix Configuration Persistence**:
+  - Loaded `bdix_dhakaflix_enabled` from saved configuration in `App::new` (`src/tui/app/mod.rs`), preventing DhakaFlix provider toggle from resetting to disabled upon restarting the application.
+- **M3U Playlist Parser Async Cache Probing**:
+  - Replaced blocking synchronous `file_path.exists()` check in `M3UParser::fetch_playlist` with non-blocking `tokio::fs::try_exists` in `src/providers/tv/parser.rs`, eliminating async event loop stalls during remote playlist caching.
+- **HTTP Client Builder Timeout Floors**:
+  - Enforced baseline connection (`15s`) and request (`60s`) timeout floors in `http_client_builder` (`src/net.rs`) to prevent stalled HTTP connections across external providers without explicit timeouts.
+- **Pruned Dead BDIX Release Stubs**:
+  - Removed unused `resolve_release` identity functions from `CircleFtpClient` and `DhakaFlixClient` (`src/providers/bdix/`).
+- **Hardened Issue Templates & Automated Triage**:
+  - Added `Android (Termux)` option, mandatory pre-flight checklist, and sanitized terminal log output requirement to `.github/ISSUE_TEMPLATE/bug_report.yml`.
+  - Added direct links to GitHub Discussions and Termux setup documentation in `.github/ISSUE_TEMPLATE/config.yml`.
+  - Added automated `incomplete-issue.yml` workflow to flag and comment on vague issue reports lacking diagnostic context.
+  - Added automated `stale.yml` workflow to close unresponsive `needs-info` issues after 7 days.
+- **MovieBox Edge-Cache CDN Stream Manifest Resolution**:
+  - Added `Edge-Cache-Cookie` `urlprefix` Base64 decoding in `resolve_dash_manifest_from_policy` (`src/providers/moviebox/adapt.rs`).
+  - Resolves active multi-quality MPEG-DASH manifests (`https://sbcdn*.hakunaymatata.com/dash/.../index.mpd`) generated under MovieBox's updated CDN token structure.
+  - Fixes playback and stream resolution failure (`No stream sources available`) across movies and episodic series where previous parser only checked for `CloudFront-Policy`.
 - **Settings Sub-Popups & Picker Dialog Anchoring**:
   - Unified sub-popup positioning (`Streaming Sources`, `Default Media Player`, `Theme`, `Browse`) to anchor directly inside Settings & Preferences (`settings_picker_layout` in `src/tui/overlay.rs`) rather than floating into empty screen space on tall terminal windows.
   - Stabilized Settings & Preferences modal height across all category tabs (`General`, `Content Modes`, `Appearance`, `Maintenance`) to 9 rows, eliminating dialog jitter when cycling tabs.
