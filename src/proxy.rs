@@ -264,6 +264,15 @@ async fn handle_connection(
             return Ok(());
         }
     };
+    if let Some(allowed_host) = target_host {
+        let extracted_host = extract_host_authority(&target_url);
+        if extracted_host.as_deref() != Some(allowed_host) {
+            let response =
+                "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+            writer.write_all(response.as_bytes()).await?;
+            return Ok(());
+        }
+    }
 
     let mut req = match method {
         "HEAD" => client.head(&target_url),
@@ -407,7 +416,10 @@ fn extract_target_url(path_and_query: &str) -> Option<String> {
     let raw = path_and_query.strip_prefix('/')?;
     if let Some(rest) = raw.strip_prefix("sub/") {
         if let Ok(decoded) = percent_encoding::percent_decode_str(rest).decode_utf8() {
-            return Some(decoded.into_owned());
+            let s = decoded.into_owned();
+            if s.starts_with("http://") || s.starts_with("https://") {
+                return Some(s);
+            }
         }
     }
     if let Some(rest) = raw.strip_prefix("https/") {
@@ -499,6 +511,20 @@ mod tests {
             Some("https://example.com/fallback.mpd")
         );
         assert_eq!(extract_target_url("/invalid/path"), None);
+    }
+    #[test]
+    fn test_extract_target_url_sub_rejects_non_http() {
+        assert_eq!(
+            extract_target_url("/sub/file%3A%2F%2F%2Fetc%2Fpasswd"),
+            None
+        );
+        assert_eq!(extract_target_url("/sub/data%3Atext%2Fhtml%2Chello"), None);
+        assert!(
+            extract_target_url("/sub/https%3A%2F%2Fcdn.example.com%2Fsub.vtt")
+                .as_deref()
+                .unwrap_or("")
+                .starts_with("https://")
+        );
     }
 
     #[test]

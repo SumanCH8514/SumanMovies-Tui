@@ -40,6 +40,23 @@
   - Added direct links to GitHub Discussions and Termux setup documentation in `.github/ISSUE_TEMPLATE/config.yml`.
   - Added automated `incomplete-issue.yml` workflow to flag and comment on vague issue reports lacking diagnostic context.
   - Added automated `stale.yml` workflow to close unresponsive `needs-info` issues after 7 days.
+- **Security & Terminal Signal Hardening**:
+  - Enforced host authority whitelist validation against `target_host` in local proxy sidecar `handle_connection` (`src/proxy.rs`), returning HTTP 403 Forbidden on host mismatch to prevent Server-Side Request Forgery and unauthorized auth header leakage.
+  - Enforced HTTP and HTTPS scheme validation on percent-decoded subtitle URLs in proxy `extract_target_url` (`src/proxy.rs`), preventing arbitrary URL scheme forwarding.
+  - Registered Unix `SIGTERM` and `SIGHUP` signal handlers in `EventHandler::new` (`src/tui/event.rs`) routing to `Action::Quit`, ensuring proper terminal de-initialization and alternate screen restoration via `TerminalGuard` on process termination.
+  - Replaced silent `reqwest::Client::new` fallbacks with explicit builder `expect` assertions in `MovieBoxClient`, `DhakaFlixClient`, and `CircleFtpClient`, preventing silent networking degradation without shared DNS and connection pooling configurations.
+  - Added canonical path containment checks in `start_resilient_download` (`src/tui/app/download.rs`) ensuring download target paths resolve within the configured download directory tree.
+- **Cross-Platform Compatibility & Player Integration**:
+  - Stripped Windows extended-length verbatim prefix (`\\?\`) in `start_resilient_download` (`src/tui/app/download.rs`), preventing false-positive download containment failures when comparing canonicalized base directories with un-canonicalized target paths.
+  - Added environment variable expansion for `REG_EXPAND_SZ` values in Windows registry queries (`src/player.rs`), allowing automatic discovery of player binaries configured with `%USERPROFILE%`, `%SystemRoot%`, or `%LOCALAPPDATA%` paths.
+  - Retained downloaded local subtitle files for Android intent launches in `src/tui/app/playback.rs` without premature process-exit deletion, avoiding loopback proxy URLs (`http://127.0.0.1:<port>/sub/...`) and allowing external players (VLC, MX Player) to load subtitles from shared storage before background cleanup.
+  - Gated Kitty keyboard enhancement protocol flags (`PushKeyboardEnhancementFlags`) behind `!is_termux_environment()` in `src/main.rs`, preventing unsupported escape sequence noise on mobile touch terminals.
+  - Restricted Termux shared storage subtitle directory probing (`~/storage/downloads/moviebox_subs`) to verified Termux environments in `src/main.rs` and `src/cache.rs`.
+  - Added Flatpak `@@` file forwarding markers for local file and `file://` URLs in `mpv_command` and `vlc_command` (`src/player.rs`), ensuring Flatpak Document portal exports media and subtitle files into sandboxed player containers.
+- **Audio Track Switch Metadata & Synopsis Preservation**:
+  - Preserved rich metadata (duration, synopsis, genres, cast, crew, and clean title) when switching audio dubs on the Details screen in `src/tui/app/requests.rs`.
+  - Resolved an issue where selecting an audio track (e.g. Hindi dub) caused duration (`2h 20m`) to disappear and replaced the multi-line synopsis with a title placeholder (`Ek Deewane Ki Deewaniyat`), breaking visual balance against the poster.
+  - Sanitized window title in `contextual_title` (`src/tui/app/run.rs`) using `clean_moviebox_title` to prevent raw dub tags (`[Hindi]`) from leaking into the terminal window title.
 - **MovieBox Edge-Cache CDN Stream Manifest Resolution**:
   - Added `Edge-Cache-Cookie` `urlprefix` Base64 decoding in `resolve_dash_manifest_from_policy` (`src/providers/moviebox/adapt.rs`).
   - Resolves active multi-quality MPEG-DASH manifests (`https://sbcdn*.hakunaymatata.com/dash/.../index.mpd`) generated under MovieBox's updated CDN token structure.

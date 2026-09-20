@@ -868,32 +868,66 @@ impl App {
                 self.state.details_error = None;
 
                 if let Some(existing) = &self.state.selected_details {
-                    if existing.id.value == id && existing.id.provider == details.id.provider {
-                        if details.title.trim().is_empty() {
+                    let is_same_subject = existing.id.value == id
+                        || existing.dubs.iter().any(|d| d.subject_id == id)
+                        || details
+                            .dubs
+                            .iter()
+                            .any(|d| d.subject_id == existing.id.value)
+                        || crate::providers::moviebox::clean_moviebox_title(&existing.title)
+                            == crate::providers::moviebox::clean_moviebox_title(&details.title);
+
+                    if is_same_subject && existing.id.provider == details.id.provider {
+                        if details.title.trim().is_empty()
+                            || (!existing.title.trim().is_empty()
+                                && crate::providers::moviebox::clean_moviebox_title(&details.title)
+                                    == crate::providers::moviebox::clean_moviebox_title(
+                                        &existing.title,
+                                    ))
+                        {
                             details.title = existing.title.clone();
                         }
-                        if details.description.is_none() {
+                        let is_placeholder_desc = |desc: &Option<String>| {
+                            desc.as_ref().is_none_or(|d| {
+                                let trimmed = d.trim();
+                                trimmed.is_empty()
+                                    || trimmed == "N/A"
+                                    || crate::providers::moviebox::clean_moviebox_title(trimmed)
+                                        == crate::providers::moviebox::clean_moviebox_title(
+                                            &details.title,
+                                        )
+                            })
+                        };
+                        if is_placeholder_desc(&details.description)
+                            && !is_placeholder_desc(&existing.description)
+                        {
                             details.description = existing.description.clone();
                         }
                         if details.poster_url.is_none() {
                             details.poster_url = existing.poster_url.clone();
                         }
-                        if details.year.is_none() {
+                        if details.year.is_none() || details.year.as_deref() == Some("N/A") {
                             details.year = existing.year.clone();
                         }
-                        if details.duration.is_none() {
+                        if details.duration.is_none()
+                            || details.duration.as_deref() == Some("N/A")
+                            || details.duration.as_deref() == Some("")
+                        {
                             details.duration = existing.duration.clone();
                         }
                         if details.genres.is_empty() {
                             details.genres = existing.genres.clone();
                         }
-                        if details.imdb_rating.is_none() {
+                        if details.imdb_rating.is_none()
+                            || details.imdb_rating.as_deref() == Some("N/A")
+                        {
                             details.imdb_rating = existing.imdb_rating.clone();
                         }
-                        if details.director.is_none() {
+                        if details.director.is_none() || details.director.as_deref() == Some("N/A")
+                        {
                             details.director = existing.director.clone();
                         }
-                        if details.stars.is_none() {
+                        if details.stars.is_none() || details.stars.as_deref() == Some("N/A") {
                             details.stars = existing.stars.clone();
                         }
                         if details.dubs.is_empty() {
@@ -902,11 +936,16 @@ impl App {
                     }
                 }
 
-                if let Some(res) = self.state.search_results.iter().find(|r| r.id == id) {
+                if let Some(res) = self.state.search_results.iter().find(|r| {
+                    r.id == id
+                        || details.dubs.iter().any(|d| d.subject_id == r.id)
+                        || crate::providers::moviebox::clean_moviebox_title(&r.title)
+                            == crate::providers::moviebox::clean_moviebox_title(&details.title)
+                }) {
                     if details.title.trim().is_empty() {
                         details.title = res.title.clone();
                     }
-                    if details.year.is_none() {
+                    if details.year.is_none() || details.year.as_deref() == Some("N/A") {
                         details.year = Some(res.release_year.clone());
                     }
                     if details.poster_url.is_none() {
@@ -1944,5 +1983,96 @@ mod tests {
         .await;
 
         assert_eq!(app.state.selected_resources.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_details_success_preserves_rich_metadata_across_dub_switch() {
+        use crate::providers::models::{
+            AudioTrackOption, MediaDetails, MediaType, ProviderMediaId,
+        };
+
+        let mut app = App::new();
+        app.state.active_screen = crate::tui::state::Screen::Details;
+        let original_id = "100".to_string();
+        let dub_id = "200".to_string();
+
+        app.state.selected_details = Some(MediaDetails {
+            id: ProviderMediaId {
+                provider: ProviderKind::MovieBox,
+                value: original_id.clone(),
+            },
+            title: "Ek Deewane Ki Deewaniyat".to_string(),
+            media_type: MediaType::Movie,
+            year: Some("2025".to_string()),
+            description: Some(
+                "When a powerful politician falls for a strong-willed superstar...".to_string(),
+            ),
+            tagline: None,
+            imdb_rating: Some("4.7".to_string()),
+            director: Some("Director Name".to_string()),
+            stars: Some("Actor One, Actor Two".to_string()),
+            prints: None,
+            audios: None,
+            poster_url: Some("https://example.com/poster.jpg".to_string()),
+            duration: Some("2h 20m".to_string()),
+            genres: vec!["Romance".to_string(), "Drama".to_string()],
+            seasons: vec![],
+            dubs: vec![
+                AudioTrackOption {
+                    subject_id: original_id.clone(),
+                    language: "Original".to_string(),
+                    label: "Original".to_string(),
+                },
+                AudioTrackOption {
+                    subject_id: dub_id.clone(),
+                    language: "Hindi".to_string(),
+                    label: "Hindi".to_string(),
+                },
+            ],
+        });
+
+        let dub_details = Box::new(MediaDetails {
+            id: ProviderMediaId {
+                provider: ProviderKind::MovieBox,
+                value: dub_id.clone(),
+            },
+            title: "Ek Deewane Ki Deewaniyat [Hindi]".to_string(),
+            media_type: MediaType::Movie,
+            year: Some("2025".to_string()),
+            description: Some("Ek Deewane Ki Deewaniyat".to_string()),
+            tagline: None,
+            imdb_rating: Some("4.7".to_string()),
+            director: None,
+            stars: None,
+            prints: None,
+            audios: None,
+            poster_url: None,
+            duration: None,
+            genres: vec![],
+            seasons: vec![],
+            dubs: vec![],
+        });
+
+        let context = app.request_context();
+        let request_id = app.state.active_details_request;
+        app.handle_requests(Action::DetailsSuccess(
+            context,
+            request_id,
+            dub_id,
+            dub_details,
+        ))
+        .await;
+
+        let details = app.state.selected_details.as_ref().unwrap();
+        assert_eq!(details.duration.as_deref(), Some("2h 20m"));
+        assert_eq!(
+            details.description.as_deref(),
+            Some("When a powerful politician falls for a strong-willed superstar...")
+        );
+        assert_eq!(details.title, "Ek Deewane Ki Deewaniyat");
+        assert_eq!(details.genres, vec!["Romance", "Drama"]);
+        assert_eq!(details.director.as_deref(), Some("Director Name"));
+        assert_eq!(details.stars.as_deref(), Some("Actor One, Actor Two"));
+        assert_eq!(details.dubs.len(), 2);
     }
 }

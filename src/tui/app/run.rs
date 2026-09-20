@@ -306,8 +306,9 @@ impl App {
             },
             Screen::Details => {
                 if let Some(details) = &self.state.selected_details {
-                    if !details.title.is_empty() {
-                        return format!("MovieBox-Tui — {}", details.title);
+                    let clean = crate::providers::moviebox::clean_moviebox_title(&details.title);
+                    if !clean.is_empty() {
+                        return format!("MovieBox-Tui — {clean}");
                     }
                 }
                 "MovieBox-Tui — Details".to_string()

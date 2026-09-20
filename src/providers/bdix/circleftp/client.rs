@@ -308,5 +308,5 @@ fn build_client() -> reqwest::Client {
     crate::net::http_client_builder()
         .timeout(Duration::from_secs(5))
         .build()
-        .unwrap_or_else(|_| reqwest::Client::new())
+        .expect("circleftp http client")
 }

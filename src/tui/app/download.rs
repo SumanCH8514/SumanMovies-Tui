@@ -78,6 +78,32 @@ impl App {
             )
         };
         let destination = target_dir.join(format!("{base_name}.{extension}"));
+        {
+            let normalize_unc = |p: std::path::PathBuf| -> std::path::PathBuf {
+                #[cfg(windows)]
+                {
+                    let s = p.to_string_lossy();
+                    if let Some(stripped) = s.strip_prefix(r"\\?\") {
+                        return std::path::PathBuf::from(stripped);
+                    }
+                }
+                p
+            };
+            let resolved_base =
+                normalize_unc(std::fs::canonicalize(&base_dir).unwrap_or(base_dir.clone()));
+            let resolved_dest = normalize_unc(
+                std::fs::canonicalize(target_dir.parent().unwrap_or(&target_dir))
+                    .unwrap_or(target_dir.clone()),
+            );
+            if !resolved_dest.starts_with(&resolved_base) {
+                self.state.notify(
+                    NotificationKind::Warning,
+                    "Download blocked",
+                    "Destination path is outside the download directory.",
+                );
+                return;
+            }
+        }
         if is_media_already_downloaded(&target_dir, &base_name) {
             self.state.is_waiting_for_download_stream = false;
             self.state.notify(

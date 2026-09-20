@@ -314,7 +314,9 @@ impl App {
                 match download_res {
                     Ok(path) => {
                         local_subtitle = Some(path.to_string_lossy().into_owned());
-                        temporary_subtitle = Some(path);
+                        if !matches!(kind, crate::tui::state::PlayerKind::AndroidIntent) {
+                            temporary_subtitle = Some(path);
+                        }
                     }
                     Err(_) => {
                         local_subtitle = None;
@@ -346,7 +348,9 @@ impl App {
                     Ok(local_url) => {
                         let sub_url =
                             if matches!(kind, crate::tui::state::PlayerKind::AndroidIntent) {
-                                if let Some(remote_sub) = &subtitle {
+                                if local_subtitle.is_some() {
+                                    local_subtitle.clone()
+                                } else if let Some(remote_sub) = &subtitle {
                                     if let Some(authority) = local_url
                                         .strip_prefix("http://")
                                         .and_then(|s| s.split('/').next())
@@ -357,10 +361,10 @@ impl App {
                                         );
                                         Some(format!("http://{authority}/sub/{encoded}"))
                                     } else {
-                                        local_subtitle.clone()
+                                        None
                                     }
                                 } else {
-                                    local_subtitle.clone()
+                                    None
                                 }
                             } else {
                                 local_subtitle.clone()

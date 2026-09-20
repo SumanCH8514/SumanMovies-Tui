@@ -678,7 +678,9 @@ pub fn clear_all_cache() -> Result<(), String> {
             let _ = fs::remove_dir(&legacy);
         }
     }
-    if let Some(home) = dirs::home_dir() {
+    if crate::updater::artifact::is_termux_environment()
+        && let Some(home) = dirs::home_dir()
+    {
         let storage = home.join("storage/downloads/moviebox_subs");
         if storage.exists() {
             purge_subtitle_cache_files(&storage, &mut errors);
