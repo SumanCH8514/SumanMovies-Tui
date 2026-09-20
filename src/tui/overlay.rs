@@ -45,6 +45,48 @@ pub fn picker_layout(
     )
 }
 
+pub fn settings_picker_layout(
+    area: Rect,
+    category: crate::tui::state::SettingsCategory,
+    items: &[String],
+    minimum_width: u16,
+) -> Rect {
+    let settings_area = settings_modal_layout(area, category);
+    let max_item_w = items
+        .iter()
+        .map(|item| crate::tui::text::width(item))
+        .max()
+        .unwrap_or(0);
+    let max_avail_w = settings_area.width.saturating_sub(2).max(1);
+    let min_w = minimum_width.min(max_avail_w).max(1);
+    let content_width = (max_item_w as u16 + 4).clamp(min_w, max_avail_w);
+    let visible_rows = items.len().clamp(1, max_picker_rows(area).min(items.len()));
+    let popup_height = (visible_rows as u16 + 2).min(area.height.saturating_sub(2));
+    let x = settings_area.x + settings_area.width.saturating_sub(content_width) / 2;
+    let y = settings_area.y + settings_area.height.saturating_sub(popup_height) / 2;
+    let y = y.min(area.bottom().saturating_sub(popup_height));
+    Rect::new(x, y, content_width, popup_height)
+}
+
+pub fn browse_picker_layout(area: Rect, items: &[String], minimum_width: u16) -> Rect {
+    let visible_rows = items.len().clamp(1, max_picker_rows(area));
+    let content_width = items
+        .iter()
+        .map(|item| crate::tui::text::width(item))
+        .max()
+        .unwrap_or(0)
+        .saturating_add(2);
+    let popup_width = (content_width as u16)
+        .max(minimum_width.min(area.width.saturating_sub(2)))
+        .min(64)
+        .min(area.width.saturating_sub(2));
+    let popup_height = (visible_rows as u16 + 2).min(area.height.saturating_sub(2));
+    let x = area.x + area.width.saturating_sub(popup_width) / 2;
+    let search_y = home_search_y(area);
+    let y = search_y.min(area.bottom().saturating_sub(popup_height));
+    Rect::new(x, y, popup_width, popup_height)
+}
+
 pub(crate) fn home_search_y(area: Rect) -> u16 {
     if area.height >= 24 {
         if area.width < 76 {
@@ -119,7 +161,7 @@ pub fn addon_manager_layout(
 pub fn settings_modal_layout(area: Rect, category: crate::tui::state::SettingsCategory) -> Rect {
     let min_width = 44u16.min(area.width.saturating_sub(2));
     let popup_width = 68u16.min(area.width.saturating_sub(2)).max(min_width);
-    let content_height = (category.row_count() as u16).max(1);
+    let content_height = (category.row_count() as u16).max(5);
     let popup_height = (content_height + 4).min(area.height.saturating_sub(2));
     let available_width = area.width.saturating_sub(2).max(1);
     let width = popup_width.min(available_width);
@@ -237,6 +279,30 @@ pub fn picker(
     theme: &Theme,
     basic_terminal: bool,
 ) {
+    let popup = picker_layout(area, items, spec.confirm_label, spec.minimum_width);
+    picker_at(
+        frame,
+        area,
+        popup,
+        items,
+        state,
+        spec,
+        theme,
+        basic_terminal,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn picker_at(
+    frame: &mut Frame,
+    area: Rect,
+    popup: Rect,
+    items: &[String],
+    state: &mut ListState,
+    spec: PickerSpec<'_>,
+    theme: &Theme,
+    basic_terminal: bool,
+) {
     let padded_items: Vec<String> = items.iter().map(|item| format!("  {item}  ")).collect();
     let lines: Vec<Line<'static>> = items
         .iter()
@@ -248,9 +314,10 @@ pub fn picker(
             ])
         })
         .collect();
-    picker_with_lines(
+    picker_with_lines_at(
         frame,
         area,
+        popup,
         &lines,
         &padded_items,
         state,
@@ -271,12 +338,36 @@ pub fn picker_with_lines<'a>(
     theme: &Theme,
     basic_terminal: bool,
 ) {
+    let popup = picker_layout(area, raw_items, spec.confirm_label, spec.minimum_width);
+    picker_with_lines_at(
+        frame,
+        area,
+        popup,
+        lines,
+        raw_items,
+        state,
+        spec,
+        theme,
+        basic_terminal,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn picker_with_lines_at<'a>(
+    frame: &mut Frame,
+    area: Rect,
+    popup: Rect,
+    lines: &[Line<'a>],
+    _raw_items: &[String],
+    state: &mut ListState,
+    spec: PickerSpec<'_>,
+    theme: &Theme,
+    basic_terminal: bool,
+) {
     let selected = state
         .selected()
         .unwrap_or(0)
         .min(lines.len().saturating_sub(1));
-    let visible_rows = lines.len().clamp(1, max_picker_rows(area));
-    let popup = picker_layout(area, raw_items, spec.confirm_label, spec.minimum_width);
     let title = if spec.title.is_empty() {
         String::new()
     } else if spec.show_counter && lines.len() > 1 {
@@ -291,7 +382,6 @@ pub fn picker_with_lines<'a>(
     };
     let inner = crate::tui::widgets::ModalFrame::new(&title, theme, basic_terminal)
         .render(frame, popup, area);
-
     let list_items = lines
         .iter()
         .map(|line| ListItem::new(line.clone()).style(theme.text))
@@ -301,6 +391,7 @@ pub fn picker_with_lines<'a>(
         .highlight_symbol("");
     frame.render_stateful_widget(list, inner, state);
 
+    let visible_rows = inner.height as usize;
     if lines.len() > visible_rows {
         crate::tui::widgets::render_scrollbar(
             frame,
@@ -748,53 +839,51 @@ pub fn update_modal_layout_with_env(
     notes: &str,
     has_managed_notice: bool,
 ) -> UpdateModalLayout {
-    let note_lines_count = notes
-        .lines()
-        .map(|l| l.trim())
-        .filter(|l| !l.is_empty())
-        .filter(|l| {
-            let lower = l.to_ascii_lowercase();
-            !lower.contains("read full changelog")
-                && !lower.contains("press [o]")
-                && !lower.contains("press o to")
-        })
-        .count()
-        .max(1);
+    let mut count = 0;
+    for line in notes.lines() {
+        let trimmed = line.trim();
+        if !trimmed.is_empty()
+            && !trimmed.starts_with('#')
+            && !trimmed.to_ascii_lowercase().contains("read full changelog")
+            && !trimmed.to_ascii_lowercase().contains("press [o]")
+        {
+            count += 1;
+        }
+    }
+    let note_lines_count = count.max(1);
 
-    let min_w: u16 = 50;
-    let max_w: u16 = 76;
+    let min_w: u16 = 48;
+    let max_w: u16 = 64;
     let available_w = area.width.saturating_sub(4);
     let desired_w = max_w.min(available_w).max(min_w.min(available_w));
 
-    let header_rows: u16 = if has_managed_notice { 5 } else { 4 };
-    let footer_rows: u16 = 3;
+    let managed_rows: u16 = if has_managed_notice { 1 } else { 0 };
     let available_height = area.height.saturating_sub(4);
     let available_note_rows =
-        (available_height.saturating_sub(header_rows + footer_rows + 2) as usize).clamp(1, 16);
+        (available_height.saturating_sub(managed_rows + 4) as usize).clamp(1, 10);
 
     let display_count = note_lines_count.min(available_note_rows);
     let has_more = note_lines_count > display_count;
-    let total_rows = header_rows + (display_count as u16) + footer_rows + 2;
-    let desired_h = total_rows.min(available_height.max(8));
+    let total_rows = (display_count as u16) + managed_rows + 4;
+    let desired_h = total_rows.min(available_height.max(6));
 
-    const UPDATE_SEGMENT: u16 = 18;
-    const OPEN_SEGMENT: u16 = 26;
-    const DISMISS_SEGMENT: u16 = 14;
+    const UPDATE_SEGMENT: u16 = 14;
+    const OPEN_SEGMENT: u16 = 14;
 
-    let popup_area = centered(area, desired_w, desired_h, min_w.min(available_w), max_w);
-    let (update_seg, open_seg, dismiss_seg) = if popup_area.width < 60 {
-        (12, 10, 10)
-    } else {
-        (UPDATE_SEGMENT, OPEN_SEGMENT, DISMISS_SEGMENT)
-    };
-    let footer_width = update_seg + open_seg + dismiss_seg;
+    let available_width = area.width.saturating_sub(2).max(1);
+    let width = desired_w.min(available_width);
+    let x = area.x + area.width.saturating_sub(width) / 2;
+    let search_y = home_search_y(area);
+    let y = search_y.min(area.bottom().saturating_sub(desired_h));
+    let popup_area = Rect::new(x, y, width, desired_h);
+    let footer_width = UPDATE_SEGMENT + OPEN_SEGMENT;
 
-    let button_row_y = popup_area.y + popup_area.height.saturating_sub(3);
+    let button_row_y = popup_area.bottom().saturating_sub(1);
     let inner_width = popup_area.width.saturating_sub(2);
     let footer_start = popup_area.x + 1 + inner_width.saturating_sub(footer_width) / 2;
-    let update_btn_end_x = footer_start + update_seg;
-    let open_btn_end_x = update_btn_end_x + open_seg;
-    let open_button_midpoint_x = update_btn_end_x + open_seg / 2;
+    let update_btn_end_x = footer_start + UPDATE_SEGMENT;
+    let open_btn_end_x = update_btn_end_x + OPEN_SEGMENT;
+    let open_button_midpoint_x = update_btn_end_x + OPEN_SEGMENT / 2;
     UpdateModalLayout {
         popup_area,
         display_count,
@@ -816,17 +905,18 @@ mod tests {
         let notes = "Line 1\nLine 2\nLine 3\nLine 4";
         let layout = update_modal_layout(area, notes);
 
-        assert_eq!(layout.popup_area.width, 76);
-        assert_eq!(layout.display_count, 4);
-        assert!(!layout.has_more);
-        assert_eq!(layout.popup_area.height, 13);
-        assert_eq!(layout.popup_area.x, (80 - 76) / 2);
-        assert_eq!(layout.popup_area.y, (24 - 13) / 2);
-        assert_eq!(layout.button_row_y, layout.popup_area.y + 10);
-        let footer_start = layout.popup_area.x + 1 + (74 - 58) / 2;
-        assert_eq!(layout.update_btn_end_x, footer_start + 18);
-        assert_eq!(layout.open_btn_end_x, layout.update_btn_end_x + 26);
-        assert_eq!(layout.open_button_midpoint_x, layout.update_btn_end_x + 13);
+        assert_eq!(layout.popup_area.width, 64);
+        assert_eq!(layout.popup_area.height, 8);
+        assert_eq!(layout.popup_area.x, (80 - 64) / 2);
+        assert_eq!(layout.popup_area.y, home_search_y(area));
+        assert_eq!(
+            layout.button_row_y,
+            layout.popup_area.bottom().saturating_sub(1)
+        );
+        let footer_start = layout.popup_area.x + 1 + (62 - 28) / 2;
+        assert_eq!(layout.update_btn_end_x, footer_start + 14);
+        assert_eq!(layout.open_btn_end_x, layout.update_btn_end_x + 14);
+        assert_eq!(layout.open_button_midpoint_x, layout.update_btn_end_x + 7);
     }
 
     #[test]
@@ -904,9 +994,9 @@ mod tests {
         assert!(compact.has_more);
 
         let large = update_modal_layout(Rect::new(0, 0, 160, 50), notes);
-        assert_eq!(large.popup_area.width, 76);
-        assert_eq!(large.display_count, 11);
-        assert!(!large.has_more);
+        assert_eq!(large.popup_area.width, 64);
+        assert_eq!(large.display_count, 10);
+        assert!(large.has_more);
     }
 
     #[test]
@@ -1113,5 +1203,99 @@ mod tests {
         assert_eq!(input_layout.y, 11);
         assert_eq!(input_layout.width, 48);
         assert_eq!(input_layout.x, 16);
+    }
+    #[test]
+    fn test_picker_layouts_cross_platform_tiers() {
+        let items = vec![
+            "MovieBox".to_string(),
+            "4KHDHub".to_string(),
+            "Dramachi".to_string(),
+            "CircleFTP (BDIX)".to_string(),
+        ];
+        let dimensions = [
+            (200, 60),
+            (120, 40),
+            (80, 24),
+            (60, 20),
+            (45, 18),
+            (35, 14),
+            (20, 10),
+        ];
+        for (w, h) in dimensions {
+            let area = Rect::new(0, 0, w, h);
+            let layout = settings_picker_layout(
+                area,
+                crate::tui::state::SettingsCategory::ContentModes,
+                &items,
+                20,
+            );
+            assert!(layout.x >= area.x);
+            assert!(layout.y >= area.y);
+            assert!(layout.right() <= area.right());
+            assert!(layout.bottom() <= area.bottom());
+
+            let browse = browse_picker_layout(area, &items, 36);
+            assert!(browse.x >= area.x);
+            assert!(browse.y >= area.y);
+            assert!(browse.right() <= area.right());
+            assert!(browse.bottom() <= area.bottom());
+        }
+    }
+    #[test]
+    fn test_picker_with_lines_at_basic_terminal_rendering() {
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+
+        let area = Rect::new(0, 0, 80, 24);
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let theme = Theme::mocha();
+        let items = vec![
+            "Item 1".to_string(),
+            "Item 2".to_string(),
+            "Item 3".to_string(),
+        ];
+        let lines: Vec<Line> = items.iter().map(|s| Line::from(s.clone())).collect();
+        let mut state = ListState::default();
+        state.select(Some(0));
+
+        let popup = settings_picker_layout(
+            area,
+            crate::tui::state::SettingsCategory::General,
+            &items,
+            20,
+        );
+
+        terminal
+            .draw(|f| {
+                picker_with_lines_at(
+                    f,
+                    area,
+                    popup,
+                    &lines,
+                    &items,
+                    &mut state,
+                    PickerSpec {
+                        title: "Pick",
+                        confirm_label: "Select",
+                        minimum_width: 20,
+                        show_counter: false,
+                    },
+                    &theme,
+                    true,
+                );
+            })
+            .unwrap();
+
+        let buffer = terminal.backend().buffer();
+        let content = buffer
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+
+        assert!(content.contains("Item 1"));
+        assert!(!content.contains("╭"));
+        assert!(!content.contains("╰"));
     }
 }

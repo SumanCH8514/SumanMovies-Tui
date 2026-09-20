@@ -1342,31 +1342,29 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &mut AppState, theme: &Theme) 
             ])
             .split(vertical_chunks[rows.version]);
 
-        let modal_active = state.has_active_modal() || state.show_settings_popup;
         let update_active = (state.update_available.is_some()
             && state.input_mode != InputMode::Editing)
             || state.is_updating;
-        if !update_active {
-            let logo_style = if modal_active {
-                theme.overlay0
-            } else {
-                theme.title
-            };
-            let title_art = Paragraph::new(logo_text)
-                .alignment(Alignment::Left)
-                .style(logo_style);
-            frame.render_widget(title_art, horizontal_chunks[1]);
+        let modal_active = state.has_active_modal() || state.show_settings_popup || update_active;
+        let logo_style = if modal_active {
+            theme.overlay0
+        } else {
+            theme.title
+        };
+        let title_art = Paragraph::new(logo_text)
+            .alignment(Alignment::Left)
+            .style(logo_style);
+        frame.render_widget(title_art, horizontal_chunks[1]);
 
-            let version_style = if modal_active {
-                theme.muted
-            } else {
-                theme.text_dim
-            };
-            let version = Paragraph::new(format!("v{}", env!("CARGO_PKG_VERSION")))
-                .alignment(Alignment::Right)
-                .style(version_style);
-            frame.render_widget(version, version_chunks[1]);
-        }
+        let version_style = if modal_active {
+            theme.muted
+        } else {
+            theme.text_dim
+        };
+        let version = Paragraph::new(format!("v{}", env!("CARGO_PKG_VERSION")))
+            .alignment(Alignment::Right)
+            .style(version_style);
+        frame.render_widget(version, version_chunks[1]);
 
         let card_width = search_deck_width(area, state, true);
         let card_x = area.x + area.width.saturating_sub(card_width) / 2;
@@ -2150,9 +2148,11 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &mut AppState, theme: &Theme) 
             })
             .collect();
 
-        crate::tui::overlay::picker_with_lines(
+        let popup = crate::tui::overlay::browse_picker_layout(area, &raw_items, 36);
+        crate::tui::overlay::picker_with_lines_at(
             frame,
             area,
+            popup,
             &lines,
             &raw_items,
             &mut state.browse_list_state,
@@ -3783,7 +3783,7 @@ mod tests {
     }
 
     #[test]
-    fn test_home_banner_suppressed_when_update_modal_active() {
+    fn test_home_search_bar_suppressed_when_update_modal_active() {
         let backend = TestBackend::new(100, 30);
         let mut terminal = Terminal::new(backend).unwrap();
         let mut state = AppState {
@@ -3806,7 +3806,7 @@ mod tests {
             .map(|cell| cell.symbol())
             .collect::<String>();
 
-        assert!(!content.contains(&format!("v{}", env!("CARGO_PKG_VERSION"))));
+        assert!(!content.contains("Search movies"));
     }
 
     #[test]

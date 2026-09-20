@@ -65,9 +65,23 @@ impl App {
                 .iter()
                 .map(|k| format!("  {}  ", k.label()))
                 .collect::<Vec<_>>();
-            let confirm_label = "Select";
+            let confirm_label = if self.state.settings_player_picker {
+                "Select"
+            } else {
+                "Play"
+            };
+            let layout = if self.state.settings_player_picker {
+                crate::tui::overlay::settings_picker_layout(
+                    area,
+                    self.state.settings_category,
+                    &items,
+                    10,
+                )
+            } else {
+                crate::tui::overlay::picker_layout(area, &items, confirm_label, 10)
+            };
             match click_in_picker(
-                crate::tui::overlay::picker_layout(area, &items, confirm_label, 10),
+                layout,
                 col,
                 row,
                 &self.state.player_picker_state,
@@ -91,8 +105,14 @@ impl App {
                 .iter()
                 .map(|p| format!("  [✓] {}  ", p.label()))
                 .collect::<Vec<_>>();
+            let layout = crate::tui::overlay::settings_picker_layout(
+                area,
+                self.state.settings_category,
+                &items,
+                20,
+            );
             match click_in_picker(
-                crate::tui::overlay::picker_layout(area, &items, "Toggle", 20),
+                layout,
                 col,
                 row,
                 &self.state.sources_list_state,
@@ -134,8 +154,18 @@ impl App {
                     }
                 })
                 .collect();
+            let layout = if self.state.show_settings_popup {
+                crate::tui::overlay::settings_picker_layout(
+                    area,
+                    self.state.settings_category,
+                    &items,
+                    16,
+                )
+            } else {
+                crate::tui::overlay::picker_layout(area, &items, "Apply", 16)
+            };
             match click_in_picker(
-                crate::tui::overlay::picker_layout(area, &items, "Apply", 16),
+                layout,
                 col,
                 row,
                 &self.state.theme_list_state,
@@ -233,8 +263,9 @@ impl App {
                     format!("  {badge_str}{label}  ")
                 })
                 .collect();
+            let layout = crate::tui::overlay::browse_picker_layout(area, &browse_items, 36);
             match click_in_picker(
-                crate::tui::overlay::picker_layout(area, &browse_items, "Open", 36),
+                layout,
                 col,
                 row,
                 &self.state.browse_list_state,

@@ -8,6 +8,16 @@
   - Added multi-dub and language rip resolution supporting original, English, and localized dubs with composite subject ID routing (`{title_id}::{rip}`).
   - Added `ProviderKind::Dramachi` support across `MovieBoxService`, TUI search, details, stream resolution, downloads, settings, and badges (`[Dramachi]`).
 ### Fixed
+- **Settings Sub-Popups & Picker Dialog Anchoring**:
+  - Unified sub-popup positioning (`Streaming Sources`, `Default Media Player`, `Theme`, `Browse`) to anchor directly inside Settings & Preferences (`settings_picker_layout` in `src/tui/overlay.rs`) rather than floating into empty screen space on tall terminal windows.
+  - Stabilized Settings & Preferences modal height across all category tabs (`General`, `Content Modes`, `Appearance`, `Maintenance`) to 9 rows, eliminating dialog jitter when cycling tabs.
+  - Synchronized mouse click detection in `src/tui/app/mouse.rs` with `settings_picker_layout` and `browse_picker_layout`.
+- **Update Modal Minimalist Redesign & Single-Surface Card**:
+  - Redesigned update popup from a multi-compartment divided box into a clean, single-surface dialog card (`src/tui/overlay.rs` and `src/tui/app/run.rs`).
+  - Embedded version directly in the top title frame (`Update Available: vX.Y.Z`) and docked primary actions directly into the bottom border (`[u] Update ──── [o] GitHub`), eliminating all internal divider lines and wasted vertical padding.
+  - Unified modal positioning by anchoring both update notification and in-progress update modals directly at the landing search bar position (`home_search_y`), keeping the dimmed ASCII logo visible above while focusing full attention on update progress.
+  - Integrated category badges inline with release highlights (`[Added]`, `[Fixed]`, `[Changed]`, `[Perf]`) while retaining full Markdown compatibility with GitHub release notes.
+  - Streamlined in-progress update modal into a compact 42-column status pill (`Updating: vX.Y.Z`) displaying active mechanical stage (`Downloading release`, `Verifying checksum`, `Installing binary`) without noisy warning labels or type mixing.
 - **Details Poster Geometry Stability Across Dub Synopsis Lengths**:
   - Locked `content_rows` to 6 in `DetailsLayoutTier::header_height` (`src/tui/screens/details.rs`) when `show_poster` is active, maintaining consistent 8-row header height and 6-row poster container dimensions.
   - Prevented poster image shrinking and header layout shifts caused by variable synopsis text lengths across audio dubs and releases.
