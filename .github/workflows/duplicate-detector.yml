@@ -20,6 +20,5 @@ jobs:
           comment: |
             Potential duplicate detected: #{number}.
 
-            Please review that issue to check if your problem or suggestion has already been addressed.
-          labels: duplicate
+            Check that issue to see if this has already been reported or resolved.
           close-issue: false
