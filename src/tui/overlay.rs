@@ -60,7 +60,7 @@ pub fn settings_picker_layout(
     let max_avail_w = settings_area.width.saturating_sub(2).max(1);
     let min_w = minimum_width.min(max_avail_w).max(1);
     let content_width = (max_item_w as u16 + 4).clamp(min_w, max_avail_w);
-    let visible_rows = items.len().clamp(1, max_picker_rows(area).min(items.len()));
+    let visible_rows = items.len().clamp(1, max_picker_rows(area));
     let popup_height = (visible_rows as u16 + 2).min(area.height.saturating_sub(2));
     let x = settings_area.x + settings_area.width.saturating_sub(content_width) / 2;
     let y = settings_area.y + settings_area.height.saturating_sub(popup_height) / 2;
@@ -1297,5 +1297,18 @@ mod tests {
         assert!(content.contains("Item 1"));
         assert!(!content.contains("╭"));
         assert!(!content.contains("╰"));
+    }
+    #[test]
+    fn test_settings_picker_layout_empty_items_does_not_panic() {
+        let area = Rect::new(0, 0, 80, 24);
+        let items: Vec<String> = Vec::new();
+        let layout = settings_picker_layout(
+            area,
+            crate::tui::state::SettingsCategory::General,
+            &items,
+            20,
+        );
+        assert!(layout.width >= 20);
+        assert!(layout.height >= 3);
     }
 }
