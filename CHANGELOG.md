@@ -8,6 +8,9 @@
   - Added multi-dub and language rip resolution supporting original, English, and localized dubs with composite subject ID routing (`{title_id}::{rip}`).
   - Added `ProviderKind::Dramachi` support across `MovieBoxService`, TUI search, details, stream resolution, downloads, settings, and badges (`[Dramachi]`).
 ### Fixed
+- **Stream Proxy Subtitle Whitelist & Scope Isolation**:
+  - Permitted external subtitle CDN hosts in `src/proxy.rs` proxy connection validation, preventing HTTP 403 errors when media players fetch external subtitle tracks alongside DASH stream manifests.
+  - Scoped authentication headers exclusively to target video hosts, preventing credential spillage to subtitle CDNs.
 - **Stremio Addon Mode Series Metadata Resolution & Episode Picker**:
   - Encoded media type hints into Addon catalog and search results (`series:{id}` and `movie:{id}`) in `src/providers/addons/adapter.rs`, preserving search intent across preview prefetching and details resolution.
   - Hardened metadata probing in `AddonClient::details` (`src/providers/addons/mod.rs`) to prioritize `series` queries and check for episode videos (`!videos.is_empty()`) before falling back to `movie`, resolving an issue where series (e.g. Breaking Bad) fell back to corrupted movie metadata ("Mirror") lacking episode lists.

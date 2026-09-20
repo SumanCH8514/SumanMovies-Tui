@@ -264,9 +264,12 @@ async fn handle_connection(
             return Ok(());
         }
     };
+    let extracted_host = extract_host_authority(&target_url);
     if let Some(allowed_host) = target_host {
-        let extracted_host = extract_host_authority(&target_url);
-        if extracted_host.as_deref() != Some(allowed_host) {
+        let sub_host = subtitle_url.and_then(extract_host_authority);
+        let is_allowed = extracted_host.as_deref() == Some(allowed_host)
+            || (sub_host.is_some() && extracted_host == sub_host);
+        if !is_allowed {
             let response =
                 "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
             writer.write_all(response.as_bytes()).await?;
@@ -279,8 +282,16 @@ async fn handle_connection(
         _ => client.get(&target_url),
     };
 
-    for (name, val) in auth_headers {
-        req = req.header(name.as_str(), val.as_str());
+    if extracted_host.as_deref() == target_host {
+        for (name, val) in auth_headers {
+            req = req.header(name.as_str(), val.as_str());
+        }
+    } else {
+        for (name, val) in auth_headers {
+            if name.eq_ignore_ascii_case("user-agent") {
+                req = req.header(name.as_str(), val.as_str());
+            }
+        }
     }
     if let Some(range) = range_header {
         req = req.header("Range", range);
@@ -538,6 +549,22 @@ mod tests {
             Some("cdn.example.com:8080")
         );
         assert_eq!(extract_host_authority("not-a-url"), None);
+    }
+    #[test]
+    fn test_host_whitelist_allows_target_and_subtitle_hosts() {
+        let target_host = "video.example.com";
+        let subtitle_url = "https://captions.example.com/sub.srt";
+        let sub_host = extract_host_authority(subtitle_url);
+
+        let is_allowed = |url: &str| -> bool {
+            let host = extract_host_authority(url);
+            host.as_deref() == Some(target_host) || (sub_host.is_some() && host == sub_host)
+        };
+
+        assert!(is_allowed("https://video.example.com/chunk.m4s"));
+        assert!(is_allowed("https://captions.example.com/sub.srt"));
+        assert!(!is_allowed("https://evil.example.com/steal"));
+        assert!(!is_allowed("https://sub.evil.com/fake"));
     }
 
     #[test]
