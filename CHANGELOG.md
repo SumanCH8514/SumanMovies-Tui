@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.1.22] - 2026-09-21
 ### Added
 - **Dramachi Native Streaming Provider**:
   - Integrated Dramachi as a native streaming provider for Asian dramas, K-dramas, C-dramas, anime, and movies via `https://api.nodeobjects.com/`.
@@ -26,6 +26,7 @@
   - Reset `active_screen` to `Screen::Home` in `reset_mode_state` (`src/tui/app/tv.rs`), preventing orphaned Details screen states when switching between TV and Streaming modes.
 - **Logging Engine, Crash Diagnostics & Backtrace Capture**:
   - Added stack backtrace capture (`std::backtrace::Backtrace::capture()`) and immediate log buffer flushing (`moviebox_tui::logging::flush()`) to `std::panic::set_hook` in `src/main.rs`, ensuring crash locations and backtraces are committed to disk before terminal restoration and process termination.
+  - Standardized default file log level to `info` across all builds in `src/logging.rs`, ensuring session startup metadata, player lifecycle commands, and exit durations are consistently captured without requiring manual `MOVIEBOX_LOG` configuration.
   - Retained `LoggerHandle` globally in `src/logging.rs` with graceful fallback to default logging levels if `MOVIEBOX_LOG` contains an invalid level specification.
   - Re-routed Windows logs directory (`crate::config::logs_dir()`) to Local AppData (`%LOCALAPPDATA%\moviebox-tui\logs`) to align with documentation and avoid roaming enterprise profile sync issues.
   - Hardened `sanitize_url` in `src/logging.rs` to redact embedded user/password credentials (`user:pass@host`), preserve original URI schemes, and retain port numbers for localhost and custom IPTV ports.

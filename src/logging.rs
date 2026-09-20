@@ -4,11 +4,7 @@ use std::sync::OnceLock;
 static LOGGER_HANDLE: OnceLock<LoggerHandle> = OnceLock::new();
 
 pub fn init() {
-    let default_level = if cfg!(debug_assertions) {
-        "info"
-    } else {
-        "warn"
-    };
+    let default_level = "info";
     let spec = std::env::var("MOVIEBOX_LOG")
         .ok()
         .filter(|value| !value.is_empty())
