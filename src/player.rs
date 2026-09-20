@@ -410,7 +410,8 @@ fn mpv_command(
     if !iina {
         command.arg("--idle=no").arg("--keep-open=no");
     }
-
+    command.arg(format!("{prefix}ytdl-format=bestvideo+bestaudio/best"));
+    command.arg(format!("{prefix}hls-bitrate=max"));
     if let Some(start) = resume_seconds {
         if start > 0 {
             command.arg(format!("{prefix}start={start}"));
@@ -627,7 +628,7 @@ fn vlc_command(
             .arg(format!("--height={height}"));
     }
     command.arg("--play-and-exit");
-
+    command.arg("--adaptive-logic=highest");
     if let Some(start) = resume_seconds {
         if start > 0 {
             command.arg(format!("--start-time={start}"));

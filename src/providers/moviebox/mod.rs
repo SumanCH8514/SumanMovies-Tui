@@ -62,16 +62,74 @@ impl crate::providers::ReleaseProvider for client::MovieBoxClient {
         season: usize,
         episode: usize,
     ) -> Result<Vec<crate::providers::models::Release>, ProviderError> {
-        let json = self
-            .get_play_info(id, season, episode)
-            .await
-            .map_err(ProviderError::from)?;
-        Ok(adapt::moviebox_play_info_json_to_releases(
-            &json,
-            season,
-            episode,
-            self.user_agent(),
-        ))
+        let (play_info_res, resources_res) = tokio::join!(
+            self.get_play_info(id, season, episode),
+            self.get_resources(
+                id,
+                season,
+                episode,
+                if episode > 0 {
+                    (episode - 1) / 20 + 1
+                } else {
+                    1
+                },
+                None,
+                20,
+            )
+        );
+
+        let mut releases = Vec::new();
+        let mut seen_urls = std::collections::HashSet::new();
+
+        if let Ok(json) = play_info_res {
+            for rel in adapt::moviebox_play_info_json_to_releases(
+                &json,
+                season,
+                episode,
+                self.user_agent(),
+            ) {
+                if let Some(url) = rel.direct_url() {
+                    let base = url.split('?').next().unwrap_or(url).to_string();
+                    if !base.is_empty() {
+                        seen_urls.insert(base);
+                    }
+                }
+                releases.push(rel);
+            }
+        }
+
+        if let Ok(res_json) = resources_res {
+            for rel in adapt::moviebox_resource_json_to_releases(&res_json) {
+                if let Some(url) = rel.direct_url() {
+                    let base = url.split('?').next().unwrap_or(url).to_string();
+                    if !base.is_empty() && seen_urls.contains(&base) {
+                        continue;
+                    }
+                    seen_urls.insert(base);
+                }
+                if (season == 0 && episode == 0)
+                    || (rel.season == Some(season) && rel.episode == Some(episode))
+                    || (rel.season.is_none() && rel.episode.is_none())
+                {
+                    releases.push(rel);
+                }
+            }
+        }
+
+        if releases.is_empty() {
+            return Err(ProviderError::Unavailable(
+                "No stream sources available".to_string(),
+            ));
+        }
+
+        releases.sort_by(|left, right| {
+            right
+                .resolution_u64()
+                .cmp(&left.resolution_u64())
+                .then_with(|| right.size_bytes.cmp(&left.size_bytes))
+        });
+
+        Ok(releases)
     }
 }
 

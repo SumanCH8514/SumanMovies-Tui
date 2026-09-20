@@ -24,6 +24,14 @@
   - Prevented blank audio track gap in episode details by mapping standalone `"Dub"` version tags to `"English Dub"` in `clean_language_name` (`src/tui/screens/details.rs`).
   - Added native `540p` resolution badge mapping in `src/tui/widgets/badge.rs` to distinguish true `540p` media encodes from `480p`.
   - Deduplicated episode entries in `src/providers/dramachi/client.rs` across multi-resolution manifests, preventing duplicate episode rows while sorting available streams in descending resolution priority.
+- **4KHDHub Resolution Detection & Numeric Sorting**:
+  - Expanded `detect_quality` in `src/providers/fourkhdhub/parser.rs` to detect `4K`, `UHD`, `2160`, `1080`, `FHD`, `720`, `HD`, and `480` tokens.
+  - Replaced ASCII string sorting with numeric resolution sorting (`resolution_u64()` descending, then `size_bytes` descending) in `parse_releases`, ensuring 4K UHD BluRay REMUXes prioritize ahead of lower-resolution streams.
+- **MovieBox High-Bitrate Server Catalog Merging**:
+  - Merged mobile DASH manifests (`/subject-api/play-info/v2`) and full-bitrate server files (`/subject-api/resource`) concurrently in `MovieBoxClient::episode_streams` (`src/providers/moviebox/mod.rs`), deduplicating stream links and sorting releases by numeric resolution and size.
+- **External Player Adaptive Quality Optimization**:
+  - Added `--ytdl-format=bestvideo+bestaudio/best` and `--hls-bitrate=max` to `mpv` command invocation in `src/player.rs` to prevent adaptive demuxers from locking into low-bitrate streams.
+  - Added `--adaptive-logic=highest` to VLC invocation in `src/player.rs`.
 ### Changed
 - **Minimalist Addon Manager Modal Redesign & Balanced Geometry**:
   - Streamlined Addon Manager popup into a content-fitted modal matching the provider popup design language, eliminating empty right-side letterboxing and arbitrary vertical blank gaps.
