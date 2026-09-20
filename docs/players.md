@@ -40,7 +40,10 @@ The `supports_headers` gate in `app/playback.rs` validates whether a player can 
 - VLC and IINA download the subtitle to a temp file first, preserving the URL's
   extension (srt/vtt/ass/…), and pass the local path. The download applies the source
   headers. On failure a status is shown and playback continues without subtitles.
-- Android intent playback downloads subtitles to shared storage (`~/storage/downloads/moviebox_subs`) and passes local file paths to `am`/`termux-am` via `subtitles_location` and `subs` intent extras. Subtitles are retained during playback without premature deletion on intent command exit, and purged on a 24-hour retention cycle.
+- Android intent playback downloads subtitles to shared storage (`~/storage/downloads/moviebox_subs` or `/sdcard/Download/moviebox_subs`) named clearly after the media title (e.g. `<Title> - S<N:02>E<E:02>.<ext>` or `<Title>.<ext>`), and passes local file paths to `am`/`termux-am` via `subtitles_location` and `subs` intent extras.
+  - Players supporting automatic subtitle intent binding (e.g. MX Player) load the file automatically.
+  - For players that do not auto-load external file paths from remote stream intents (e.g. VLC for Android, mpv-android), the file is immediately available in the player's subtitle file picker under `Download/moviebox_subs/`.
+  - Subtitles are retained during playback without premature deletion on intent command exit, and purged on a 24-hour retention cycle or via `/settings` → Clear Disk Cache.
 - Desktop temp files are cleaned up after the player process exits and purged at startup if stale.
 
 ## Playback Tracking & Resume

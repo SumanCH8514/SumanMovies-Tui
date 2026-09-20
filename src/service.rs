@@ -305,6 +305,7 @@ impl MovieBoxService {
         &self,
         url: &str,
         headers: &[(String, String)],
+        preferred_filename: Option<&str>,
     ) -> Result<PathBuf, String> {
         let mut request = self.http_client.get(url);
         for (name, value) in headers {
@@ -333,16 +334,19 @@ impl MovieBoxService {
         let base_dir = resolve_subtitle_dir();
         let _ = std::fs::create_dir_all(&base_dir);
 
-        let path = base_dir.join(format!(
-            "{}_{}.{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_nanos(),
-            extension
-        ));
-
+        let file_stem = if let Some(pref) = preferred_filename {
+            crate::download::safe_file_stem(pref)
+        } else {
+            format!(
+                "{}_{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_nanos()
+            )
+        };
+        let path = base_dir.join(format!("{file_stem}.{extension}"));
         tokio::fs::write(&path, bytes)
             .await
             .map_err(|e| format!("Failed to write subtitle file: {e}"))?;

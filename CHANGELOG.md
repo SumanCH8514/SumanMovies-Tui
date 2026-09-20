@@ -8,6 +8,10 @@
   - Added multi-dub and language rip resolution supporting original, English, and localized dubs with composite subject ID routing (`{title_id}::{rip}`).
   - Added `ProviderKind::Dramachi` support across `MovieBoxService`, TUI search, details, stream resolution, downloads, settings, and badges (`[Dramachi]`).
 ### Fixed
+- **Human-Readable Subtitle Filenames & Intent Storage**:
+  - Formatted subtitle filenames with media titles and season/episode tags (e.g. `<Title> - S<N:02>E<E:02>.<ext>`) in `src/service.rs` and `src/tui/app/playback.rs`, replacing random process/timestamp IDs for easy identification in external player file pickers (`moviebox_subs/`).
+- **Concise Stream Failure Notifications**:
+  - Simplified verbose episode stream failure messages (`Provider is temporarily unavailable: No stream sources available`) to clean, high-signal alerts (`No streams available`) in `src/tui/app/requests.rs`.
 - **Stream Proxy Subtitle Whitelist & Scope Isolation**:
   - Permitted external subtitle CDN hosts in `src/proxy.rs` proxy connection validation, preventing HTTP 403 errors when media players fetch external subtitle tracks alongside DASH stream manifests.
   - Scoped authentication headers exclusively to target video hosts, preventing credential spillage to subtitle CDNs.

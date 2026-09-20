@@ -1899,10 +1899,19 @@ impl App {
                     target_se,
                     target_ep
                 );
+                let clean_err = if err.contains("No stream sources available") {
+                    "No streams available".to_string()
+                } else if let Some(stripped) =
+                    err.strip_prefix("Provider is temporarily unavailable: ")
+                {
+                    stripped.to_string()
+                } else {
+                    err
+                };
                 self.state.notify(
                     crate::tui::overlay::NotificationKind::Error,
                     "Streams Failed",
-                    err,
+                    clean_err,
                 );
             }
             _ => return None,

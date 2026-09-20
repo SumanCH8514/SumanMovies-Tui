@@ -298,6 +298,19 @@ impl App {
                 (rows as u32 * cell_height).clamp(180, 1080),
             )
         });
+        let preferred_sub_name = history_item.as_ref().map(|item| {
+            if item.season > 0 || item.episode > 0 {
+                format!(
+                    "{} - S{:02}E{:02}",
+                    item.title,
+                    item.season.max(1),
+                    item.episode.max(1)
+                )
+            } else {
+                item.title.clone()
+            }
+        });
+
         tokio::spawn(async move {
             let mut local_subtitle = subtitle.clone();
             let mut temporary_subtitle = None;
@@ -309,7 +322,7 @@ impl App {
             ) && let Some(ref url) = subtitle
             {
                 let download_res = crate::service::MovieBoxService::new()
-                    .download_subtitle_file(url, &headers)
+                    .download_subtitle_file(url, &headers, preferred_sub_name.as_deref())
                     .await;
                 match download_res {
                     Ok(path) => {
