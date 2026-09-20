@@ -1892,15 +1892,14 @@ impl App {
                 self.state.has_streams_settled = true;
                 self.state.selected_resources.clear();
                 self.state.resource_list_state.select(None);
-                self.state.stream_error = Some(err.clone());
                 log::error!(
                     "episode streams failed ({} s{}e{}): {err}",
                     context.provider.cache_key(),
                     target_se,
                     target_ep
                 );
-                let clean_err = if err.contains("No stream sources available") {
-                    "No streams available".to_string()
+                let clean_err = if err.contains("No stream sources") {
+                    format!("No streams available on {}.", context.provider.label())
                 } else if let Some(stripped) =
                     err.strip_prefix("Provider is temporarily unavailable: ")
                 {
@@ -1908,6 +1907,7 @@ impl App {
                 } else {
                     err
                 };
+                self.state.stream_error = Some(clean_err.clone());
                 self.state.notify(
                     crate::tui::overlay::NotificationKind::Error,
                     "Streams Failed",

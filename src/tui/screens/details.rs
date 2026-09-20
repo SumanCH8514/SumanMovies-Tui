@@ -1381,12 +1381,14 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &mut AppState, theme: &Theme) 
         let msg = if waiting_for_language {
             "Choose an audio track to load streams.".to_string()
         } else if let Some(error) = &state.stream_error {
-            if state.active_provider == crate::providers::ProviderKind::Addons {
-                error.clone()
-            } else if error.contains("No stream sources") || error.contains("not listed") {
-                format!("{error}.")
+            if error.contains("No stream sources") || error.contains("No streams available") {
+                format!("No streams available on {provider_label}.")
+            } else if let Some(stripped) =
+                error.strip_prefix("Provider is temporarily unavailable: ")
+            {
+                stripped.trim_end_matches('.').to_string()
             } else {
-                error.clone()
+                error.trim_end_matches('.').to_string()
             }
         } else if is_loading_streams {
             let spinner = stream_loading_spinner(state.tick_count, state.basic_terminal);
