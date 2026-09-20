@@ -10,28 +10,26 @@ jobs:
   triage:
     runs-on: ubuntu-latest
     steps:
-      - name: Check for low-effort reports
+      - name: Check for empty reports
         uses: actions/github-script@v7
         with:
           script: |
             const issue = context.payload.issue;
             const body = issue.body || '';
 
-            const descMatch = body.match(/### What happened\?([\s\S]*?)###/);
+            const descMatch = body.match(/### Description([\s\S]*?)###/);
             const reproMatch = body.match(/### Steps to reproduce([\s\S]*?)###/);
-            const logMatch = body.match(/### Log \/ Terminal Output([\s\S]*?)###/);
 
             const desc = descMatch ? descMatch[1].trim() : '';
             const repro = reproMatch ? reproMatch[1].trim() : '';
-            const log = logMatch ? logMatch[1].trim() : '';
+            const hasImage = /<img|!\[.*?\]\(.*?\)/i.test(body);
 
-            const tooShort = (s) => s.replace(/\s/g, '').length < 30;
-            const isPlaceholder = (s) => /please\s*resol|no\s*steps|followed\s*everything/i.test(s);
+            const tooShort = (s) => s.replace(/\s/g, '').length < 15;
+            const isPlaceholder = (s) => /^(please\s*resol|no\s*steps|followed\s*everything|error|none|\.+)$/i.test(s.trim());
 
             const incomplete =
-              tooShort(desc) || isPlaceholder(desc) ||
-              tooShort(repro) || isPlaceholder(repro) ||
-              tooShort(log);
+              ((tooShort(desc) || isPlaceholder(desc)) && !hasImage) ||
+              ((tooShort(repro) || isPlaceholder(repro)) && !hasImage);
 
             if (!incomplete) return;
 
@@ -44,5 +42,5 @@ jobs:
             await github.rest.issues.createComment({
               ...context.repo,
               issue_number: issue.number,
-              body: `This issue is missing reproduction steps or terminal log output required to investigate.\n\nTo proceed, provide:\n1. Exact steps to reproduce the problem.\n2. The sanitized log file from:\n   - **Android/Linux:** \`~/.local/share/moviebox-tui/logs/moviebox-tui_rCURRENT.log\`\n   - **Windows:** \`%LOCALAPPDATA%\\moviebox-tui\\logs\\moviebox-tui_rCURRENT.log\`\n   - **macOS:** \`~/Library/Application Support/moviebox-tui/logs/moviebox-tui_rCURRENT.log\`\n\nIssues without actionable details close automatically after 7 days. See the [debugging guide](https://github.com/mesamirh/MovieBox-Tui/blob/main/docs/debugging.md) for log capture instructions.`,
+              body: `Thanks for opening an issue! Please provide a brief description of what happened and steps to reproduce it so we can investigate.\n\nScreenshots or terminal error notices can be pasted directly into the issue description.`,
             });

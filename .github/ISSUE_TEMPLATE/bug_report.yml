@@ -1,31 +1,13 @@
 name: Bug report
-description: Something is broken or not working as expected.
+description: Report an error, crash, or unexpected behavior.
 title: "bug: "
 labels: ["bug"]
 body:
-  - type: checkboxes
-    id: preflight
-    attributes:
-      label: Pre-submission checklist
-      options:
-        - label: I checked docs/known-issues.md and docs/players.md
-          required: true
-        - label: I am using the latest version of MovieBox-Tui
-          required: true
-        - label: If on Android/Termux, I installed termux-tools and an Android media player (VLC, Just Player, MPV app)
-          required: false
-
   - type: textarea
     id: description
     attributes:
-      label: What happened?
-      description: >
-        Describe the bug clearly. What did you expect to happen instead?
-        One-line answers like "it shows error" will be closed automatically.
-      placeholder: |
-        Example: When I search for "Inception" and press Enter to watch,
-        the app shows "Player exited with code 1" and closes immediately.
-        I expected the video to start playing in mpv.
+      label: Description
+      description: What happened, and what did you expect instead?
     validations:
       required: true
 
@@ -35,51 +17,23 @@ body:
       label: Steps to reproduce
       placeholder: |
         1. Run `moviebox-tui`
-        2. Search for ...
-        3. Select ...
-        4. Press Enter / watch
+        2. 
     validations:
       required: true
 
   - type: textarea
-    id: log_output
+    id: context
     attributes:
-      label: Log / Terminal Output
-      description: >
-        Provide the exact sanitized log file path content.
-        Android/Linux: `~/.local/share/moviebox-tui/logs/moviebox-tui_rCURRENT.log`
-        Windows: `%LOCALAPPDATA%\moviebox-tui\logs\moviebox-tui_rCURRENT.log`
-        macOS: `~/Library/Application Support/moviebox-tui/logs/moviebox-tui_rCURRENT.log`
-        Run with `MOVIEBOX_LOG=debug moviebox-tui` to get detailed output.
-      render: shell
+      label: Relevant logs, errors, or screenshots
+      description: Terminal output, error notices, or screenshots (optional).
     validations:
-      required: true
+      required: false
 
   - type: input
-    id: version
+    id: environment
     attributes:
-      label: Version
-      description: Run `moviebox-tui --version` to find it.
-      placeholder: "0.1.20"
-    validations:
-      required: true
-
-  - type: dropdown
-    id: os
-    attributes:
-      label: Operating system
-      options:
-        - macOS
-        - Linux
-        - Windows
-        - Android (Termux)
-    validations:
-      required: true
-
-  - type: input
-    id: terminal
-    attributes:
-      label: Terminal
-      placeholder: "Ghostty, iTerm2, Kitty, WezTerm, Alacritty, Termux, cmd, ..."
+      label: Environment
+      description: Version, OS, and Terminal.
+      placeholder: "v0.1.22, Termux (Android) / macOS Ghostty / Windows Terminal"
     validations:
       required: true
