@@ -80,7 +80,7 @@ impl DetailsLayoutTier {
                 .clamp(1, synopsis_limit)
         };
         let content_rows = if show_poster {
-            (meta_lines + synopsis_rows).max(5)
+            6
         } else {
             meta_lines + synopsis_rows
         };
@@ -2808,7 +2808,52 @@ mod tests {
         let area = Rect::new(0, 0, 120, 30);
         let tier = DetailsLayoutTier::for_area(area);
         let height = tier.header_height(area, Some(&details));
-        assert_eq!(height, 7);
+        assert_eq!(height, 8);
+    }
+
+    #[test]
+    fn test_details_header_height_stable_with_poster_across_audio_dub_synopsis_lengths() {
+        let details_original = MediaDetails {
+            id: ProviderMediaId {
+                provider: ProviderKind::MovieBox,
+                value: "100".to_string(),
+            },
+            title: "Obsession".to_string(),
+            media_type: MediaType::Movie,
+            year: Some("2026".to_string()),
+            description: Some("After breaking the mysterious \"One Wish Willow\" to win his crush's heart, a hopeless romantic finds himself getting exactly what he asked for but soon discovers that some desires come at a dark, si...".to_string()),
+            tagline: None,
+            imdb_rating: Some("7.8".to_string()),
+            director: None,
+            stars: None,
+            prints: None,
+            audios: None,
+            poster_url: Some("https://example.com/obsession.jpg".to_string()),
+            duration: Some("1h 49m".to_string()),
+            genres: vec![],
+            seasons: vec![],
+            dubs: vec![],
+        };
+        let mut details_hindi = details_original.clone();
+        details_hindi.description = Some(
+            "A hopeless romantic's wish for his crush's love triggers a dark enchantment."
+                .to_string(),
+        );
+        details_hindi.duration = Some("1h 40m".to_string());
+
+        let mut details_empty_synopsis = details_original.clone();
+        details_empty_synopsis.description = None;
+
+        let area = Rect::new(0, 0, 120, 30);
+        let tier = DetailsLayoutTier::for_area(area);
+
+        let height_original = tier.header_height(area, Some(&details_original));
+        let height_hindi = tier.header_height(area, Some(&details_hindi));
+        let height_empty = tier.header_height(area, Some(&details_empty_synopsis));
+
+        assert_eq!(height_original, 8);
+        assert_eq!(height_hindi, 8);
+        assert_eq!(height_empty, 8);
     }
 
     #[test]

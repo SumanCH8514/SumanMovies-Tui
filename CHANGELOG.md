@@ -3,6 +3,9 @@
 ## [Unreleased]
 
 ### Fixed
+- **Details Poster Geometry Stability Across Dub Synopsis Lengths**:
+  - Locked `content_rows` to 6 in `DetailsLayoutTier::header_height` (`src/tui/screens/details.rs`) when `show_poster` is active, maintaining consistent 8-row header height and 6-row poster container dimensions.
+  - Prevented poster image shrinking and header layout shifts caused by variable synopsis text lengths across audio dubs and releases.
 - **Single-Line Input Windowing & Overflow Prevention**:
   - Fixed text overflow in `render_single_line_input` (`src/tui/widgets/input.rs`) where appending ellipsis (`...`) without sufficient budget caused line length to exceed modal width and trigger word wrapping onto a second line.
   - Reserved 3 columns for trailing ellipsis when characters remain past the cursor and removed `Wrap` on single-line input widgets, keeping prompt symbols and text strictly single-line across all cursor movements.
