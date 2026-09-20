@@ -574,6 +574,35 @@ pub fn is_deprecation_notice_url(url: &str) -> bool {
 pub fn resolve_dash_manifest_from_policy(sign_cookie: &str) -> Option<String> {
     for part in sign_cookie.split(';') {
         let trimmed = part.trim();
+        if let Some(idx) = trimmed.find("urlprefix=") {
+            let prefix_part = &trimmed[idx + "urlprefix=".len()..];
+            let b64_token = prefix_part.split(':').next().unwrap_or(prefix_part).trim();
+            let mut normalized: String = b64_token
+                .chars()
+                .map(|c| match c {
+                    '-' => '+',
+                    '_' => '/',
+                    other => other,
+                })
+                .collect();
+            let padding = (4 - normalized.len() % 4) % 4;
+            if padding > 0 {
+                normalized.push_str(&"=".repeat(padding));
+            }
+            if let Ok(decoded_bytes) =
+                base64::engine::general_purpose::STANDARD.decode(normalized.as_bytes())
+            {
+                if let Ok(url_str) = String::from_utf8(decoded_bytes) {
+                    let base_resource = url_str.trim_end_matches('*').trim_end_matches('/');
+                    if !base_resource.is_empty()
+                        && (base_resource.starts_with("http://")
+                            || base_resource.starts_with("https://"))
+                    {
+                        return Some(format!("{base_resource}/index.mpd"));
+                    }
+                }
+            }
+        }
         if let Some(policy_raw) = trimmed.strip_prefix("CloudFront-Policy=") {
             let policy_clean = policy_raw.trim();
             let mut normalized: String = policy_clean
@@ -1101,6 +1130,62 @@ mod tests {
             resolved.as_deref(),
             Some("https://sacdn.hakunaymatata.com/dash/example/index.mpd")
         );
+    }
+
+    #[test]
+    fn test_resolve_dash_manifest_from_edge_cache_cookie() {
+        let cookie = "Edge-Cache-Cookie=urlprefix=aHR0cHM6Ly9zYmNkbjMuaGFrdW5heW1hdGF0YS5jb20vZGFzaC8zMjY0NzcyNTg4MzMzMTU3NDI0XzBfMF8xMDgwX2gyNjVfNTYwLw:sign=f1a522f7bf4c548c981ad6efa88925ad:t=1789908742";
+        let resolved = resolve_dash_manifest_from_policy(cookie);
+        assert_eq!(
+            resolved.as_deref(),
+            Some(
+                "https://sbcdn3.hakunaymatata.com/dash/3264772588333157424_0_0_1080_h265_560/index.mpd"
+            )
+        );
+    }
+
+    #[test]
+    fn test_resolve_dash_manifest_from_edge_cache_cookie_unpadded() {
+        let cookie = "Edge-Cache-Cookie=urlprefix=aHR0cHM6Ly9zYmNkbjMuaGFrdW5heW1hdGF0YS5jb20vZGFzaC9pdGVtMQ:sign=abc:t=123";
+        let resolved = resolve_dash_manifest_from_policy(cookie);
+        assert_eq!(
+            resolved.as_deref(),
+            Some("https://sbcdn3.hakunaymatata.com/dash/item1/index.mpd")
+        );
+    }
+
+    #[test]
+    fn test_moviebox_play_info_with_edge_cache_cookie_produces_release() {
+        let payload = json!({
+            "code": 0,
+            "data": {
+                "title": "Ek Deewane Ki Deewaniyat",
+                "displayResolutions": "1080,720,480",
+                "streams": [
+                    {
+                        "id": "1849447804066746512",
+                        "format": "MP4",
+                        "codecName": "hevc",
+                        "resolutions": "1080,720,480",
+                        "size": "1682353414",
+                        "duration": 8372,
+                        "url": "https://macdn.aoneroom.com/other/2026/09/04/b164fbfb4347792950bdfbfb563d39d9.mp4",
+                        "signCookie": "Edge-Cache-Cookie=urlprefix=aHR0cHM6Ly9zYmNkbjMuaGFrdW5heW1hdGF0YS5jb20vZGFzaC8zMjY0NzcyNTg4MzMzMTU3NDI0XzBfMF8xMDgwX2gyNjVfNTYwLw:sign=f1a522f7bf4c548c981ad6efa88925ad:t=1789908742"
+                    }
+                ]
+            }
+        });
+
+        let releases = moviebox_play_info_json_to_releases(&payload, 0, 0, "TestAgent/1.0");
+        assert_eq!(releases.len(), 1);
+        assert_eq!(
+            releases[0].direct_url(),
+            Some(
+                "https://sbcdn3.hakunaymatata.com/dash/3264772588333157424_0_0_1080_h265_560/index.mpd"
+            )
+        );
+        assert_eq!(releases[0].quality.as_deref(), Some("multi"));
+        assert_eq!(releases[0].codec.as_deref(), Some("hevc"));
     }
 
     #[test]
