@@ -55,7 +55,10 @@ pub async fn aggregate_streams(
                         (releases, None)
                     }
                 }
-                Err(_) => (Vec::new(), None),
+                Err(err) => {
+                    log::warn!("addon {addon_name} failed to fetch streams: {err}");
+                    (Vec::new(), None)
+                }
             }
         });
     }

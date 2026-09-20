@@ -414,10 +414,6 @@ impl DhakaFlixClient {
 
         Ok(releases)
     }
-
-    pub async fn resolve_release(&self, resolver_url: &str) -> Result<String, DhakaFlixError> {
-        Ok(resolver_url.to_string())
-    }
 }
 
 fn parse_dhakaflix_id(id: &str) -> Option<(&str, &str)> {

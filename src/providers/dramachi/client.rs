@@ -85,7 +85,7 @@ impl DramachiClient {
             page.max(1)
         );
 
-        let resp = self.client.get(&url).send().await?;
+        let resp = self.client.get(&url).send().await?.error_for_status()?;
         let data: DramachiSearchResponse = resp
             .json()
             .await
@@ -143,7 +143,7 @@ impl DramachiClient {
             self.base_url,
             encode_param(title_id)
         );
-        let resp = self.client.get(&url).send().await?;
+        let resp = self.client.get(&url).send().await?.error_for_status()?;
         let data: DramachiTitleDetailsResponse = resp
             .json()
             .await
@@ -351,7 +351,7 @@ impl DramachiClient {
             encode_param(title_id)
         );
 
-        let resp = self.client.get(&url).send().await?;
+        let resp = self.client.get(&url).send().await?.error_for_status()?;
         let data: DramachiEpisodeListResponse = resp
             .json()
             .await

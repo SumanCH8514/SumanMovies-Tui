@@ -48,7 +48,7 @@ impl CircleFtpClient {
             .append_pair("searchTerm", query)
             .append_pair("order", "desc");
 
-        let resp = self.client.get(url).send().await?;
+        let resp = self.client.get(url).send().await?.error_for_status()?;
 
         let search_resp: CircleFtpSearchResponse = resp.json().await?;
         Ok(circleftp_search_to_catalog(&search_resp))
@@ -56,7 +56,7 @@ impl CircleFtpClient {
 
     pub async fn details(&self, id: &str) -> Result<MediaDetails, CircleFtpError> {
         let url = format!("{}/posts/{}", self.base_url, id);
-        let resp = self.client.get(&url).send().await?;
+        let resp = self.client.get(&url).send().await?.error_for_status()?;
         let json: serde_json::Value = resp.json().await?;
 
         let title = json
@@ -301,10 +301,6 @@ impl CircleFtpClient {
         }
 
         Ok(releases)
-    }
-
-    pub async fn resolve_release(&self, resolver_url: &str) -> Result<String, CircleFtpError> {
-        Ok(resolver_url.to_string())
     }
 }
 

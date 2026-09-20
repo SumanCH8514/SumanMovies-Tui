@@ -116,6 +116,7 @@ impl App {
         state.fourkhdhub_enabled = config.fourkhdhub_enabled;
         state.dramachi_enabled = config.dramachi_enabled;
         state.bdix_circleftp_enabled = config.bdix_circleftp_enabled;
+        state.bdix_dhakaflix_enabled = config.bdix_dhakaflix_enabled;
         state.bdix_probed = config.bdix_probed;
         state.streaming_enabled = config.streaming_enabled;
         state.tv_enabled = config.tv_enabled;
@@ -335,7 +336,8 @@ impl App {
                     Ok(channels) => all_channels.extend(channels),
                     Err(error) => {
                         failed += 1;
-                        log::warn!("tv playlist failed ({source}): {error}");
+                        let safe_source = crate::logging::sanitize_url(source);
+                        log::warn!("tv playlist failed ({safe_source}): {error}");
                     }
                 }
             }

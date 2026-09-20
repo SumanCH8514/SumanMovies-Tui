@@ -76,7 +76,17 @@ pub fn set_typed_cache<T: Serialize + ?Sized>(path: &Path, expiry_secs: u64, dat
         let mut file_bytes = Vec::with_capacity(4 + msgpack_bytes.len());
         file_bytes.extend_from_slice(&CACHE_MAGIC);
         file_bytes.extend_from_slice(&msgpack_bytes);
-        let _ = atomic_write_file(path, &file_bytes);
+        if let Err(error) = atomic_write_file(path, &file_bytes) {
+            log::warn!(
+                "failed to write cache file {}: {error}",
+                crate::logging::sanitize_path(path)
+            );
+        }
+    } else {
+        log::warn!(
+            "failed to serialize cache envelope for {}",
+            crate::logging::sanitize_path(path)
+        );
     }
 }
 
