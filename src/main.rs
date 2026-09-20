@@ -114,9 +114,11 @@ async fn main() -> std::io::Result<()> {
     moviebox_tui::logging::init();
 
     std::panic::set_hook(Box::new(|info| {
-        log::error!("panic: {info}");
+        let backtrace = std::backtrace::Backtrace::capture();
+        log::error!("panic: {info}\nbacktrace:\n{backtrace}");
+        moviebox_tui::logging::flush();
         restore_terminal();
-        eprintln!("{info}");
+        eprintln!("{info}\n{backtrace}");
     }));
 
     let stdout = std::io::stdout();

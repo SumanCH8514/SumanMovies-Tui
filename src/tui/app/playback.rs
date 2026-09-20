@@ -451,6 +451,7 @@ impl App {
                     })),
                 }
             } else {
+                log::info!("launching player: {kind:?}");
                 spawn_configured_command(command, false)
             };
 
@@ -494,6 +495,10 @@ impl App {
 
                         match result {
                             Ok(status) if status.success() => {
+                                log::info!(
+                                    "player {kind:?} finished cleanly (duration: {}s)",
+                                    start_time.elapsed().as_secs()
+                                );
                                 let has_tracker = tracker_opts.is_some()
                                     && matches!(
                                         kind,
@@ -663,8 +668,14 @@ fn is_user_quit(status: &std::process::ExitStatus) -> bool {
 }
 
 fn clean_player_error(code: Option<i32>, signal: Option<i32>, stderr: &str) -> String {
-    if !stderr.is_empty() {
-        return stderr.to_string();
+    let trimmed = stderr.trim();
+    if !trimmed.is_empty() {
+        let bounded = if trimmed.len() > 512 {
+            &trimmed[..512]
+        } else {
+            trimmed
+        };
+        return bounded.to_string();
     }
 
     if let Some(value) = code {
