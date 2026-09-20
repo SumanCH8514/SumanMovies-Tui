@@ -16,6 +16,7 @@ pub struct MovieBoxService {
     pub circleftp_client: CircleFtpClient,
     pub dhakaflix_client: DhakaFlixClient,
     pub addon_client: crate::providers::addons::AddonClient,
+    pub dramachi_client: crate::providers::dramachi::DramachiClient,
     pub http_client: reqwest::Client,
 }
 
@@ -38,6 +39,7 @@ impl MovieBoxService {
             circleftp_client: CircleFtpClient::new(),
             dhakaflix_client: DhakaFlixClient::new(),
             addon_client: crate::providers::addons::AddonClient::new(),
+            dramachi_client: crate::providers::dramachi::DramachiClient::new(),
             http_client,
         }
     }
@@ -57,6 +59,7 @@ impl MovieBoxService {
             ProviderKind::BdixCircleFtp => Provider::capabilities(&self.circleftp_client),
             ProviderKind::BdixDhakaFlix => Provider::capabilities(&self.dhakaflix_client),
             ProviderKind::Addons => Provider::capabilities(&self.addon_client),
+            ProviderKind::Dramachi => Provider::capabilities(&self.dramachi_client),
         }
     }
 
@@ -90,6 +93,7 @@ impl MovieBoxService {
                 Provider::search(&self.dhakaflix_client, query, page).await
             }
             ProviderKind::Addons => Provider::search(&self.addon_client, query, page).await,
+            ProviderKind::Dramachi => Provider::search(&self.dramachi_client, query, page).await,
         }
     }
 
@@ -161,6 +165,7 @@ impl MovieBoxService {
                 Provider::details(&self.dhakaflix_client, subject_id).await
             }
             ProviderKind::Addons => Provider::details(&self.addon_client, subject_id).await,
+            ProviderKind::Dramachi => Provider::details(&self.dramachi_client, subject_id).await,
         }
     }
 

@@ -1,7 +1,12 @@
 # Changelog
 
 ## [Unreleased]
-
+### Added
+- **Dramachi Native Streaming Provider**:
+  - Integrated Dramachi as a native streaming provider for Asian dramas, K-dramas, C-dramas, anime, and movies via `https://api.nodeobjects.com/`.
+  - Added direct HTTP byte-range video streaming support (`direct_file: true`) bypassing CloudFront proxies and authentication overhead.
+  - Added multi-dub and language rip resolution supporting original, English, and localized dubs with composite subject ID routing (`{title_id}::{rip}`).
+  - Added `ProviderKind::Dramachi` support across `MovieBoxService`, TUI search, details, stream resolution, downloads, settings, and badges (`[Dramachi]`).
 ### Fixed
 - **Details Poster Geometry Stability Across Dub Synopsis Lengths**:
   - Locked `content_rows` to 6 in `DetailsLayoutTier::header_height` (`src/tui/screens/details.rs`) when `show_poster` is active, maintaining consistent 8-row header height and 6-row poster container dimensions.
@@ -15,6 +20,10 @@
 - **MovieBox Deprecation Notice Stream Filtering**:
   - Filtered deprecation notice video URLs (`macdn.aoneroom.com/other/`, notice video hash `b164fbfb4347792950bdfbfb563d39d9`) from community resource releases in `src/providers/moviebox/adapt.rs`.
   - Prevented 21-second upgrade announcement video placeholders from leaking into stream selection as playable releases when episodes lack official DASH streams.
+- **Audio Dub Label Sanitization & Stream Quality Deduplication**:
+  - Prevented blank audio track gap in episode details by mapping standalone `"Dub"` version tags to `"English Dub"` in `clean_language_name` (`src/tui/screens/details.rs`).
+  - Added native `540p` resolution badge mapping in `src/tui/widgets/badge.rs` to distinguish true `540p` media encodes from `480p`.
+  - Deduplicated episode entries in `src/providers/dramachi/client.rs` across multi-resolution manifests, preventing duplicate episode rows while sorting available streams in descending resolution priority.
 ### Changed
 - **Minimalist Addon Manager Modal Redesign & Balanced Geometry**:
   - Streamlined Addon Manager popup into a content-fitted modal matching the provider popup design language, eliminating empty right-side letterboxing and arbitrary vertical blank gaps.

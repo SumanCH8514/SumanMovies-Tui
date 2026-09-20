@@ -480,6 +480,7 @@ impl App {
                 self.state.is_resolving_playback = true;
                 if self.current_subject_provider() == ProviderKind::FourKHdHub
                     || self.current_subject_provider() == ProviderKind::Addons
+                    || self.current_subject_provider() == ProviderKind::Dramachi
                     || self.current_subject_provider().is_bdix()
                 {
                     if let Some(release) = self.get_selected_release() {
@@ -502,6 +503,7 @@ impl App {
                             ),
                         );
                         let client = if release.provider == ProviderKind::Addons
+                            || release.provider == ProviderKind::Dramachi
                             || release.provider == ProviderKind::BdixCircleFtp
                             || release.provider == ProviderKind::BdixDhakaFlix
                         {

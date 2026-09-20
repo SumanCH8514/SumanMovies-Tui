@@ -88,8 +88,15 @@ Adding a new streaming or BDIX provider to MovieBox TUI takes 3 simple steps:
   Malayalam, Bengali, Marathi, Punjabi, Gujarati, Urdu, Japanese, Korean, Chinese, Spanish,
   French, German, Italian, etc.) and formats all available audio tracks for stream display.
 - Errors are mapped into `ProviderError::Unavailable` with user-actionable instructions guiding selection of alternate releases.
-## BDIX
 
+## Dramachi
+- Asian drama, anime, and international movie provider backed by `https://api.nodeobjects.com/`.
+- Zero authentication, cookies, or signing required.
+- Direct HTTP byte-range video streaming (`Accept-Ranges: bytes`) over dynamic media CDNs (`https://{hostInfo.host}/cdn/{fileInfo.url}`).
+- Audio dubs and rips are mapped into `AudioTrackOption` and resolved dynamically via composite subject IDs (`{title_id}::{rip}`).
+- Movie and series streams play directly without proxy overhead (`direct_file: true`).
+
+## BDIX
 - `circleftp` and `dhakaflix` scrape FTP-style indexes; both are used behind the
   Bangladesh-only gate.
 
@@ -108,5 +115,5 @@ Each channel yields `{ id, name, logo, group, stream_url }`; TV mode groups chan
 ## Error handling
 
 Each provider defines its own `thiserror` enum (`ScraperError`, `FourKHdHubError`,
-`CircleFtpError`, `DhakaFlixError`). Errors bubble to `app/requests.rs` handlers, which
+`DramachiError`, `CircleFtpError`, `DhakaFlixError`). Errors bubble to `app/requests.rs` handlers, which
 surface them in the UI status bar and log the full detail (see [logging.md](logging.md)).

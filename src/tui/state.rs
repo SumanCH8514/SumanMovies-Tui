@@ -299,6 +299,7 @@ pub struct AppState {
     pub basic_terminal: bool,
     pub moviebox_enabled: bool,
     pub fourkhdhub_enabled: bool,
+    pub dramachi_enabled: bool,
     pub bdix_circleftp_enabled: bool,
     pub bdix_dhakaflix_enabled: bool,
     pub bdix_probed: bool,
@@ -469,6 +470,7 @@ impl Default for AppState {
             overview_modal_content: String::new(),
             moviebox_enabled: true,
             fourkhdhub_enabled: true,
+            dramachi_enabled: true,
             bdix_circleftp_enabled: false,
             bdix_dhakaflix_enabled: false,
             bdix_probed: false,
@@ -594,6 +596,7 @@ impl AppState {
         match p {
             ProviderKind::MovieBox => self.moviebox_enabled,
             ProviderKind::FourKHdHub => self.fourkhdhub_enabled,
+            ProviderKind::Dramachi => self.dramachi_enabled,
             ProviderKind::BdixCircleFtp => self.bdix_circleftp_enabled,
             ProviderKind::BdixDhakaFlix => self.bdix_dhakaflix_enabled,
             ProviderKind::Addons => self.addons_enabled,
@@ -604,6 +607,7 @@ impl AppState {
         match p {
             ProviderKind::MovieBox => self.moviebox_enabled = enabled,
             ProviderKind::FourKHdHub => self.fourkhdhub_enabled = enabled,
+            ProviderKind::Dramachi => self.dramachi_enabled = enabled,
             ProviderKind::BdixCircleFtp => self.bdix_circleftp_enabled = enabled,
             ProviderKind::BdixDhakaFlix => self.bdix_dhakaflix_enabled = enabled,
             ProviderKind::Addons => self.addons_enabled = enabled,

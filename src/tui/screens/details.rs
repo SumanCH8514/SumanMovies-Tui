@@ -1276,6 +1276,9 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &mut AppState, theme: &Theme) 
                             "DhakaFlix".to_string()
                         }
                         crate::providers::models::ProviderKind::Addons => "Addon".to_string(),
+                        crate::providers::models::ProviderKind::Dramachi => {
+                            "Dramachi CDN".to_string()
+                        }
                     }
                 };
 
@@ -1582,6 +1585,8 @@ fn selected_stream_summary(state: &AppState) -> Option<String> {
 fn clean_language_name(value: &str) -> String {
     let mut name = if value.to_ascii_lowercase().starts_with("original") {
         "Original".to_string()
+    } else if value.eq_ignore_ascii_case("dub") {
+        "English Dub".to_string()
     } else {
         value
             .replace("dub", "")

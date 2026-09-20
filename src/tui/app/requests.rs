@@ -1406,9 +1406,13 @@ impl App {
                     return None;
                 }
 
-                if context.provider == ProviderKind::FourKHdHub || context.provider.is_bdix() {
+                if context.provider == ProviderKind::FourKHdHub
+                    || context.provider == ProviderKind::Dramachi
+                    || context.provider.is_bdix()
+                {
                     let sender = self.action_sender.clone();
                     let fourk_client = self.service.fourk_client.clone();
+                    let dramachi_client = self.service.dramachi_client.clone();
                     let circleftp_client = self.service.circleftp_client.clone();
                     let dhakaflix_client = self.service.dhakaflix_client.clone();
                     let id = subject_id.clone();
@@ -1426,6 +1430,15 @@ impl App {
                                         "4KHDHub provider is unavailable".to_string(),
                                     ))
                                 }
+                            }
+                            ProviderKind::Dramachi => {
+                                crate::providers::ReleaseProvider::episode_streams(
+                                    &dramachi_client,
+                                    &id,
+                                    season,
+                                    episode,
+                                )
+                                .await
                             }
                             ProviderKind::BdixCircleFtp => {
                                 crate::providers::ReleaseProvider::episode_streams(
