@@ -257,21 +257,6 @@ fn render_search_state(
                     Span::styled("c", theme.shortcut),
                     Span::styled(") ]", theme.subtext1),
                 ]
-            } else if state.active_provider == crate::providers::models::ProviderKind::Addons {
-                let (btn1_label, btn2_label) = if is_compact_btn {
-                    ("[ Addons (", "[ Clear (")
-                } else {
-                    ("[ Addon Manager (", "[ Clear Search (")
-                };
-                vec![
-                    Span::styled(btn1_label, theme.subtext1),
-                    Span::styled(ctrl_p, theme.shortcut),
-                    Span::styled(") ]", theme.subtext1),
-                    Span::raw(sep),
-                    Span::styled(btn2_label, theme.subtext1),
-                    Span::styled("c", theme.shortcut),
-                    Span::styled(") ]", theme.subtext1),
-                ]
             } else {
                 let btn2_label = if is_compact_btn {
                     "[ Clear ("
@@ -394,14 +379,11 @@ pub(crate) fn no_results_button_hitboxes(
     next_provider_label: &str,
     ctrl_p: &str,
     is_tv_mode: bool,
-    is_addon_mode: bool,
 ) -> (Rect, Rect) {
     let is_compact_btn = area.width < 56;
     let (btn1_w, btn2_w, sep_w) = if is_compact_btn {
         let b1 = if is_tv_mode {
             14
-        } else if is_addon_mode {
-            12 + ctrl_p.len() as u16
         } else {
             18 + ctrl_p.len() as u16
         };
@@ -409,8 +391,6 @@ pub(crate) fn no_results_button_hitboxes(
     } else {
         let b1 = if is_tv_mode {
             24
-        } else if is_addon_mode {
-            19 + ctrl_p.len() as u16
         } else {
             (14 + next_provider_label.len() + ctrl_p.len()) as u16
         };

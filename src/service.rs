@@ -121,10 +121,6 @@ impl MovieBoxService {
             .await
             .map_err(|e| e.to_string())?;
 
-        if metas.is_empty() {
-            return Err("No catalog items found".to_string());
-        }
-
         let items: Vec<CatalogItem> = metas
             .iter()
             .map(crate::providers::addons::adapter::meta_to_catalog_item)

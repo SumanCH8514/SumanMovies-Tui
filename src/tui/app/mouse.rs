@@ -862,16 +862,11 @@ impl App {
                     next_label,
                     ctrl_p,
                     self.state.is_tv_mode,
-                    self.state.active_provider == crate::providers::models::ProviderKind::Addons,
                 );
                 let pos = ratatui::layout::Position::new(col, row);
                 if btn1.contains(pos) {
                     if self.state.is_tv_mode {
                         self.action_sender.send(Action::TvReloadPlaylists).ok();
-                    } else if self.state.active_provider
-                        == crate::providers::models::ProviderKind::Addons
-                    {
-                        self.action_sender.send(Action::ShowAddonManager).ok();
                     } else {
                         self.cycle_provider();
                     }
@@ -1456,7 +1451,6 @@ mod tests {
             next_label,
             ctrl_p,
             app.state.is_tv_mode,
-            app.state.active_provider == crate::providers::models::ProviderKind::Addons,
         );
 
         app.handle_home_mouse(btn2.x + 1, btn2.y, area);

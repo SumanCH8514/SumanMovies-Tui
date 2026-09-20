@@ -1492,14 +1492,15 @@ pub(crate) fn season_confirm_summary(state: &AppState) -> Vec<String> {
         .as_ref()
         .map(|d| d.title.as_str())
         .unwrap_or("Series");
-    let season_idx = state.selected_season;
-    let eps_count = if season_idx > 0 && season_idx <= state.available_episode_numbers.len() {
-        state.available_episode_numbers[season_idx - 1].len()
-    } else {
-        0
-    };
+    let season_idx = state.season_list_state.selected().unwrap_or(0);
+    let eps_count = state
+        .available_episode_numbers
+        .get(season_idx)
+        .map(|eps| eps.len())
+        .unwrap_or(0);
+    let season_number = state.selected_season;
     let mut summary = vec![format!(
-        "{title} • Season {season_idx} ({eps_count} Episodes)"
+        "{title} • Season {season_number} ({eps_count} Episodes)"
     )];
     if let Some(stream) = selected_stream_summary(state) {
         summary.push(format!("Quality: {stream}"));

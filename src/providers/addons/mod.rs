@@ -62,10 +62,6 @@ impl Provider for AddonClient {
             }
         }
 
-        if combined.is_empty() {
-            return Err(ProviderError::NotFound);
-        }
-
         let mut seen = std::collections::HashSet::new();
         Ok(combined
             .into_iter()

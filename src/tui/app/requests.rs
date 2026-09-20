@@ -1337,7 +1337,7 @@ impl App {
                         .selected_details
                         .as_ref()
                         .map(|d| d.is_series())
-                        .unwrap_or(season > 0);
+                        .unwrap_or_else(|| id.starts_with("series:") || season > 0 || episode > 0);
 
                     let has_stream_addons = addons.iter().any(|a| a.enabled && a.provides_stream);
                     self.request_tasks.cancel_streams();

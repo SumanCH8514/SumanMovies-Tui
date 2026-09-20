@@ -11,8 +11,12 @@
 - **Stremio Addon Mode Series Metadata Resolution & Episode Picker**:
   - Encoded media type hints into Addon catalog and search results (`series:{id}` and `movie:{id}`) in `src/providers/addons/adapter.rs`, preserving search intent across preview prefetching and details resolution.
   - Hardened metadata probing in `AddonClient::details` (`src/providers/addons/mod.rs`) to prioritize `series` queries and check for episode videos (`!videos.is_empty()`) before falling back to `movie`, resolving an issue where series (e.g. Breaking Bad) fell back to corrupted movie metadata ("Mirror") lacking episode lists.
-  - Normalized subject IDs in `src/providers/addons/aggregator.rs` before constructing stream query IDs (`{clean_id}:{season}:{episode}` for series, `{clean_id}` for movies).
+  - Normalized subject IDs in `src/providers/addons/aggregator.rs` before constructing stream query IDs (`{clean_id}:{season}:{episode}` for series, `{clean_id}` for movies), including support for Season 0 (Specials).
+  - Fixed Season 0 episode count and index calculation in `season_confirm_summary` (`src/tui/screens/details.rs`).
   - Replaced verbose stream failure and missing addon messages with concise status notices in `src/tui/app/requests.rs`.
+  - Aligned Addon Mode empty search results with Streaming Mode by returning `Ok(vec![])` on zero-result queries instead of triggering a boxed `Search Request Error`, restoring the standard no-results view with `[ Try on MovieBox (^P) ]` and `[ Clear Search (c) ]` pills.
+  - Returned `Ok(vec![])` on empty addon catalogs in `MovieBoxService::fetch_addon_catalog` (`src/service.rs`), preventing empty catalog views from raising false search failure errors.
+  - Reset `active_screen` to `Screen::Home` in `reset_mode_state` (`src/tui/app/tv.rs`), preventing orphaned Details screen states when switching between TV and Streaming modes.
 - **Logging Engine, Crash Diagnostics & Backtrace Capture**:
   - Added stack backtrace capture (`std::backtrace::Backtrace::capture()`) and immediate log buffer flushing (`moviebox_tui::logging::flush()`) to `std::panic::set_hook` in `src/main.rs`, ensuring crash locations and backtraces are committed to disk before terminal restoration and process termination.
   - Retained `LoggerHandle` globally in `src/logging.rs` with graceful fallback to default logging levels if `MOVIEBOX_LOG` contains an invalid level specification.

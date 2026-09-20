@@ -22,7 +22,7 @@ pub async fn aggregate_streams(
 
     let clean_id = subject_id.split(':').next_back().unwrap_or(subject_id);
     let media_type = if is_series { "series" } else { "movie" };
-    let stream_id = if is_series && season > 0 && episode > 0 {
+    let stream_id = if is_series && episode > 0 {
         format!("{clean_id}:{season}:{episode}")
     } else {
         clean_id.to_string()
