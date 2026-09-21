@@ -1032,9 +1032,10 @@ impl App {
             self.handle_details_footer_click(col, row - footer_area.y, area.width);
             return None;
         }
-        if layout
-            .header_area
-            .contains(ratatui::layout::Position::new(col, row))
+        if layout.synopsis_area.height > 0
+            && layout
+                .synopsis_area
+                .contains(ratatui::layout::Position::new(col, row))
         {
             if let Some((title, content)) = self.state.series_synopsis() {
                 self.state.open_overview_modal(title, content);
@@ -1594,9 +1595,14 @@ mod tests {
             area,
             app.state.selected_details.as_ref(),
         );
-        let header_click_x = layout.header_area.x + 2;
-        let header_click_y = layout.header_area.y + 2;
-        app.handle_details_mouse(header_click_x, header_click_y, area);
+        let non_synopsis_x = layout.header_area.x + 2;
+        let non_synopsis_y = layout.header_area.y;
+        app.handle_details_mouse(non_synopsis_x, non_synopsis_y, area);
+        assert!(!app.state.show_overview_modal);
+
+        let synopsis_click_x = layout.synopsis_area.x + 2;
+        let synopsis_click_y = layout.synopsis_area.y;
+        app.handle_details_mouse(synopsis_click_x, synopsis_click_y, area);
 
         assert!(app.state.show_overview_modal);
         assert_eq!(app.state.overview_modal_title, "Stranger Things · Synopsis");

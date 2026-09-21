@@ -171,6 +171,7 @@ pub(crate) fn selector_pane_constraints(
 pub struct DetailsScreenLayout {
     pub tier: DetailsLayoutTier,
     pub header_area: Rect,
+    pub synopsis_area: Rect,
     pub workflow_area: Rect,
     pub bottom_area: Rect,
     pub footer_area: Rect,
@@ -192,13 +193,141 @@ pub fn details_screen_layout(
     ])
     .split(area);
 
+    let header_area = chunks[0];
+    let synopsis_area = compute_synopsis_area(header_area, tier, selected_details);
+
     DetailsScreenLayout {
         tier,
-        header_area: chunks[0],
+        header_area,
+        synopsis_area,
         workflow_area: chunks[1],
         bottom_area: chunks[2],
         footer_area: chunks[3],
     }
+}
+
+fn compute_synopsis_area(
+    header_area: Rect,
+    tier: DetailsLayoutTier,
+    selected_details: Option<&MediaDetails>,
+) -> Rect {
+    let Some(details) = selected_details else {
+        return Rect::default();
+    };
+    let intro = details
+        .description
+        .as_deref()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or("");
+    if intro.is_empty() {
+        return Rect::default();
+    }
+
+    let details_block =
+        Block::default()
+            .borders(Borders::ALL)
+            .padding(ratatui::widgets::Padding::new(
+                if matches!(tier, DetailsLayoutTier::Wide) {
+                    2
+                } else {
+                    1
+                },
+                1,
+                0,
+                0,
+            ));
+    let inner_area = details_block.inner(header_area);
+    let show_poster = !matches!(tier, DetailsLayoutTier::Tiny | DetailsLayoutTier::Narrow)
+        && inner_area.height >= 5
+        && inner_area.width >= 75;
+
+    let poster_width = if show_poster {
+        let default_w = ((inner_area.height as f32 * (4.0 / 3.0)).round() as u16).max(6);
+        default_w.clamp(12, 22)
+    } else {
+        0
+    };
+
+    let meta_constraints = if show_poster {
+        vec![
+            Constraint::Length(poster_width),
+            Constraint::Length(2),
+            Constraint::Min(20),
+        ]
+    } else {
+        vec![Constraint::Min(20)]
+    };
+
+    let meta_area = if show_poster {
+        let chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints(meta_constraints)
+            .split(inner_area);
+        chunks[2]
+    } else {
+        inner_area
+    };
+
+    let text_width = meta_area.width as usize;
+    let total_height = meta_area.height as usize;
+    if text_width == 0 || total_height == 0 {
+        return Rect::default();
+    }
+
+    let mut fixed_lines = 0;
+    let title = &details.title;
+    let title_w = crate::tui::text::width(title);
+    if title_w <= text_width {
+        fixed_lines += 1;
+    } else {
+        let wrapped_title = crate::tui::text::wrap_text(title, text_width);
+        fixed_lines += wrapped_title.len().min(2);
+    }
+    fixed_lines += 1;
+    if details
+        .tagline
+        .as_deref()
+        .is_some_and(|t| !t.trim().is_empty())
+    {
+        fixed_lines += 1;
+    }
+
+    let has_extra_meta = !details.genres.is_empty()
+        || details
+            .director
+            .as_ref()
+            .is_some_and(|d| !d.trim().is_empty() && *d != "N/A")
+        || details
+            .stars
+            .as_ref()
+            .is_some_and(|s| !s.trim().is_empty() && *s != "N/A");
+
+    let reserved_bottom = if has_extra_meta { 1 } else { 0 };
+    let remaining_height = total_height.saturating_sub(fixed_lines + reserved_bottom);
+    let (include_spacer, max_synopsis_lines) = if remaining_height >= 2 {
+        (true, remaining_height.saturating_sub(1))
+    } else {
+        (false, remaining_height)
+    };
+
+    if max_synopsis_lines == 0 {
+        return Rect::default();
+    }
+
+    let wrapped_synopsis = crate::tui::text::wrap_text(intro, text_width);
+    let actual_synopsis_lines = wrapped_synopsis.len().min(max_synopsis_lines);
+    if actual_synopsis_lines == 0 {
+        return Rect::default();
+    }
+
+    let rendered_count =
+        fixed_lines + if include_spacer { 1 } else { 0 } + actual_synopsis_lines + reserved_bottom;
+    let top_offset = total_height.saturating_sub(rendered_count) / 2;
+    let synopsis_rel_y = top_offset + fixed_lines + if include_spacer { 1 } else { 0 };
+
+    let abs_y = meta_area.y + synopsis_rel_y as u16;
+    let height = actual_synopsis_lines as u16;
+    Rect::new(meta_area.x, abs_y, meta_area.width, height)
 }
 
 pub fn draw(frame: &mut Frame, area: Rect, state: &mut AppState, theme: &Theme) {
@@ -1408,7 +1537,9 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &mut AppState, theme: &Theme) 
             }
         };
 
-        let style = if has_error {
+        let style = if modal_active {
+            theme.muted
+        } else if has_error {
             theme.error
         } else if waiting_for_language {
             theme.text_dim
@@ -1417,7 +1548,6 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &mut AppState, theme: &Theme) 
         } else {
             theme.text_dim
         };
-
         let inner = streams_block.inner(streams_area);
         let pad = "\n".repeat((inner.height.saturating_sub(1) / 2) as usize);
         let p = Paragraph::new(format!("{}{}", pad, msg))
@@ -3268,6 +3398,85 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn test_details_empty_streams_message_dimmed_when_modal_active() {
+        let backend = ratatui::backend::TestBackend::new(120, 30);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        let mut state = AppState {
+            selected_details: Some(MediaDetails {
+                id: ProviderMediaId {
+                    provider: ProviderKind::MovieBox,
+                    value: "sample".to_string(),
+                },
+                title: "Sample Movie".to_string(),
+                media_type: MediaType::Movie,
+                year: Some("2024".to_string()),
+                description: Some("Synopsis".to_string()),
+                tagline: None,
+                imdb_rating: None,
+                director: None,
+                stars: None,
+                prints: None,
+                audios: None,
+                poster_url: None,
+                duration: None,
+                genres: vec![],
+                seasons: vec![],
+                dubs: vec![
+                    AudioTrackOption {
+                        subject_id: "sample".to_string(),
+                        language: "Original".to_string(),
+                        label: "Original".to_string(),
+                    },
+                    AudioTrackOption {
+                        subject_id: "sample-hi".to_string(),
+                        language: "Hindi".to_string(),
+                        label: "Hindi".to_string(),
+                    },
+                ],
+            }),
+            selected_resources: vec![],
+            language_chosen: false,
+            show_overview_modal: true,
+            overview_modal_title: "Sample Movie · Synopsis".to_string(),
+            overview_modal_content: "Overview content".to_string(),
+            basic_terminal: false,
+            ..Default::default()
+        };
+        let theme = Theme::mocha();
+
+        terminal
+            .draw(|frame| {
+                draw(frame, frame.area(), &mut state, &theme);
+            })
+            .unwrap();
+
+        let buffer = terminal.backend().buffer();
+        let mut found_choose = false;
+        for y in 0..30 {
+            for x in 0..120 {
+                let cell = &buffer[(x, y)];
+                if cell.symbol() == "C"
+                    && x + 6 < 120
+                    && buffer[(x + 1, y)].symbol() == "h"
+                    && buffer[(x + 2, y)].symbol() == "o"
+                    && buffer[(x + 3, y)].symbol() == "o"
+                {
+                    found_choose = true;
+                    assert_eq!(
+                        cell.style().fg,
+                        theme.muted.fg,
+                        "Choose an audio track text should be muted when modal is active"
+                    );
+                }
+            }
+        }
+        assert!(
+            found_choose,
+            "Expected to find 'Choose an audio track' on screen"
+        );
     }
     #[test]
     fn test_details_scrollbars_hidden_when_overview_modal_active() {

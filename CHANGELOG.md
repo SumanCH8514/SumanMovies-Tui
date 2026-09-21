@@ -6,6 +6,10 @@
 - **MPV Player Header & Cookie Flag Construction**:
   - Replaced comma-joined `--ytdl-raw-options` header strings in `src/player.rs` with dedicated `--ytdl-raw-options-append` arguments for non-UA/referer headers (e.g. CloudFront `Cookie`).
   - Preserved native `--user-agent` and `--referrer` flags, eliminating `mpv` option parsing aborts (code 1) from commas inside browser User-Agent strings while ensuring DASH manifest requests receive authentication cookies (preventing code 2 playback errors).
+- **Details Header Synopsis Click Hitbox**:
+  - Constrained the overview modal mouse trigger to the actual rendered synopsis text lines (`synopsis_area`) rather than the entire top header box, preventing accidental popup triggers when clicking posters, title text, metadata badges, or empty border padding.
+- **Details Screen Modal Backdrop Dimming**:
+  - Dimmed empty stream placeholder and status messages (e.g. *"Choose an audio track to load streams."*) to `theme.muted` when any modal or synopsis overlay is open, matching the dimmed backdrop styling of the rest of the details screen.
 
 ## [0.1.22] - 2026-09-21
 ### Added
