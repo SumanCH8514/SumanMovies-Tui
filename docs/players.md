@@ -64,7 +64,8 @@ process group (Unix `process_group(0)`) or no-console flag (Windows `CREATE_NO_W
 - **Clean Exit Normalization**: Routine exit states are normalized to avoid false crash reports:
   - VLC exit code `1` with empty stderr (normal stream completion under `--play-and-exit`) is classified as clean exit (`PlayerExited`).
   - Unix `SIGTERM` (signal 15) termination when the user closes player windows via the OS is treated as clean exit.
-  - Genuine non-zero failures with stderr diagnostics are surfaced as actionable player errors. Watch progress is reconciled only after a successful exit.
+  - Genuine non-zero failures with stderr diagnostics are surfaced directly as actionable player errors.
+  - When players exit without stderr diagnostics, exit codes are translated into actionable notifications (e.g. exit code `2` indicates `Stream Dead: Link expired or unreachable.`, exit code `1` indicates `Player Error: Check player configuration.`). Watch progress is reconciled only after a successful exit.
 
 ## Android / Termux Playback Architecture
 

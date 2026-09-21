@@ -1054,12 +1054,40 @@ impl App {
                         "Run 'pkg install termux-tools'.".to_string(),
                     )
                 } else {
-                    let formatted_msg = if let Some(c) = code {
-                        format!("Player exited (code {c}).")
-                    } else {
-                        "Player exited.".to_string()
-                    };
-                    ("Playback Failed", formatted_msg)
+                    match code {
+                        Some(2) => (
+                            "Stream Dead",
+                            if !error_msg.is_empty() && !error_msg.starts_with("Player exited") {
+                                error_msg
+                            } else {
+                                "Link expired or unreachable.".to_string()
+                            },
+                        ),
+                        Some(1) => (
+                            "Player Error",
+                            if error_msg.is_empty() || error_msg.starts_with("Player exited") {
+                                "Check player configuration.".to_string()
+                            } else {
+                                error_msg
+                            },
+                        ),
+                        Some(c) => (
+                            "Playback Failed",
+                            if !error_msg.is_empty() && !error_msg.starts_with("Player exited") {
+                                error_msg
+                            } else {
+                                format!("Player exited ({c}).")
+                            },
+                        ),
+                        None => (
+                            "Playback Failed",
+                            if !error_msg.is_empty() && !error_msg.starts_with("Player exited") {
+                                error_msg
+                            } else {
+                                "Player terminated.".to_string()
+                            },
+                        ),
+                    }
                 };
 
                 self.state.set_status(format!("{title}: {message}"), 300);
@@ -1098,6 +1126,17 @@ mod tests {
             clean_player_error(None, None, ""),
             "Player exited unsuccessfully without error output."
         );
+    }
+    #[test]
+    fn player_exit_code_interpretation() {
+        let code = Some(2);
+        let msg = match code {
+            Some(2) => ("Stream Dead", "Link expired or unreachable."),
+            Some(1) => ("Player Error", "Check player configuration."),
+            _ => ("Playback Failed", "Player exited."),
+        };
+        assert_eq!(msg.0, "Stream Dead");
+        assert_eq!(msg.1, "Link expired or unreachable.");
     }
 
     #[test]

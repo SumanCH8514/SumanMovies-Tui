@@ -11,6 +11,8 @@
 - **Details Screen Modal Backdrop Dimming**:
   - Dimmed empty stream placeholder and status messages (e.g. *"Choose an audio track to load streams."*) to `theme.muted` when any modal or synopsis overlay is open, matching the dimmed backdrop styling of the rest of the details screen.
 
+- **Concise Actionable Playback Error Notifications**:
+  - Mapped player exit codes to short, direct notices in `src/tui/app/playback.rs` (`Stream Dead: Link expired or unreachable.` for code 2, `Player Error: Check player configuration.` for code 1), replacing cryptic raw process exit strings (`Player exited (code 2).`).
 ## [0.1.22] - 2026-09-21
 ### Added
 - **Dramachi Native Streaming Provider**:
