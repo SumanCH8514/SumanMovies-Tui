@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.1.23] - 2026-09-21
 
 ### Fixed
 - **MPV Player Header & Cookie Flag Construction**:
