@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- **Scoop Package Manager Distribution & In-App Environment Detection**:
+  - Added native Scoop manifest in `bucket/moviebox-tui.json` supporting x64 and arm64 Windows architectures with automated release hash verification.
+  - Automated Scoop manifest synchronization alongside Homebrew in `.github/workflows/manifests.yml`, extracting `MovieBox_Windows_x64.zip` and `MovieBox_Windows_arm64.zip` checksums from `SHA256SUMS`.
+  - Added `InstallationEnvironment::Scoop` detection in `src/updater/apply.rs` via executable path inspection (`/scoop/apps/`, `\scoop\apps\`, `/scoop/shims/`, `\scoop\shims\`).
+  - Added dedicated update notification modal handling with `[s]` shortcut to display `scoop update moviebox-tui` on Scoop-managed Windows installations.
 ## [0.1.23] - 2026-09-21
 
 ### Fixed

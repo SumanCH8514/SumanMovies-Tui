@@ -93,22 +93,44 @@ impl App {
 
         if self.state.input_mode != InputMode::Editing {
             if let Some((version, _)) = &self.state.update_available {
-                let is_homebrew = std::env::current_exe()
-                    .map(|p| crate::updater::apply::is_homebrew_managed(&p))
-                    .unwrap_or(false);
+                let env = std::env::current_exe()
+                    .as_deref()
+                    .map(crate::updater::apply::detect_environment)
+                    .unwrap_or(crate::updater::apply::InstallationEnvironment::DirectReplace);
 
                 match key.code {
-                    KeyCode::Char('u') | KeyCode::Char('U') if !is_homebrew => {
+                    KeyCode::Char('u') | KeyCode::Char('U')
+                        if matches!(
+                            env,
+                            crate::updater::apply::InstallationEnvironment::DirectReplace
+                                | crate::updater::apply::InstallationEnvironment::WindowsHelper
+                        ) =>
+                    {
                         self.action_sender.send(Action::StartSelfUpdate).ok();
                         return None;
                     }
-                    KeyCode::Char('b') | KeyCode::Char('B') if is_homebrew => {
+                    KeyCode::Char('b') | KeyCode::Char('B')
+                        if env == crate::updater::apply::InstallationEnvironment::Homebrew =>
+                    {
                         self.state
                             .set_status_short("Run: brew upgrade moviebox-tui");
                         self.state.notify(
                             crate::tui::overlay::NotificationKind::Info,
                             "Homebrew Upgrade",
                             "Run: brew upgrade moviebox-tui",
+                        );
+                        self.state.update_available = None;
+                        return None;
+                    }
+                    KeyCode::Char('s') | KeyCode::Char('S')
+                        if env == crate::updater::apply::InstallationEnvironment::Scoop =>
+                    {
+                        self.state
+                            .set_status_short("Run: scoop update moviebox-tui");
+                        self.state.notify(
+                            crate::tui::overlay::NotificationKind::Info,
+                            "Scoop Upgrade",
+                            "Run: scoop update moviebox-tui",
                         );
                         self.state.update_available = None;
                         return None;

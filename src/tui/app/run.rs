@@ -1160,6 +1160,23 @@ impl App {
                         ]
                     }
                 }
+                crate::updater::apply::InstallationEnvironment::Scoop => {
+                    if is_compact_modal {
+                        vec![
+                            Span::styled("[s]", self.theme.shortcut),
+                            Span::styled(" Copy ", self.theme.text),
+                            Span::styled("[o]", self.theme.shortcut),
+                            Span::styled(" GitHub", self.theme.text),
+                        ]
+                    } else {
+                        vec![
+                            Span::styled("[s]", self.theme.shortcut),
+                            Span::styled(" Copy Command ──── ", self.theme.text),
+                            Span::styled("[o]", self.theme.shortcut),
+                            Span::styled(" GitHub", self.theme.text),
+                        ]
+                    }
+                }
                 crate::updater::apply::InstallationEnvironment::Termux
                 | crate::updater::apply::InstallationEnvironment::Flatpak
                 | crate::updater::apply::InstallationEnvironment::Snap
@@ -1203,6 +1220,19 @@ impl App {
                         Span::styled("Homebrew Managed • Run: ", self.theme.text_dim),
                         Span::styled(
                             "brew upgrade moviebox-tui",
+                            self.theme
+                                .shortcut
+                                .add_modifier(ratatui::style::Modifier::BOLD),
+                        ),
+                    ]));
+                    text.push(Line::from(""));
+                }
+                crate::updater::apply::InstallationEnvironment::Scoop => {
+                    text.push(Line::from(vec![
+                        Span::raw("  "),
+                        Span::styled("Scoop Managed • Run: ", self.theme.text_dim),
+                        Span::styled(
+                            "scoop update moviebox-tui",
                             self.theme
                                 .shortcut
                                 .add_modifier(ratatui::style::Modifier::BOLD),

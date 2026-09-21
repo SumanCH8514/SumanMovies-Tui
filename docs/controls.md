@@ -144,6 +144,7 @@ When a new release is detected, a centered modal card displays the version compa
 
 - `u` / `U`: Download and install update immediately (direct binary replacement platforms).
 - `b` / `B`: Copy Homebrew upgrade command (`brew upgrade moviebox-tui`) to clipboard with status toast on Homebrew-managed installations.
+- `s` / `S`: Copy Scoop upgrade command (`scoop update moviebox-tui`) to clipboard with status toast on Scoop-managed installations.
 - `o` / `O`: Open GitHub release notes in the system browser.
 - `Esc`: Dismiss modal and return to previous screen.
 - The notification modal formats release notes into clean, indented category sections (`[Added]`, `[Fixed]`) with bold feature titles and bullet items, docked with inline quick actions (`[u] Update ──── [o] GitHub`).

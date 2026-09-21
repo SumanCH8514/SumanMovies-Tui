@@ -14,6 +14,7 @@ pub enum SelfUpdateOutcome {
 pub enum InstallationEnvironment {
     DirectReplace,
     Homebrew,
+    Scoop,
     Termux,
     Flatpak,
     Snap,
@@ -43,6 +44,9 @@ pub fn detect_environment(exe_path: &Path) -> InstallationEnvironment {
     if is_homebrew_managed(exe_path) {
         return InstallationEnvironment::Homebrew;
     }
+    if is_scoop_managed(exe_path) {
+        return InstallationEnvironment::Scoop;
+    }
     if cfg!(windows) {
         return InstallationEnvironment::WindowsHelper;
     }
@@ -61,6 +65,25 @@ pub fn is_homebrew_managed(exe_path: &Path) -> bool {
             || s.contains("/opt/homebrew/")
             || s.contains("/usr/local/Cellar/")
             || s.contains("/home/linuxbrew/.linuxbrew/Cellar/")
+    };
+
+    if check_path(exe_path) {
+        return true;
+    }
+
+    if let Ok(canonical) = exe_path.canonicalize() {
+        if check_path(&canonical) {
+            return true;
+        }
+    }
+
+    false
+}
+
+pub fn is_scoop_managed(exe_path: &Path) -> bool {
+    let check_path = |p: &Path| -> bool {
+        let s = p.to_string_lossy().to_lowercase().replace('\\', "/");
+        s.contains("/scoop/apps/") || s.contains("/scoop/shims/")
     };
 
     if check_path(exe_path) {
@@ -102,6 +125,11 @@ pub fn apply_staged_binary(
         InstallationEnvironment::Homebrew => {
             Ok(SelfUpdateOutcome::RequiresManualUpgrade(
                 "This installation is managed by Homebrew. Run: brew upgrade moviebox-tui".to_string(),
+            ))
+        }
+        InstallationEnvironment::Scoop => {
+            Ok(SelfUpdateOutcome::RequiresManualUpgrade(
+                "This installation is managed by Scoop. Run: scoop update moviebox-tui".to_string(),
             ))
         }
         InstallationEnvironment::Termux => {
@@ -311,6 +339,21 @@ mod tests {
             paths[1]
                 .to_string_lossy()
                 .contains("moviebox_update_helper.bat")
+        );
+    }
+
+    #[test]
+    fn detects_scoop_managed_environment() {
+        let win_path =
+            Path::new("C:\\Users\\user\\scoop\\apps\\moviebox-tui\\0.1.23\\moviebox-tui.exe");
+        assert!(is_scoop_managed(win_path));
+        assert_eq!(detect_environment(win_path), InstallationEnvironment::Scoop);
+
+        let shim_path = Path::new("C:\\Users\\user\\scoop\\shims\\moviebox-tui.exe");
+        assert!(is_scoop_managed(shim_path));
+        assert_eq!(
+            detect_environment(shim_path),
+            InstallationEnvironment::Scoop
         );
     }
 

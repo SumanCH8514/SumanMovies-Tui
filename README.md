@@ -55,7 +55,13 @@ brew install moviebox-tui
 
 ### Windows
 
-Open PowerShell and run:
+Via Scoop:
+```powershell
+scoop bucket add moviebox https://github.com/mesamirh/MovieBox-Tui
+scoop install moviebox-tui
+```
+
+Or automated PowerShell script:
 ```powershell
 irm https://raw.githubusercontent.com/mesamirh/MovieBox-Tui/main/install.ps1 | iex
 ```

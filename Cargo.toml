@@ -3,6 +3,7 @@ name = "moviebox-tui"
 exclude = [
     "docs/",
     "Formula/",
+    "bucket/",
     ".github/",
     ".githooks/",
     ".cargo/",

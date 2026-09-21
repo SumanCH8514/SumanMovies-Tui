@@ -309,22 +309,37 @@ impl App {
                 .popup_area
                 .contains(ratatui::layout::Position::new(col, row))
             {
-                let is_homebrew = std::env::current_exe()
-                    .map(|p| crate::updater::apply::is_homebrew_managed(&p))
-                    .unwrap_or(false);
+                let env = std::env::current_exe()
+                    .as_deref()
+                    .map(crate::updater::apply::detect_environment)
+                    .unwrap_or(crate::updater::apply::InstallationEnvironment::DirectReplace);
 
                 if row == layout.button_row_y {
                     if col < layout.update_btn_end_x {
-                        if is_homebrew {
-                            self.state
-                                .set_status_short("Run: brew upgrade moviebox-tui");
-                            self.state.notify(
-                                NotificationKind::Info,
-                                "Homebrew Upgrade",
-                                "Run: brew upgrade moviebox-tui",
-                            );
-                        } else {
-                            self.action_sender.send(Action::StartSelfUpdate).ok();
+                        match env {
+                            crate::updater::apply::InstallationEnvironment::Homebrew => {
+                                self.state
+                                    .set_status_short("Run: brew upgrade moviebox-tui");
+                                self.state.notify(
+                                    NotificationKind::Info,
+                                    "Homebrew Upgrade",
+                                    "Run: brew upgrade moviebox-tui",
+                                );
+                            }
+                            crate::updater::apply::InstallationEnvironment::Scoop => {
+                                self.state
+                                    .set_status_short("Run: scoop update moviebox-tui");
+                                self.state.notify(
+                                    NotificationKind::Info,
+                                    "Scoop Upgrade",
+                                    "Run: scoop update moviebox-tui",
+                                );
+                            }
+                            crate::updater::apply::InstallationEnvironment::DirectReplace
+                            | crate::updater::apply::InstallationEnvironment::WindowsHelper => {
+                                self.action_sender.send(Action::StartSelfUpdate).ok();
+                            }
+                            _ => {}
                         }
                     } else if col < layout.open_btn_end_x {
                         let url = crate::updater::check::release_tag_url(ver);

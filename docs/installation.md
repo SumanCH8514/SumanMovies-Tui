@@ -25,12 +25,18 @@ brew install moviebox-tui
 
 ## Windows
 
-Open PowerShell and run:
+### Scoop Package Manager
+
+```powershell
+scoop bucket add moviebox https://github.com/mesamirh/MovieBox-Tui
+scoop install moviebox-tui
+```
+
+### Automated PowerShell Script
 
 ```powershell
 irm https://raw.githubusercontent.com/mesamirh/MovieBox-Tui/main/install.ps1 | iex
 ```
-
 ---
 
 ## Android (Termux)
