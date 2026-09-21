@@ -443,6 +443,9 @@ fn mpv_command(
         for (name, value) in headers {
             if !name.eq_ignore_ascii_case("user-agent") && !name.eq_ignore_ascii_case("referer") {
                 command.arg(format!("{prefix}http-header-fields={name}: {value}"));
+                command.arg(format!(
+                    "{prefix}ytdl-raw-options-append=add-header={name}:{value}"
+                ));
             }
         }
     }
@@ -1637,6 +1640,10 @@ mod tests {
         assert!(
             args.iter()
                 .any(|a| a == "--http-header-fields=Cookie: auth=token123")
+        );
+        assert!(
+            args.iter()
+                .any(|a| a == "--ytdl-raw-options-append=add-header=Cookie:auth=token123")
         );
         assert!(!args.iter().any(|a| a.starts_with("--ytdl-raw-options=")));
     }

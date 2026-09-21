@@ -30,7 +30,7 @@ by the image picker, then clamped to a fixed range.
 
 Playback sources (for example 4KHD and MovieBox) may carry `Referer`/`User-Agent` headers.
 MovieBox DASH streams additionally carry signed `Cookie` headers for CloudFront authentication.
-- mpv and IINA send headers via native CLI flags (`--user-agent`, `--referrer`, and `--http-header-fields`), which are read by demuxers and automatically forwarded by internal Lua hooks to yt-dlp.
+- mpv and IINA send headers via native CLI flags (`--user-agent`, `--referrer`, and `--http-header-fields`), and forward custom auth cookies via `--ytdl-raw-options-append` to yt-dlp hooks for DASH manifests.
 while VLC maps them to `--http-referrer` / `--http-user-agent`. Android intent playback forwards `Referer`/`User-Agent` extras when using `am`/`termux-am`, and supports unauthenticated streams (CircleFTP, DhakaFlix, IPTV) and CDN streams natively.
 The `supports_headers` gate in `app/playback.rs` validates whether a player can satisfy required stream headers. For VLC and Android Intent, signed CloudFront `Cookie` streams (such as MovieBox DASH manifests) are automatically supported via the detached loopback sidecar proxy (`--proxy-for-vlc`). The proxy injects the signed CloudFront cookies and auth headers server-side and streams chunks directly over localhost.
 ## Subtitles

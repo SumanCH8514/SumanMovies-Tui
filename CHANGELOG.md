@@ -3,8 +3,9 @@
 ## [Unreleased]
 
 ### Fixed
-- **MPV Player Header Flag Construction**:
-  - Removed redundant `--ytdl-raw-options` header pass-through in `src/player.rs`, preventing option parsing aborts (exit code 1) caused by unescaped commas inside standard browser `User-Agent` strings.
+- **MPV Player Header & Cookie Flag Construction**:
+  - Replaced comma-joined `--ytdl-raw-options` header strings in `src/player.rs` with dedicated `--ytdl-raw-options-append` arguments for non-UA/referer headers (e.g. CloudFront `Cookie`).
+  - Preserved native `--user-agent` and `--referrer` flags, eliminating `mpv` option parsing aborts (code 1) from commas inside browser User-Agent strings while ensuring DASH manifest requests receive authentication cookies (preventing code 2 playback errors).
 
 ## [0.1.22] - 2026-09-21
 ### Added
