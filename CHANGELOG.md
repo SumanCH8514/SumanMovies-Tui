@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- **MPV Player Header Flag Construction**:
+  - Removed redundant `--ytdl-raw-options` header pass-through in `src/player.rs`, preventing option parsing aborts (exit code 1) caused by unescaped commas inside standard browser `User-Agent` strings.
+
 ## [0.1.22] - 2026-09-21
 ### Added
 - **Dramachi Native Streaming Provider**:

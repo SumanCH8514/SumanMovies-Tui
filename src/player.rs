@@ -445,13 +445,6 @@ fn mpv_command(
                 command.arg(format!("{prefix}http-header-fields={name}: {value}"));
             }
         }
-
-        let ytdl_headers = headers
-            .iter()
-            .map(|(name, value)| format!("add-header={name}:{value}"))
-            .collect::<Vec<_>>()
-            .join(",");
-        command.arg(format!("{prefix}ytdl-raw-options={ytdl_headers}"));
     }
     if let Some(subtitle) = subtitle {
         let opt = if iina {
@@ -1617,6 +1610,35 @@ mod tests {
             .map(|a| a.to_string_lossy().into_owned())
             .collect::<Vec<_>>();
         assert!(args.contains(&"https://example.test/video.mp4".to_string()));
+    }
+    #[test]
+    fn test_mpv_command_headers_no_broken_ytdl_raw_options() {
+        let ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+        let headers = vec![
+            ("User-Agent".into(), ua.into()),
+            ("Referer".into(), "https://4khdhub.one".into()),
+            ("Cookie".into(), "auth=token123".into()),
+        ];
+        let cmd = mpv_command(
+            "https://example.test/stream.m3u8",
+            None,
+            &headers,
+            false,
+            None,
+            None,
+            None,
+        );
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        assert!(args.iter().any(|a| a == &format!("--user-agent={ua}")));
+        assert!(args.iter().any(|a| a == "--referrer=https://4khdhub.one"));
+        assert!(
+            args.iter()
+                .any(|a| a == "--http-header-fields=Cookie: auth=token123")
+        );
+        assert!(!args.iter().any(|a| a.starts_with("--ytdl-raw-options=")));
     }
 
     #[test]
