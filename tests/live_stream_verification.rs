@@ -174,7 +174,7 @@ async fn test_inspect_live_mpd_manifest() {
         xml
     );
 
-    for (target_label, height_constraint, expected_res) in [
+    for (target_label, _height_constraint, expected_res) in [
         (
             "1080p",
             "bestvideo[height<=1080]+bestaudio/best",
@@ -191,11 +191,16 @@ async fn test_inspect_live_mpd_manifest() {
             None,
             None,
             None,
+            Some(if target_label == "1080p" {
+                1080
+            } else if target_label == "720p" {
+                720
+            } else {
+                480
+            }),
         );
-        cmd.arg("--vo=null")
-            .arg("--ao=null")
-            .arg("--frames=15")
-            .arg(format!("--ytdl-format={height_constraint}"));
+        println!("Generated command: {:?}", cmd);
+        cmd.arg("--vo=null").arg("--ao=null").arg("--frames=15");
 
         let output = cmd.output().expect("run mpv with quality format");
         let out = String::from_utf8_lossy(&output.stdout);
@@ -239,6 +244,7 @@ async fn test_live_moviebox_mpv_end_to_end_playback() {
         None,
         None,
         None,
+        None,
     );
 
     cmd.arg("--vo=null").arg("--ao=null").arg("--frames=20");
@@ -258,7 +264,42 @@ async fn test_live_moviebox_mpv_end_to_end_playback() {
         "mpv should detect audio stream"
     );
 }
+#[tokio::test]
+#[ignore = "live network test; run with cargo test --test live_stream_verification -- --ignored"]
+async fn test_live_moviebox_iina_invocation() {
+    let client = MovieBoxClient::new();
+    client.init().await.expect("client init successful");
 
+    let releases = client
+        .episode_streams("4179386086617137184", 0, 0)
+        .await
+        .expect("fetch movie streams");
+    assert!(!releases.is_empty(), "releases should not be empty");
+
+    let release = &releases[0];
+    let mirror = &release.mirrors[0];
+
+    let cmd = moviebox_tui::player::command(
+        moviebox_tui::player::PlayerKind::Iina,
+        &mirror.resolver_url,
+        None,
+        &mirror.headers,
+        None,
+        None,
+        None,
+        Some(480),
+    );
+    let args: Vec<String> = cmd
+        .get_args()
+        .map(|a| a.to_string_lossy().into_owned())
+        .collect();
+    println!(
+        "IINA cmd program: {:?}, args: {:?}",
+        cmd.get_program(),
+        args
+    );
+    assert!(args.iter().any(|a| a.contains("height<=480")));
+}
 #[tokio::test]
 #[ignore = "live network test; run with cargo test --test live_stream_verification -- --ignored"]
 async fn test_live_moviebox_dynamic_movie_mpv_playback() {
@@ -294,6 +335,7 @@ async fn test_live_moviebox_dynamic_movie_mpv_playback() {
         &mirror.resolver_url,
         None,
         &mirror.headers,
+        None,
         None,
         None,
         None,

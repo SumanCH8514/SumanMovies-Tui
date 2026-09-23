@@ -292,6 +292,8 @@ pub struct PlaybackSource {
     pub headers: Vec<(String, String)>,
     pub subtitle: Option<String>,
     pub source_label: String,
+    #[serde(default)]
+    pub max_height: Option<u64>,
 }
 
 impl PlaybackSource {
@@ -302,6 +304,7 @@ impl PlaybackSource {
             headers: Vec::new(),
             subtitle,
             source_label: provider.label().to_string(),
+            max_height: None,
         }
     }
 }

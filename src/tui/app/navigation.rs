@@ -763,6 +763,7 @@ impl App {
                             )],
                             subtitle: sub_url,
                             source_label: "Direct".to_string(),
+                            max_height: None,
                         };
                         self.dispatch_playback_or_notify(source);
                     }
@@ -813,6 +814,7 @@ impl App {
                                 headers: Vec::new(),
                                 subtitle: None,
                                 source_label: "Live TV".to_string(),
+                                max_height: None,
                             };
                             self.dispatch_playback_or_notify(source);
                             return None;
@@ -898,6 +900,7 @@ impl App {
                     headers: Vec::new(),
                     subtitle: None,
                     source_label: "Live TV".to_string(),
+                    max_height: None,
                 };
                 self.dispatch_playback_or_notify(source);
                 return;

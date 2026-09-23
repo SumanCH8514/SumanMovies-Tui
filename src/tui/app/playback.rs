@@ -215,6 +215,7 @@ impl App {
         link: String,
         subtitle: Option<String>,
         headers: Vec<(String, String)>,
+        max_height: Option<u64>,
     ) {
         if !crate::tui::text::is_http_url(&link) {
             self.state.is_playing = false;
@@ -427,6 +428,7 @@ impl App {
                 window,
                 resume_seconds,
                 tracker_ref,
+                max_height,
             );
             if kind == crate::tui::state::PlayerKind::Iina
                 && crate::player::iina_is_app_fallback()
@@ -743,12 +745,14 @@ impl App {
                             "Preparing playback",
                             format!("Resolving {}...", first_mirror.label),
                         );
+                        let max_height = Some(release.resolution_u64()).filter(|&h| h > 0);
                         let direct_source = crate::providers::models::PlaybackSource {
                             provider: release.provider,
                             url: first_mirror.resolver_url.clone(),
                             headers: first_mirror.headers.clone(),
                             subtitle: None,
                             source_label: first_mirror.label.clone(),
+                            max_height,
                         };
                         let client = if release.provider == ProviderKind::Addons
                             || release.provider == ProviderKind::Dramachi
@@ -823,12 +827,14 @@ impl App {
                         );
                         return None;
                     };
+                    let max_height = Some(release.resolution_u64()).filter(|&h| h > 0);
                     let direct_source = crate::providers::models::PlaybackSource {
                         provider: release.provider,
                         url: first_mirror.resolver_url.clone(),
                         headers: first_mirror.headers.clone(),
                         subtitle: None,
                         source_label: first_mirror.label.clone(),
+                        max_height,
                     };
                     let subject_id = self.state.active_subject_id.clone().unwrap_or_default();
                     let resource_id = self.get_selected_resource_id();
@@ -947,6 +953,7 @@ impl App {
                             )],
                             subtitle: None,
                             source_label: "Direct".to_string(),
+                            max_height: None,
                         };
                         self.dispatch_playback_or_notify(source);
                     }
@@ -981,7 +988,13 @@ impl App {
                     );
                     return None;
                 }
-                self.launch_player(kind, source.url, source.subtitle, source.headers);
+                self.launch_player(
+                    kind,
+                    source.url,
+                    source.subtitle,
+                    source.headers,
+                    source.max_height,
+                );
             }
             Action::DispatchPlayback(source) => {
                 self.dispatch_playback_or_notify(source);
@@ -1303,6 +1316,7 @@ mod tests {
             headers: vec![("Cookie".to_string(), "CloudFront-Policy=test".to_string())],
             subtitle: None,
             source_label: "Multi-Res".to_string(),
+            max_height: None,
         };
 
         assert_eq!(
@@ -1325,6 +1339,7 @@ mod tests {
             headers: vec![("Cookie".to_string(), "CloudFront-Policy=test".to_string())],
             subtitle: None,
             source_label: "Multi-Res".to_string(),
+            max_height: None,
         };
 
         let resolution = app.resolve_playback_player(&source);
@@ -1353,6 +1368,7 @@ mod tests {
             headers: vec![("Cookie".to_string(), "CloudFront-Policy=test".to_string())],
             subtitle: None,
             source_label: "Multi-Res".to_string(),
+            max_height: None,
         };
 
         let resolution = app.resolve_playback_player(&source);
@@ -1388,6 +1404,7 @@ mod tests {
             headers: vec![],
             subtitle: None,
             source_label: "CircleFTP".to_string(),
+            max_height: None,
         };
         assert_eq!(
             app.resolve_playback_player(&bdix_source),
@@ -1403,6 +1420,7 @@ mod tests {
             ],
             subtitle: None,
             source_label: "1080p".to_string(),
+            max_height: None,
         };
         assert_eq!(
             app.resolve_playback_player(&fourk_source),
@@ -1415,6 +1433,7 @@ mod tests {
             headers: vec![("Cookie".to_string(), "CloudFront-Policy=test".to_string())],
             subtitle: None,
             source_label: "Multi-Res".to_string(),
+            max_height: None,
         };
         assert_eq!(
             app.resolve_playback_player(&auth_source),

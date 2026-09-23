@@ -622,6 +622,7 @@ pub fn release_to_playback_source(release: &Release) -> Option<PlaybackSource> {
         headers: mirror.headers.clone(),
         subtitle: None,
         source_label: mirror.label.clone(),
+        max_height: None,
     })
 }
 

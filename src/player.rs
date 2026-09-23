@@ -113,6 +113,7 @@ pub fn header_capable_players() -> &'static [PlayerKind] {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn command(
     kind: PlayerKind,
     url: &str,
@@ -121,6 +122,7 @@ pub fn command(
     window: Option<(u32, u32)>,
     resume_seconds: Option<u64>,
     tracker: Option<(&str, &str, usize, usize)>,
+    max_height: Option<u64>,
 ) -> Command {
     match kind {
         PlayerKind::Mpv => mpv_command(
@@ -131,9 +133,18 @@ pub fn command(
             window,
             resume_seconds,
             tracker,
+            max_height,
         ),
-        PlayerKind::Iina => iina_command(url, subtitle, headers, window, resume_seconds, tracker),
-        PlayerKind::Vlc => vlc_command(url, subtitle, headers, window, resume_seconds),
+        PlayerKind::Iina => iina_command(
+            url,
+            subtitle,
+            headers,
+            window,
+            resume_seconds,
+            tracker,
+            max_height,
+        ),
+        PlayerKind::Vlc => vlc_command(url, subtitle, headers, window, resume_seconds, max_height),
         PlayerKind::AndroidIntent => android_intent_command(url, subtitle, headers),
     }
 }
@@ -384,6 +395,7 @@ fn android_intent_command(
         })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn mpv_command(
     url: &str,
     subtitle: Option<&str>,
@@ -392,6 +404,7 @@ fn mpv_command(
     window: Option<(u32, u32)>,
     resume_seconds: Option<u64>,
     tracker: Option<(&str, &str, usize, usize)>,
+    max_height: Option<u64>,
 ) -> Command {
     let fallback = if cfg!(target_os = "windows") {
         "mpv.exe"
@@ -406,12 +419,17 @@ fn mpv_command(
         command.arg(format!("{prefix}autofit={width}x{height}"));
     }
     command.arg(format!("{prefix}geometry=50%:50%"));
-
     if !iina {
         command.arg("--idle=no").arg("--keep-open=no");
     }
-    command.arg(format!("{prefix}ytdl-format=bestvideo+bestaudio/best"));
-    command.arg(format!("{prefix}hls-bitrate=max"));
+    if let Some(height) = max_height.filter(|&h| h > 0) {
+        command.arg(format!(
+            "{prefix}ytdl-format=bestvideo[height<={height}]+bestaudio/best[height<={height}]/bestvideo+bestaudio/best"
+        ));
+    } else {
+        command.arg(format!("{prefix}ytdl-format=bestvideo+bestaudio/best"));
+        command.arg(format!("{prefix}hls-bitrate=max"));
+    }
     if let Some(start) = resume_seconds {
         if start > 0 {
             command.arg(format!("{prefix}start={start}"));
@@ -540,6 +558,7 @@ fn iina_resolution() -> Option<IinaResolution> {
 }
 
 #[cfg(target_os = "macos")]
+#[allow(clippy::too_many_arguments)]
 fn iina_command(
     url: &str,
     subtitle: Option<&str>,
@@ -547,6 +566,7 @@ fn iina_command(
     window: Option<(u32, u32)>,
     resume_seconds: Option<u64>,
     tracker: Option<(&str, &str, usize, usize)>,
+    max_height: Option<u64>,
 ) -> Command {
     let resolution = iina_resolution();
     let mut command = match resolution {
@@ -562,7 +582,6 @@ fn iina_command(
         }
         None => Command::new("iina"),
     };
-
     let mpv = mpv_command(
         url,
         subtitle,
@@ -571,9 +590,13 @@ fn iina_command(
         window,
         resume_seconds,
         tracker,
+        max_height,
     );
     for arg in mpv.get_args() {
-        command.arg(arg);
+        let s = arg.to_string_lossy();
+        if !s.starts_with("--mpv-script") {
+            command.arg(arg);
+        }
     }
     command
 }
@@ -589,6 +612,7 @@ pub fn iina_is_app_fallback() -> bool {
 }
 
 #[cfg(not(target_os = "macos"))]
+#[allow(clippy::too_many_arguments)]
 fn iina_command(
     url: &str,
     subtitle: Option<&str>,
@@ -596,6 +620,7 @@ fn iina_command(
     window: Option<(u32, u32)>,
     resume_seconds: Option<u64>,
     tracker: Option<(&str, &str, usize, usize)>,
+    max_height: Option<u64>,
 ) -> Command {
     mpv_command(
         url,
@@ -605,6 +630,7 @@ fn iina_command(
         window,
         resume_seconds,
         tracker,
+        max_height,
     )
 }
 
@@ -614,6 +640,7 @@ fn vlc_command(
     headers: &[(String, String)],
     window: Option<(u32, u32)>,
     resume_seconds: Option<u64>,
+    max_height: Option<u64>,
 ) -> Command {
     let fallback = if cfg!(target_os = "windows") {
         "vlc.exe"
@@ -630,6 +657,9 @@ fn vlc_command(
     }
     command.arg("--play-and-exit");
     command.arg("--adaptive-logic=highest");
+    if let Some(height) = max_height.filter(|&h| h > 0) {
+        command.arg(format!("--adaptive-maxheight={height}"));
+    }
     if let Some(start) = resume_seconds {
         if start > 0 {
             command.arg(format!("--start-time={start}"));
@@ -1476,6 +1506,7 @@ mod tests {
             ],
             Some((1280, 720)),
             Some(42),
+            None,
         );
         let args = command
             .get_args()
@@ -1504,6 +1535,7 @@ mod tests {
             &[],
             None,
             None,
+            None,
         );
         let args = command
             .get_args()
@@ -1521,6 +1553,7 @@ mod tests {
             "https://example.test/video.mp4",
             Some(r"\\server\share\subs\sub.srt"),
             &[],
+            None,
             None,
             None,
         );
@@ -1543,6 +1576,7 @@ mod tests {
             None,
             &headers,
             false,
+            None,
             None,
             None,
             None,
@@ -1627,6 +1661,7 @@ mod tests {
             None,
             &headers,
             false,
+            None,
             None,
             None,
             None,

@@ -8,6 +8,9 @@
   - Automated Scoop manifest synchronization alongside Homebrew in `.github/workflows/manifests.yml`, extracting `MovieBox_Windows_x64.zip` and `MovieBox_Windows_arm64.zip` checksums from `SHA256SUMS`.
   - Added `InstallationEnvironment::Scoop` detection in `src/updater/apply.rs` via executable path inspection (`/scoop/apps/`, `\scoop\apps\`, `/scoop/shims/`, `\scoop\shims\`).
   - Added dedicated update notification modal handling with `[s]` shortcut to display `scoop update moviebox-tui` on Scoop-managed Windows installations.
+- **MovieBox Stream Resolution Picker & Adaptive Bitrate Capping**:
+  - Decomposed multi-resolution DASH streams in `src/providers/moviebox/adapt.rs` into individual resolution stream rows (`1080p`, `720p`, `480p`, etc.) sorted by quality, enabling direct stream selection from the details screen.
+  - Threaded resolution constraints to player command builders (`src/player.rs` and `src/tui/app/playback.rs`), injecting `--ytdl-format="bestvideo[height<=H]+bestaudio/best"` for `mpv`/`IINA` and `--adaptive-maxheight=H` for `VLC` to prevent playback buffering on slow connections.
 ### Fixed
 - **In-App Updater Streaming Timeout & Chunk Retry Recovery**:
   - Removed the static 30-second total request deadline from the release binary download client in `src/updater/check.rs`, preventing mid-transfer decode aborts (`download chunk stream error: error decoding response body`) on slow or high-latency network connections.

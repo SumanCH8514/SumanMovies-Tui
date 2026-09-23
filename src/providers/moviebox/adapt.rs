@@ -726,13 +726,6 @@ pub fn moviebox_play_info_json_to_releases(
             continue;
         };
 
-        let is_dash = playable_url.ends_with(".mpd") || format_type.eq_ignore_ascii_case("DASH");
-        let parsed_res_count = resolutions_str
-            .split(',')
-            .filter_map(|s| s.trim().parse::<u32>().ok())
-            .count();
-        let is_multi_res = is_dash || parsed_res_count > 1;
-
         let mut headers = vec![
             ("Referer".to_string(), super::STREAM_REFERER.to_string()),
             ("User-Agent".to_string(), user_agent.to_string()),
@@ -747,49 +740,60 @@ pub fn moviebox_play_info_json_to_releases(
                 .join("; ");
             headers.push(("Cookie".to_string(), clean_cookie));
         }
-
-        let max_res = resolutions_str
+        let mut parsed_resolutions = resolutions_str
             .split(',')
             .filter_map(|s| s.trim().parse::<u32>().ok())
-            .max()
-            .unwrap_or(1080);
+            .collect::<Vec<_>>();
+        parsed_resolutions.sort_unstable_by(|a, b| b.cmp(a));
+        parsed_resolutions.dedup();
 
-        let quality = if is_multi_res {
-            Some("multi".to_string())
+        let res_list = if parsed_resolutions.is_empty() {
+            vec![1080]
         } else {
-            Some(format!("{max_res}p"))
+            parsed_resolutions
         };
+
         let codec_disp = codec.as_deref().unwrap_or(format_type);
-        let res_label = if is_multi_res {
-            "Multi-Res".to_string()
-        } else {
-            format!("{max_res}p")
-        };
-        let filename = if season > 0 && episode > 0 {
-            format!("{title_prefix} S{season:02}E{episode:02} {res_label} {codec_disp}")
-        } else {
-            format!("{title_prefix} {res_label} {codec_disp}")
-        };
 
-        let mirror = SourceMirror {
-            label: format!("{res_label} {codec_disp}"),
-            resolver_url: playable_url,
-            headers,
-            direct_file: true,
-        };
+        let highest_res = res_list.first().copied().unwrap_or(1080) as f64;
 
-        releases.push(Release {
-            provider: ProviderKind::MovieBox,
-            filename,
-            quality,
-            codec: codec.clone(),
-            language: None,
-            size_bytes,
-            season: if season > 0 { Some(season) } else { None },
-            episode: if episode > 0 { Some(episode) } else { None },
-            mirrors: vec![mirror],
-            resource_id: stream_id,
-        });
+        for res in res_list {
+            let res_label = format!("{res}p");
+            let filename = if season > 0 && episode > 0 {
+                format!("{title_prefix} S{season:02}E{episode:02} {res_label} {codec_disp}")
+            } else {
+                format!("{title_prefix} {res_label} {codec_disp}")
+            };
+
+            let mirror = SourceMirror {
+                label: format!("{res_label} {codec_disp}"),
+                resolver_url: playable_url.clone(),
+                headers: headers.clone(),
+                direct_file: true,
+            };
+
+            let scaled_size = size_bytes.map(|total| {
+                if (res as f64) >= highest_res || highest_res <= 0.0 {
+                    total
+                } else {
+                    let scale = (res as f64 / highest_res).powf(1.6);
+                    (total as f64 * scale.clamp(0.15, 1.0)) as u64
+                }
+            });
+
+            releases.push(Release {
+                provider: ProviderKind::MovieBox,
+                filename,
+                quality: Some(res_label),
+                codec: codec.clone(),
+                language: None,
+                size_bytes: scaled_size,
+                season: if season > 0 { Some(season) } else { None },
+                episode: if episode > 0 { Some(episode) } else { None },
+                mirrors: vec![mirror],
+                resource_id: stream_id.clone(),
+            });
+        }
     }
 
     releases
@@ -994,10 +998,13 @@ mod tests {
         });
 
         let releases = moviebox_play_info_json_to_releases(&payload, 0, 0, "TestAgent/1.0");
-        assert_eq!(releases.len(), 1);
-        assert_eq!(releases[0].quality.as_deref(), Some("multi"));
-        assert!(releases[0].is_multi_resolution());
-        assert_eq!(releases[0].resolution_i64(), -1);
+        assert_eq!(releases.len(), 3);
+        assert_eq!(releases[0].quality.as_deref(), Some("1080p"));
+        assert_eq!(releases[0].resolution_u64(), 1080);
+        assert_eq!(releases[1].quality.as_deref(), Some("720p"));
+        assert_eq!(releases[1].resolution_u64(), 720);
+        assert_eq!(releases[2].quality.as_deref(), Some("480p"));
+        assert_eq!(releases[2].resolution_u64(), 480);
         assert_eq!(releases[0].codec.as_deref(), Some("hevc"));
         assert_eq!(
             releases[0].direct_url(),
@@ -1177,17 +1184,18 @@ mod tests {
         });
 
         let releases = moviebox_play_info_json_to_releases(&payload, 0, 0, "TestAgent/1.0");
-        assert_eq!(releases.len(), 1);
+        assert_eq!(releases.len(), 3);
         assert_eq!(
             releases[0].direct_url(),
             Some(
                 "https://sbcdn3.hakunaymatata.com/dash/3264772588333157424_0_0_1080_h265_560/index.mpd"
             )
         );
-        assert_eq!(releases[0].quality.as_deref(), Some("multi"));
+        assert_eq!(releases[0].quality.as_deref(), Some("1080p"));
+        assert_eq!(releases[1].quality.as_deref(), Some("720p"));
+        assert_eq!(releases[2].quality.as_deref(), Some("480p"));
         assert_eq!(releases[0].codec.as_deref(), Some("hevc"));
     }
-
     #[test]
     fn test_notice_fallback_rejected_when_signed_policy_missing() {
         let payload = json!({

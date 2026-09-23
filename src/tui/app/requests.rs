@@ -1669,7 +1669,9 @@ impl App {
                                 let same_url = if context.provider == ProviderKind::MovieBox {
                                     let base_link = link.split('?').next().unwrap_or(link);
                                     let i_base_link = i_link.split('?').next().unwrap_or(i_link);
-                                    !base_link.is_empty() && base_link == i_base_link
+                                    !base_link.is_empty()
+                                        && base_link == i_base_link
+                                        && item.quality == i.quality
                                 } else {
                                     !link.is_empty() && link == i_link
                                 };

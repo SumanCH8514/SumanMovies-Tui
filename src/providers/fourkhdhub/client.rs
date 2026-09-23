@@ -188,6 +188,7 @@ impl FourKHdHubClient {
                     headers,
                     subtitle: None,
                     source_label: label,
+                    max_height: None,
                 });
             }
         }
