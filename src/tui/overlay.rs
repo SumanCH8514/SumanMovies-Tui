@@ -582,6 +582,18 @@ pub fn clear_modal_area(frame: &mut Frame, _bounds: Rect, popup: Rect, theme: &T
     crate::tui::clear_area(frame, popup, theme);
 }
 
+pub fn render_modal_frame(
+    frame: &mut Frame,
+    popup_area: Rect,
+    block: Block,
+    theme: &Theme,
+) -> Rect {
+    clear_modal_area(frame, popup_area, popup_area, theme);
+    let inner_area = block.inner(popup_area);
+    frame.render_widget(block, popup_area);
+    inner_area
+}
+
 pub fn border_type(basic_terminal: bool) -> BorderType {
     if basic_terminal {
         BorderType::Plain

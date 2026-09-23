@@ -1,3 +1,5 @@
+use std::future::Future;
+
 use tokio::sync::mpsc;
 
 use crate::providers::models::RequestContext;
@@ -75,6 +77,70 @@ impl RequestTaskHandles {
         if let Some(h) = self.episode_prefetch.take() {
             h.abort();
         }
+    }
+
+    pub fn spawn_search<F>(&mut self, future: F)
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
+        self.cancel_search();
+        self.search = Some(tokio::spawn(future));
+    }
+
+    pub fn spawn_details<F>(&mut self, future: F)
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
+        self.cancel_details();
+        self.details = Some(tokio::spawn(future));
+    }
+
+    pub fn spawn_streams<F>(&mut self, future: F)
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
+        self.cancel_streams();
+        self.streams = Some(tokio::spawn(future));
+    }
+
+    pub fn spawn_suggest<F>(&mut self, future: F)
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
+        self.cancel_suggest();
+        self.suggest = Some(tokio::spawn(future));
+    }
+
+    pub fn spawn_homepage<F>(&mut self, future: F)
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
+        self.cancel_homepage();
+        self.homepage = Some(tokio::spawn(future));
+    }
+
+    pub fn spawn_download<F>(&mut self, future: F)
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
+        self.cancel_download();
+        self.download = Some(tokio::spawn(future));
+    }
+
+    pub fn spawn_stream_pool_init<F>(&mut self, future: F)
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
+        self.cancel_stream_pool_init();
+        self.stream_pool_init = Some(tokio::spawn(future));
+    }
+
+    pub fn spawn_episode_prefetch<F>(&mut self, future: F)
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
+        self.cancel_episode_prefetch();
+        self.episode_prefetch = Some(tokio::spawn(future));
     }
 
     pub fn cancel_all(&mut self) {

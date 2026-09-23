@@ -155,13 +155,8 @@ impl App {
                 return;
             }
             Some(ForcedProtocol::Type(protocol)) => {
-                let font_size = Self::cell_size_override().unwrap_or(ratatui_image::FontSize {
-                    width: 10,
-                    height: 20,
-                });
-                #[allow(deprecated)]
-                let mut picker = ratatui_image::picker::Picker::from_fontsize(font_size);
-                picker.set_protocol_type(protocol);
+                let picker =
+                    Self::create_picker_with_font_size(Self::cell_size_override(), protocol);
                 self.accept_picker(picker);
                 return;
             }
@@ -190,19 +185,14 @@ impl App {
         let mut picker = match (picker, Self::cell_size_override()) {
             (Some(picker), None) => picker,
             (probed, cell_size) => {
-                let font_size = cell_size.unwrap_or(ratatui_image::FontSize {
-                    width: 10,
-                    height: 20,
-                });
-                #[allow(deprecated)]
-                let mut rebuilt = ratatui_image::picker::Picker::from_fontsize(font_size);
-                if let Some(probed) = probed {
-                    rebuilt.set_protocol_type(probed.protocol_type());
-                }
-                if let Some(ForcedProtocol::Type(protocol)) = Self::forced_protocol() {
-                    rebuilt.set_protocol_type(protocol);
-                }
-                rebuilt
+                let target_protocol = Self::forced_protocol()
+                    .and_then(|p| match p {
+                        ForcedProtocol::Type(proto) => Some(proto),
+                        _ => None,
+                    })
+                    .or_else(|| probed.as_ref().map(|p| p.protocol_type()))
+                    .unwrap_or(ProtocolType::Halfblocks);
+                Self::create_picker_with_font_size(cell_size, target_protocol)
             }
         };
 
@@ -290,6 +280,22 @@ impl App {
             return None;
         }
         Some(ratatui_image::FontSize { width, height })
+    }
+
+    fn create_picker_with_font_size(
+        font_size: Option<ratatui_image::FontSize>,
+        protocol: ratatui_image::picker::ProtocolType,
+    ) -> ratatui_image::picker::Picker {
+        let mut picker = match font_size {
+            Some(size) =>
+            {
+                #[allow(deprecated)]
+                ratatui_image::picker::Picker::from_fontsize(size)
+            }
+            None => ratatui_image::picker::Picker::halfblocks(),
+        };
+        picker.set_protocol_type(protocol);
+        picker
     }
     pub fn contextual_title(&self) -> String {
         match self.state.active_screen {
@@ -732,9 +738,8 @@ impl App {
             })
             .border_type(crate::tui::overlay::border_type(basic));
 
-        let inner_area = block.inner(dl_area);
-        crate::tui::clear_area(frame, dl_area, &self.theme);
-        frame.render_widget(block, dl_area);
+        let inner_area =
+            crate::tui::overlay::render_modal_frame(frame, dl_area, block, &self.theme);
 
         if inner_area.height == 0 || inner_area.width < 10 {
             return;

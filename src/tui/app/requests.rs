@@ -37,17 +37,16 @@ impl App {
                     return None;
                 }
 
-                self.request_tasks.cancel_suggest();
                 let service = self.service.clone();
                 let sender = self.action_sender.clone();
                 let query_clone = query.clone();
-                self.request_tasks.suggest = Some(tokio::spawn(async move {
+                self.request_tasks.spawn_suggest(async move {
                     if let Ok(res) = service.suggest(&query_clone).await {
                         sender
                             .send(Action::SuggestSuccess(request_id, query_clone, res))
                             .ok();
                     }
-                }));
+                });
             }
 
             Action::SuggestSuccess(request_id, query, suggestions) => {
@@ -258,8 +257,7 @@ impl App {
                 let manifest_url = target.manifest_url.clone();
                 let r_type = target.r#type.clone();
                 let cat_id = target.catalog_id.clone();
-                self.request_tasks.cancel_search();
-                self.request_tasks.search = Some(tokio::spawn(async move {
+                self.request_tasks.spawn_search(async move {
                     let result = service
                         .fetch_addon_catalog(&manifest_url, &r_type, &cat_id)
                         .await;
@@ -281,7 +279,7 @@ impl App {
                                 .ok();
                         }
                     }
-                }));
+                });
             }
 
             Action::SearchSuccess {
@@ -1245,8 +1243,7 @@ impl App {
                 }
                 let service = self.service.clone();
                 let sender = self.action_sender.clone();
-                self.request_tasks.cancel_stream_pool_init();
-                self.request_tasks.stream_pool_init = Some(tokio::spawn(async move {
+                self.request_tasks.spawn_stream_pool_init(async move {
                     let resolutions = service
                         .fetch_collection_resolutions(&subject_id)
                         .await
@@ -1254,7 +1251,7 @@ impl App {
                     sender
                         .send(Action::StreamPoolInitialized(subject_id, resolutions))
                         .ok();
-                }));
+                });
             }
 
             Action::StreamPoolInitialized(subject_id, resolutions) => {
@@ -1382,8 +1379,7 @@ impl App {
                         .unwrap_or_else(|| id.starts_with("series:") || season > 0 || episode > 0);
 
                     let has_stream_addons = addons.iter().any(|a| a.enabled && a.provides_stream);
-                    self.request_tasks.cancel_streams();
-                    self.request_tasks.streams = Some(tokio::spawn(async move {
+                    self.request_tasks.spawn_streams(async move {
                         if !has_stream_addons {
                             sender
                                 .send(Action::EpisodeStreamsFailed(
@@ -1444,7 +1440,7 @@ impl App {
                                 ))
                                 .ok();
                         }
-                    }));
+                    });
                     return None;
                 }
 
@@ -1458,8 +1454,7 @@ impl App {
                     let circleftp_client = self.service.circleftp_client.clone();
                     let dhakaflix_client = self.service.dhakaflix_client.clone();
                     let id = subject_id.clone();
-                    self.request_tasks.cancel_streams();
-                    self.request_tasks.streams = Some(tokio::spawn(async move {
+                    self.request_tasks.spawn_streams(async move {
                         let result = match context.provider {
                             ProviderKind::FourKHdHub => {
                                 if let Some(client) = fourk_client.as_ref() {
@@ -1547,7 +1542,7 @@ impl App {
                                     .ok();
                             }
                         }
-                    }));
+                    });
                     return None;
                 }
 
@@ -1561,7 +1556,7 @@ impl App {
                         let sender = self.action_sender.clone();
                         let cached = cached.clone();
                         let cached_subject_id = subject_id.clone();
-                        tokio::spawn(async move {
+                        self.request_tasks.spawn_streams(async move {
                             tokio::time::sleep(std::time::Duration::from_millis(120)).await;
                             sender
                                 .send(Action::EpisodeStreamsReady(
@@ -1582,8 +1577,7 @@ impl App {
                 let sender = self.action_sender.clone();
                 let id_clone = subject_id.clone();
 
-                self.request_tasks.cancel_streams();
-                self.request_tasks.streams = Some(tokio::spawn(async move {
+                self.request_tasks.spawn_streams(async move {
                     sender
                         .send(Action::SetStatus("Fetching streams...".to_string()))
                         .ok();
@@ -1613,7 +1607,7 @@ impl App {
                                 .ok();
                         }
                     }
-                }));
+                });
             }
 
             Action::EpisodeStreamsReady(
