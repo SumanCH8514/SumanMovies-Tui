@@ -269,17 +269,18 @@ async fn handle_connection(
         }
     };
     let extracted_host = extract_host_authority(&target_url);
-    if let Some(allowed_host) = target_host {
-        let sub_host = subtitle_url.and_then(extract_host_authority);
-        let is_allowed = extracted_host.as_deref() == Some(allowed_host)
-            || (sub_host.is_some() && extracted_host == sub_host);
-        if !is_allowed {
-            let response =
-                "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
-            writer.write_all(response.as_bytes()).await?;
-            writer.flush().await?;
-            return Ok(());
+    let sub_host = subtitle_url.and_then(extract_host_authority);
+    let is_allowed = match (target_host, extracted_host.as_deref()) {
+        (Some(allowed), Some(extracted)) => {
+            extracted == allowed || (sub_host.is_some() && extracted_host == sub_host)
         }
+        _ => false,
+    };
+    if !is_allowed {
+        let response = "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+        writer.write_all(response.as_bytes()).await?;
+        writer.flush().await?;
+        return Ok(());
     }
 
     let mut req = match method {
@@ -287,15 +288,10 @@ async fn handle_connection(
         _ => client.get(&target_url),
     };
 
-    if extracted_host.as_deref() == target_host {
-        for (name, val) in auth_headers {
+    let forward_all_headers = extracted_host.as_deref() == target_host;
+    for (name, val) in auth_headers {
+        if forward_all_headers || name.eq_ignore_ascii_case("user-agent") {
             req = req.header(name.as_str(), val.as_str());
-        }
-    } else {
-        for (name, val) in auth_headers {
-            if name.eq_ignore_ascii_case("user-agent") {
-                req = req.header(name.as_str(), val.as_str());
-            }
         }
     }
     if let Some(range) = range_header {
@@ -574,6 +570,25 @@ mod tests {
         assert!(is_allowed("https://captions.example.com/sub.srt"));
         assert!(!is_allowed("https://evil.example.com/steal"));
         assert!(!is_allowed("https://sub.evil.com/fake"));
+    }
+    #[test]
+    fn test_host_whitelist_rejects_missing_target_host() {
+        let target_host: Option<&str> = None;
+        let subtitle_url: Option<&str> = None;
+        let sub_host = subtitle_url.and_then(extract_host_authority);
+
+        let is_allowed = |url: &str| -> bool {
+            let extracted_host = extract_host_authority(url);
+            match (target_host, extracted_host.as_deref()) {
+                (Some(allowed), Some(extracted)) => {
+                    extracted == allowed || (sub_host.is_some() && extracted_host == sub_host)
+                }
+                _ => false,
+            }
+        };
+
+        assert!(!is_allowed("https://video.example.com/chunk.m4s"));
+        assert!(!is_allowed("http://127.0.0.1:8080"));
     }
 
     #[test]
