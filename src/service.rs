@@ -216,32 +216,36 @@ impl MovieBoxService {
                 if !sib.is_empty() && sib != subject_id {
                     let client = &self.client;
                     sibling_futs.push(async move {
-                        let page = if episode > 0 { (episode - 1) / 20 + 1 } else { 1 };
-                        if let Ok((items, _)) = client.fetch_resource_page(sib, season, episode, 0, page).await {
-                            let matched_item = find_matching_resource_item(&items, season, episode);
-                            if let Some(item) = matched_item {
-                                let item_rid = item
-                                    .get("resourceId")
-                                    .or_else(|| item.get("id"))
-                                    .and_then(|v| {
-                                        if let Some(n) = v.as_i64() {
-                                            Some(n.to_string())
-                                        } else if let Some(n) = v.as_u64() {
-                                            Some(n.to_string())
-                                        } else {
-                                            v.as_str().map(|s| s.to_string())
+                        tokio::time::timeout(std::time::Duration::from_secs(8), async move {
+                            let page = if episode > 0 { (episode - 1) / 20 + 1 } else { 1 };
+                            if let Ok((items, _)) = client.fetch_resource_page(sib, season, episode, 0, page).await {
+                                let matched_item = find_matching_resource_item(&items, season, episode);
+                                if let Some(item) = matched_item {
+                                    let item_rid = item
+                                        .get("resourceId")
+                                        .or_else(|| item.get("id"))
+                                        .and_then(|v| {
+                                            if let Some(n) = v.as_i64() {
+                                                Some(n.to_string())
+                                            } else if let Some(n) = v.as_u64() {
+                                                Some(n.to_string())
+                                            } else {
+                                                v.as_str().map(|s| s.to_string())
+                                            }
+                                        });
+                                    if let Some(rid) = item_rid {
+                                        if let Ok(res_payload) = client.get_ext_captions(sib, &rid).await {
+                                            return crate::providers::moviebox::adapt::captions_json_to_options(
+                                                &res_payload,
+                                            );
                                         }
-                                    });
-                                if let Some(rid) = item_rid {
-                                    if let Ok(res_payload) = client.get_ext_captions(sib, &rid).await {
-                                        return crate::providers::moviebox::adapt::captions_json_to_options(
-                                            &res_payload,
-                                        );
                                     }
                                 }
                             }
-                        }
-                        Vec::new()
+                            Vec::new()
+                        })
+                        .await
+                        .unwrap_or_default()
                     });
                 }
             }
@@ -289,6 +293,7 @@ impl MovieBoxService {
         }
     }
     pub async fn fetch_poster_bytes(&self, url: &str) -> Option<Vec<u8>> {
+        const MAX_POSTER_BYTES: u64 = 5 * 1024 * 1024;
         let response = self
             .http_client
             .get(url)
@@ -298,7 +303,22 @@ impl MovieBoxService {
             .ok()?
             .error_for_status()
             .ok()?;
-        Some(response.bytes().await.ok()?.to_vec())
+        if response
+            .content_length()
+            .is_some_and(|len| len > MAX_POSTER_BYTES)
+        {
+            log::warn!(
+                "poster at {} exceeds size limit ({} bytes), skipping",
+                crate::logging::sanitize_url(url),
+                response.content_length().unwrap_or(0)
+            );
+            return None;
+        }
+        let bytes = response.bytes().await.ok()?;
+        if bytes.len() as u64 > MAX_POSTER_BYTES {
+            return None;
+        }
+        Some(bytes.to_vec())
     }
 
     pub async fn download_subtitle_file(

@@ -24,6 +24,8 @@ impl App {
         self.state.tv_input_active = false;
         self.state.tv_input_buffer.clear();
         self.state.tv_input_is_file = false;
+        self.state.show_overview_modal = false;
+        self.state.overview_modal_scroll = 0;
     }
 
     pub(super) fn reset_mode_state(&mut self) {

@@ -578,6 +578,30 @@ impl App {
                                     kind,
                                     status.code()
                                 );
+                                if let Some(item) = history_item {
+                                    let elapsed = start_time.elapsed().as_secs();
+                                    if elapsed >= 30 {
+                                        let duration = item.duration_seconds;
+                                        let start_pos = resume_seconds.unwrap_or(0);
+                                        let total_pos = start_pos.saturating_add(elapsed);
+                                        let progress = if let Some(d) = duration {
+                                            total_pos.min(d)
+                                        } else {
+                                            total_pos
+                                        };
+                                        let completed = duration.is_some_and(|d| {
+                                            d > 0 && progress >= (d as f64 * 0.90) as u64
+                                        });
+                                        sender
+                                            .send(Action::UpdateProgress {
+                                                item: Box::new(item),
+                                                progress,
+                                                duration,
+                                                completed,
+                                            })
+                                            .ok();
+                                    }
+                                }
                             }
                             Ok(status) => {
                                 let is_termux_socket_err = is_android

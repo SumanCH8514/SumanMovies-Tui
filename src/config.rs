@@ -188,7 +188,13 @@ pub fn load() -> Config {
     };
     if path.exists() {
         if let Ok(content) = std::fs::read_to_string(&path) {
-            let mut val: serde_json::Value = serde_json::from_str(&content).unwrap_or_default();
+            let mut val: serde_json::Value = match serde_json::from_str(&content) {
+                Ok(v) => v,
+                Err(e) => {
+                    log::warn!("config invalid JSON: {e}; resetting");
+                    serde_json::Value::default()
+                }
+            };
             let old_bdix = val
                 .get("bdix_enabled")
                 .and_then(|v| v.as_bool())

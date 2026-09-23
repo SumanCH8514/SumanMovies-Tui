@@ -93,6 +93,7 @@ pub fn spawn_sidecar(
             let _ = child.wait();
             format!("proxy sidecar returned unexpected output: {line:?}")
         })?;
+    std::mem::forget(child);
 
     let proxy_path = if let Some(rest) = target_url.strip_prefix("https://") {
         format!("/https/{rest}")
@@ -311,12 +312,6 @@ async fn handle_connection(
     };
 
     let status = upstream_res.status();
-    let status_line = format!(
-        "HTTP/1.1 {} {}\r\n",
-        status.as_u16(),
-        status.canonical_reason().unwrap_or("OK")
-    );
-    writer.write_all(status_line.as_bytes()).await?;
 
     let content_length = upstream_res
         .headers()
@@ -341,7 +336,7 @@ async fn handle_connection(
             writer
                 .write_all(
                     format!(
-                        "Content-Type: text/plain\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        "HTTP/1.1 502 Bad Gateway\r\nContent-Type: text/plain\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
                         body.len()
                     )
                     .as_bytes(),
@@ -354,7 +349,7 @@ async fn handle_connection(
         let rewritten_bytes = rewritten.as_bytes();
 
         let headers_out = format!(
-            "Content-Type: application/dash+xml\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            "HTTP/1.1 200 OK\r\nContent-Type: application/dash+xml\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
             rewritten_bytes.len()
         );
         writer.write_all(headers_out.as_bytes()).await?;
@@ -362,6 +357,13 @@ async fn handle_connection(
         writer.flush().await?;
         return Ok(());
     }
+
+    let status_line = format!(
+        "HTTP/1.1 {} {}\r\n",
+        status.as_u16(),
+        status.canonical_reason().unwrap_or("OK")
+    );
+    writer.write_all(status_line.as_bytes()).await?;
 
     let headers_bytes = format_proxy_response_headers(upstream_res.headers(), &target_url);
     writer.write_all(&headers_bytes).await?;

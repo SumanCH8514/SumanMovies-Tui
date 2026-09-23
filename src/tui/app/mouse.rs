@@ -1131,12 +1131,14 @@ impl App {
                         }
                         DetailsPane::Seasons => {
                             self.state.details_pane = DetailsPane::Seasons;
-                            if clicked_row < self.state.available_seasons.len() {
-                                self.state.season_list_state.select(Some(clicked_row));
+                            let offset = self.state.season_list_state.offset();
+                            let abs_row = offset + clicked_row;
+                            if abs_row < self.state.available_seasons.len() {
+                                self.state.season_list_state.select(Some(abs_row));
                                 self.state.selected_season = self
                                     .state
                                     .available_seasons
-                                    .get(clicked_row)
+                                    .get(abs_row)
                                     .map(|s| s.number)
                                     .unwrap_or(1);
                                 self.state.episode_list_state.select(Some(0));
@@ -1145,13 +1147,15 @@ impl App {
                         }
                         DetailsPane::Episodes => {
                             self.state.details_pane = DetailsPane::Episodes;
+                            let offset = self.state.episode_list_state.offset();
+                            let abs_row = offset + clicked_row;
                             let season_idx = self.state.season_list_state.selected().unwrap_or(0);
                             if let Some(ep_numbers) =
                                 self.state.available_episode_numbers.get(season_idx)
                             {
-                                if clicked_row < ep_numbers.len() {
-                                    self.state.episode_list_state.select(Some(clicked_row));
-                                    self.state.selected_episode = ep_numbers[clicked_row];
+                                if abs_row < ep_numbers.len() {
+                                    self.state.episode_list_state.select(Some(abs_row));
+                                    self.state.selected_episode = ep_numbers[abs_row];
                                     self.trigger_episode_fetch();
                                 }
                             }

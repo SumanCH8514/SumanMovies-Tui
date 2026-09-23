@@ -16,6 +16,22 @@
   - Updated player resolution in `src/player.rs` to fall back to persisted configuration files (`config.json`) when custom player paths are not passed via environment variables (`MOVIEBOX_VLC_PATH`, `MOVIEBOX_MPV_PATH`, `MOVIEBOX_IINA_PATH`), allowing users to configure non-standard or portable player executables (e.g. `D:\PortableApps\VLC\vlc.exe`).
   - Added `clear_cached_player_executables` in `src/player.rs` to safely invalidate in-memory static player path caches when player configurations update.
 ### Fixed
+- **Proxy Sidecar Child Process Lifecycle & Zombie Prevention**:
+  - Detached proxy sidecar `Child` handle via `std::mem::forget` upon successful loopback port acquisition in `src/proxy.rs`, preventing defunct zombie process leaks on Linux and Unix environments when sidecars exit cleanly.
+- **Proxy HTTP Status Line Timing on Oversized Manifests**:
+  - Deferred emitting the HTTP status line in `src/proxy.rs` until DASH manifest sizing is verified, returning `HTTP/1.1 502 Bad Gateway` on oversized manifests instead of a malformed `200 OK` error payload.
+- **VLC Player Clean Exit Progress Tracking**:
+  - Recorded elapsed watch progress for VLC when it exits with status code 1 and clean stderr in `src/tui/app/playback.rs`, ensuring normal VLC exits update watch history and continue watching rows identically to code 0 exits.
+- **External Caption Sibling Query Isolation & Timeouts**:
+  - Bound parallel sibling provider queries in `get_ext_captions` (`src/service.rs`) with individual 8-second `tokio::time::timeout` futures, preventing single uncommunicative sibling mirrors from delaying caption availability.
+- **Overview Modal Persistence Across Screen Transitions**:
+  - Reset `show_overview_modal` and `overview_modal_scroll` flags within `reset_transient_overlays` (`src/tui/app/tv.rs`), preventing overview backdrops from lingering across mode changes.
+- **Details Pane Season & Episode Mouse Hitbox Scrolling Offsets**:
+  - Factored `ListState::offset()` into row hitbox calculations in `src/tui/app/mouse.rs`, ensuring mouse clicks accurately select the intended season or episode row in scrolled lists.
+- **Dynamic Application User-Agent Header**:
+  - Configured `APP_HTTP_USER_AGENT` in `src/net.rs` to compile-time reference `CARGO_PKG_VERSION` dynamically rather than hardcoding a static version string.
+- **Poster Fetch Memory Size Ceiling**:
+  - Added a 5 MiB ceiling to `fetch_poster_bytes` in `src/service.rs` validating `Content-Length` and buffer length to protect against unbounded image memory consumption.
 - **Streams Table Column Alignment Under Modal Backdrops**:
   - Unified `pane_styles` highlight symbol to `""` during modal active states in `src/tui/screens/details.rs`, preventing Ratatui `Table` from reserving a 2-character highlight prefix column that shifted table headers and columns to the right whenever a popup (subtitles, player picker, help) opened.
 - **In-App Updater Streaming Timeout & Chunk Retry Recovery**:
