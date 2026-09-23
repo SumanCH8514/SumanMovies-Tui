@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.1.24] - 2026-09-24
 
 ### Added
 - **Scoop Package Manager Distribution**:
