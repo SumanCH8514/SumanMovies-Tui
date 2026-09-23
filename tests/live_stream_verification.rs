@@ -431,6 +431,64 @@ async fn test_live_moviebox_dash_download_stream_with_headers() {
 
 #[tokio::test]
 #[ignore = "live network test; run with cargo test --test live_stream_verification -- --ignored"]
+async fn test_live_moviebox_download_selected_resolution_verifies_format() {
+    let client = MovieBoxClient::new();
+    client.init().await.expect("client init successful");
+
+    let releases = client
+        .episode_streams("4179386086617137184", 0, 0)
+        .await
+        .expect("fetch movie streams");
+    assert!(
+        releases.len() >= 2,
+        "releases must contain multiple resolutions"
+    );
+
+    for expected_h in [480, 720, 1080] {
+        let format_spec = format!(
+            "bestvideo[height<={expected_h}]+bestaudio/best[height<={expected_h}]/bestvideo+bestaudio/best"
+        );
+        let mirror = &releases[0].mirrors[0];
+        let mut cmd = std::process::Command::new("yt-dlp");
+        for (k, v) in &mirror.headers {
+            if k.eq_ignore_ascii_case("user-agent") {
+                cmd.arg("--user-agent").arg(v);
+            } else {
+                cmd.arg("--add-header").arg(format!("{k}: {v}"));
+            }
+        }
+        cmd.arg("-f")
+            .arg(&format_spec)
+            .arg("-s")
+            .arg("--print")
+            .arg("%(resolution)s|%(height)s")
+            .arg(&mirror.resolver_url);
+
+        let output = cmd.output().expect("execute yt-dlp simulation");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        eprintln!("yt-dlp format resolution for target {expected_h}p: {stdout}");
+
+        let mut selected_height: Option<u64> = None;
+        for line in stdout.lines() {
+            let parts: Vec<&str> = line.trim().split('|').collect();
+            if let Some(h_str) = parts.get(1) {
+                if let Ok(h) = h_str.parse::<u64>() {
+                    selected_height = Some(h);
+                    break;
+                }
+            }
+        }
+
+        let resolved_h = selected_height.expect("yt-dlp must resolve a video height");
+        assert!(
+            resolved_h <= expected_h,
+            "Selected stream height {resolved_h} must not exceed target height {expected_h}"
+        );
+    }
+}
+
+#[tokio::test]
+#[ignore = "live network test; run with cargo test --test live_stream_verification -- --ignored"]
 async fn test_live_moviebox_session_persistence_and_reuse() {
     let client1 = MovieBoxClient::new();
     let token1 = client1.ensure_session().await.expect("ensure session 1");
