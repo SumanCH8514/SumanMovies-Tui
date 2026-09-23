@@ -460,7 +460,13 @@ pub fn notifications(
         let title_w = crate::tui::text::width(&notification.title).saturating_add(6);
         let badge_w = crate::tui::text::width(badge).saturating_add(6);
         let raw_msg_w = if has_message {
-            crate::tui::text::width(&notification.message).saturating_add(6)
+            notification
+                .message
+                .lines()
+                .map(|line| crate::tui::text::width(line.trim()))
+                .max()
+                .unwrap_or(0)
+                .saturating_add(6)
         } else {
             0
         };
@@ -700,7 +706,13 @@ pub fn notification_rects(
         let title_w = crate::tui::text::width(&notification.title).saturating_add(6);
         let badge_w = crate::tui::text::width(badge).saturating_add(6);
         let raw_msg_w = if has_message {
-            crate::tui::text::width(&notification.message).saturating_add(6)
+            notification
+                .message
+                .lines()
+                .map(|line| crate::tui::text::width(line.trim()))
+                .max()
+                .unwrap_or(0)
+                .saturating_add(6)
         } else {
             0
         };
@@ -1086,6 +1098,21 @@ mod tests {
         let rects = notification_rects(mobile_portrait, &queue, false, false);
         assert_eq!(rects.len(), 1);
         assert!(rects[0].1.height >= 5);
+    }
+    #[test]
+    fn test_notification_rects_multiline_width_scales_to_longest_line() {
+        let mut queue = std::collections::VecDeque::new();
+        queue.push_back(Notification::new(
+            NotificationKind::Error,
+            "Download failed",
+            "DASH streams require yt-dlp & ffmpeg.\nRun: winget install yt-dlp.yt-dlp Gyan.FFmpeg",
+        ));
+        let area = Rect::new(0, 0, 100, 30);
+        let rects = notification_rects(area, &queue, false, false);
+        assert_eq!(rects.len(), 1);
+        assert!(rects[0].1.width >= 48);
+        assert!(rects[0].1.width <= 64);
+        assert_eq!(rects[0].1.height, 5);
     }
     #[test]
     fn test_addon_manager_layout_anchors_at_search_bar_position() {

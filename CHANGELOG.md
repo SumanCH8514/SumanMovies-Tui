@@ -14,6 +14,13 @@
   - Added `vlc_path`, `mpv_path`, and `iina_path` fields to `Config` in `src/config.rs` and `src/tui/state.rs`.
   - Supported persisted custom player paths with automatic static path cache invalidation upon configuration updates.
 
+
+### Changed
+- **Streamlined Download Failure Notifications**:
+  - Replaced verbose, truncated DASH download failure guidance with terse, actionable commands (`Run: winget install yt-dlp.yt-dlp Gyan.FFmpeg`).
+  - Removed misleading "Partial file preserved" prefix on pre-download failures in `src/tui/app/download.rs`.
+  - Scaled notification toast card width to the widest line across multi-line messages in `src/tui/overlay.rs`.
+  - Threaded selected stream resolution constraint (`bestvideo[height<={h}]...`) to `yt-dlp` in `src/tui/app/download.rs`, ensuring DASH downloads fetch the highlighted quality rather than forcing 1080p.
 ### Fixed
 - **Streaming Proxy & Sidecar Lifecycle**:
   - Enforced fail-closed target host verification in `src/proxy.rs`, rejecting requests with `403 Forbidden` if `target_host` is missing or unverified.

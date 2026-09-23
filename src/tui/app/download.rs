@@ -12,6 +12,7 @@ impl App {
         subtitle_url: Option<String>,
         link: Option<String>,
         headers: Vec<(String, String)>,
+        max_height: Option<u64>,
     ) {
         if self.state.download_progress.is_some() || self.state.active_screen != Screen::Details {
             return;
@@ -265,8 +266,9 @@ impl App {
                         cmd.arg("--add-header").arg(format!("{clean_k}: {clean_v}"));
                     }
                 }
+                let format_spec = ytdlp_format_selector(max_height);
                 cmd.arg("-f")
-                    .arg("bestvideo+bestaudio/best")
+                    .arg(format_spec)
                     .arg("--newline")
                     .arg("--part")
                     .arg("-o")
@@ -537,11 +539,13 @@ impl App {
                             || release.provider == ProviderKind::BdixDhakaFlix
                         {
                             let sender_clone = self.action_sender.clone();
+                            let max_height = Some(release.resolution_u64()).filter(|&h| h > 0);
                             sender_clone
                                 .send(Action::StartDownload(
                                     subtitle_url,
                                     Some(first_mirror.resolver_url.clone()),
                                     first_mirror.headers.clone(),
+                                    max_height,
                                 ))
                                 .ok();
                             return None;
@@ -571,11 +575,14 @@ impl App {
                             .await;
                             match result {
                                 Ok(Ok(source)) => {
+                                    let max_height =
+                                        Some(release.resolution_u64()).filter(|&h| h > 0);
                                     sender
                                         .send(Action::StartDownload(
                                             subtitle_url,
                                             Some(source.url),
                                             source.headers,
+                                            max_height,
                                         ))
                                         .ok();
                                 }
@@ -600,7 +607,7 @@ impl App {
                         });
                     } else {
                         self.action_sender
-                            .send(Action::StartDownload(subtitle_url, None, Vec::new()))
+                            .send(Action::StartDownload(subtitle_url, None, Vec::new(), None))
                             .ok();
                     }
                 } else {
@@ -611,15 +618,24 @@ impl App {
                         .and_then(|r| r.mirrors.first())
                         .map(|m| m.headers.clone())
                         .unwrap_or_default();
+                    let max_height = release
+                        .as_ref()
+                        .map(|r| r.resolution_u64())
+                        .filter(|&h| h > 0);
                     self.action_sender
-                        .send(Action::StartDownload(subtitle_url, link, headers))
+                        .send(Action::StartDownload(
+                            subtitle_url,
+                            link,
+                            headers,
+                            max_height,
+                        ))
                         .ok();
                 }
                 return None;
             }
-            Action::StartDownload(subtitle_url, link, headers) => {
+            Action::StartDownload(subtitle_url, link, headers, max_height) => {
                 self.state.is_resolving_playback = false;
-                self.start_resilient_download(subtitle_url, link, headers);
+                self.start_resilient_download(subtitle_url, link, headers, max_height);
                 return None;
             }
             Action::DownloadEpisode => {
@@ -793,11 +809,8 @@ impl App {
                         format!("{completed}/{total} files finished before error: {error}"),
                     );
                 } else {
-                    self.state.notify(
-                        NotificationKind::Error,
-                        "Download failed",
-                        format!("Partial file preserved. {error}"),
-                    );
+                    self.state
+                        .notify(NotificationKind::Error, "Download failed", error);
                 }
                 self.state.download_queue.clear();
                 self.state.download_queue_total = 0;
@@ -998,15 +1011,25 @@ async fn prepare_target_dir(
 }
 pub(crate) fn yt_dlp_missing_guidance() -> String {
     if crate::updater::artifact::is_termux_environment() {
-        "MovieBox DASH streams require yt-dlp. Please install yt-dlp and ffmpeg on your device (e.g. 'pkg install yt-dlp ffmpeg') to download these streams.".to_string()
+        "DASH streams require yt-dlp & ffmpeg.\nRun: pkg install yt-dlp ffmpeg".to_string()
     } else if cfg!(target_os = "macos") {
-        "MovieBox DASH streams require yt-dlp. Please install yt-dlp and ffmpeg on your Mac (e.g. 'brew install yt-dlp ffmpeg') to download these streams.".to_string()
+        "DASH streams require yt-dlp & ffmpeg.\nRun: brew install yt-dlp ffmpeg".to_string()
     } else if cfg!(target_os = "windows") {
-        "MovieBox DASH streams require yt-dlp. Please install yt-dlp and ffmpeg on your system (e.g. 'winget install yt-dlp.yt-dlp Gyan.FFmpeg') to download these streams.".to_string()
+        "DASH streams require yt-dlp & ffmpeg.\nRun: winget install yt-dlp.yt-dlp Gyan.FFmpeg"
+            .to_string()
     } else if cfg!(target_os = "linux") {
-        "MovieBox DASH streams require yt-dlp. Please install yt-dlp and ffmpeg via your system package manager to download these streams.".to_string()
+        "DASH streams require yt-dlp & ffmpeg.\nInstall via system package manager".to_string()
     } else {
-        "MovieBox DASH streams require yt-dlp. Please install yt-dlp and ffmpeg on your system to download these streams.".to_string()
+        "DASH streams require yt-dlp & ffmpeg.".to_string()
+    }
+}
+pub(crate) fn ytdlp_format_selector(max_height: Option<u64>) -> String {
+    if let Some(height) = max_height.filter(|&h| h > 0) {
+        format!(
+            "bestvideo[height<={height}]+bestaudio/best[height<={height}]/bestvideo+bestaudio/best"
+        )
+    } else {
+        "bestvideo+bestaudio/best".to_string()
     }
 }
 
@@ -1093,6 +1116,7 @@ pub(crate) fn parse_ytdlp_progress(line: &str) -> Option<(f64, String)> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::providers::models::{ProviderKind, Release, SourceMirror};
     use crate::tui::action::Action;
     use crate::tui::app::App;
@@ -1195,8 +1219,11 @@ mod tests {
     #[test]
     fn test_yt_dlp_missing_guidance_contains_platform_hint() {
         let guidance = super::yt_dlp_missing_guidance();
-        assert!(guidance.contains("MovieBox DASH streams require yt-dlp"));
-        assert!(guidance.contains("install yt-dlp and ffmpeg"));
+        assert!(guidance.contains("DASH streams require yt-dlp & ffmpeg"));
+        #[cfg(target_os = "macos")]
+        assert!(guidance.contains("brew install yt-dlp ffmpeg"));
+        #[cfg(target_os = "windows")]
+        assert!(guidance.contains("winget install yt-dlp.yt-dlp Gyan.FFmpeg"));
     }
 
     #[tokio::test]
@@ -1230,7 +1257,8 @@ mod tests {
 
         let dispatched = app.action_receiver.try_recv().expect("action dispatched");
         match dispatched {
-            Action::StartDownload(_, link, headers) => {
+            Action::StartDownload(_, link, headers, max_height) => {
+                assert_eq!(max_height, Some(1080));
                 assert_eq!(
                     link.as_deref(),
                     Some("https://example.com/dash/123/index.mpd")
@@ -1243,6 +1271,129 @@ mod tests {
             }
             other => panic!("expected StartDownload, got {:?}", other),
         }
+    }
+    #[tokio::test]
+    async fn test_download_stream_respects_highlighted_resolution() {
+        let mut app = App::new();
+        app.state.active_provider = ProviderKind::MovieBox;
+        app.state.active_screen = Screen::Details;
+        app.state.selected_resources = vec![
+            Release {
+                provider: ProviderKind::MovieBox,
+                filename: "Ek Deewane Ki Deewaniyat 1080p HEVC".to_string(),
+                quality: Some("1080p".to_string()),
+                codec: Some("hevc".to_string()),
+                language: None,
+                size_bytes: Some(1_600_000_000),
+                season: None,
+                episode: None,
+                mirrors: vec![SourceMirror {
+                    label: "1080p HEVC".to_string(),
+                    resolver_url: "https://example.com/dash/123/index.mpd".to_string(),
+                    headers: vec![],
+                    direct_file: true,
+                }],
+                resource_id: Some("123".to_string()),
+            },
+            Release {
+                provider: ProviderKind::MovieBox,
+                filename: "Ek Deewane Ki Deewaniyat 720p HEVC".to_string(),
+                quality: Some("720p".to_string()),
+                codec: Some("hevc".to_string()),
+                language: None,
+                size_bytes: Some(839_000_000),
+                season: None,
+                episode: None,
+                mirrors: vec![SourceMirror {
+                    label: "720p HEVC".to_string(),
+                    resolver_url: "https://example.com/dash/123/index.mpd".to_string(),
+                    headers: vec![],
+                    direct_file: true,
+                }],
+                resource_id: Some("123".to_string()),
+            },
+            Release {
+                provider: ProviderKind::MovieBox,
+                filename: "Ek Deewane Ki Deewaniyat 480p HEVC".to_string(),
+                quality: Some("480p".to_string()),
+                codec: Some("hevc".to_string()),
+                language: None,
+                size_bytes: Some(438_000_000),
+                season: None,
+                episode: None,
+                mirrors: vec![SourceMirror {
+                    label: "480p HEVC".to_string(),
+                    resolver_url: "https://example.com/dash/123/index.mpd".to_string(),
+                    headers: vec![],
+                    direct_file: true,
+                }],
+                resource_id: Some("123".to_string()),
+            },
+        ];
+
+        app.state.resource_list_state.select(Some(2));
+        assert_eq!(
+            app.get_selected_release().unwrap().quality.as_deref(),
+            Some("480p")
+        );
+
+        app.handle_download(Action::DownloadStream(None)).await;
+
+        let dispatched = app.action_receiver.try_recv().expect("action dispatched");
+        match dispatched {
+            Action::StartDownload(_, link, _, max_height) => {
+                assert_eq!(
+                    link.as_deref(),
+                    Some("https://example.com/dash/123/index.mpd")
+                );
+                assert_eq!(max_height, Some(480));
+                let format_spec = ytdlp_format_selector(max_height);
+                assert_eq!(
+                    format_spec,
+                    "bestvideo[height<=480]+bestaudio/best[height<=480]/bestvideo+bestaudio/best"
+                );
+            }
+            other => panic!("expected StartDownload, got {:?}", other),
+        }
+        app.state.is_resolving_playback = false;
+        app.state.resource_list_state.select(Some(1));
+        assert_eq!(
+            app.get_selected_release().unwrap().quality.as_deref(),
+            Some("720p")
+        );
+
+        app.handle_download(Action::DownloadStream(None)).await;
+
+        let dispatched = app.action_receiver.try_recv().expect("action dispatched");
+        match dispatched {
+            Action::StartDownload(_, _, _, max_height) => {
+                assert_eq!(max_height, Some(720));
+                let format_spec = ytdlp_format_selector(max_height);
+                assert_eq!(
+                    format_spec,
+                    "bestvideo[height<=720]+bestaudio/best[height<=720]/bestvideo+bestaudio/best"
+                );
+            }
+            other => panic!("expected StartDownload, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_ytdlp_format_selector_specs() {
+        assert_eq!(
+            ytdlp_format_selector(Some(480)),
+            "bestvideo[height<=480]+bestaudio/best[height<=480]/bestvideo+bestaudio/best"
+        );
+        assert_eq!(
+            ytdlp_format_selector(Some(720)),
+            "bestvideo[height<=720]+bestaudio/best[height<=720]/bestvideo+bestaudio/best"
+        );
+        assert_eq!(
+            ytdlp_format_selector(Some(1080)),
+            "bestvideo[height<=1080]+bestaudio/best[height<=1080]/bestvideo+bestaudio/best"
+        );
+        assert_eq!(ytdlp_format_selector(None), "bestvideo+bestaudio/best");
+        assert_eq!(ytdlp_format_selector(Some(0)), "bestvideo+bestaudio/best");
     }
     #[test]
     fn test_download_directory_and_filename_conventions() {

@@ -30,3 +30,14 @@ Upon completion, temporary sidecars are verified and renamed atomically to the t
 ## Header Forwarding
 
 Authenticated streams (such as MovieBox DASH manifests or 4KHDHub mirrors) automatically forward required headers (`User-Agent`, `Referer`, signed CloudFront cookies) to download workers, ensuring CDN transfers complete without `403 Forbidden` errors.
+
+## DASH Streams (`yt-dlp`)
+
+MovieBox DASH streams require `yt-dlp` and `ffmpeg` to download and mux adaptive video/audio representations:
+
+- **Windows**: `winget install yt-dlp.yt-dlp Gyan.FFmpeg`
+- **macOS**: `brew install yt-dlp ffmpeg`
+- **Android (Termux)**: `pkg install yt-dlp ffmpeg`
+- **Linux**: Install `yt-dlp` and `ffmpeg` via system package manager.
+
+All other providers (4KHDHub, BDIX, DhakaFlix, CircleFTP, TV mode) download directly through the internal HTTP engine.
