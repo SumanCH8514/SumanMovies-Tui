@@ -42,6 +42,8 @@ jobs:
           }
       - run: cargo check --all-targets --all-features --locked
       - run: cargo clippy --all-targets --all-features --locked -- -D warnings
+      - name: Install musl compiler tools
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
       - name: Verify musl target compilation
         run: cargo check --locked --target x86_64-unknown-linux-musl
       - name: Audit dependencies
