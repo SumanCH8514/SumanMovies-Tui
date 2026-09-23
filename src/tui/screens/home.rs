@@ -2495,10 +2495,14 @@ fn render_provider_popup(
         .iter()
         .map(|provider| {
             let is_active = *provider == state.active_provider;
-            let active_prefix = if is_active {
-                if state.basic_terminal { "* " } else { "✓ " }
+            let (active_prefix, prefix_width) = if is_active {
+                if state.basic_terminal {
+                    ("* ", 2)
+                } else {
+                    ("✓ ", 2)
+                }
             } else {
-                "  "
+                ("", 0)
             };
             let active_style = if is_active {
                 theme.success.add_modifier(Modifier::BOLD)
@@ -2507,10 +2511,9 @@ fn render_provider_popup(
             };
             let label_style = theme.text;
             ListItem::new(Line::from(vec![
-                Span::raw("  "),
+                Span::raw(if prefix_width == 0 { "    " } else { "  " }),
                 Span::styled(active_prefix, active_style),
                 Span::styled(provider.label(), label_style),
-                Span::raw("  "),
             ]))
         })
         .collect();
@@ -2945,9 +2948,9 @@ mod tests {
             rendered.push('\n');
         }
         assert!(rendered.contains("Providers"));
-        assert!(rendered.contains("MovieBox"));
-        assert!(rendered.contains("4KHDHub"));
-        assert!(rendered.contains("✓"));
+        assert!(rendered.contains("  ✓ MovieBox"));
+        assert!(rendered.contains("    4KHDHub"));
+        assert!(rendered.contains("    Dramachi"));
         assert!(!rendered.contains('●'));
         assert!(!rendered.contains('○'));
     }

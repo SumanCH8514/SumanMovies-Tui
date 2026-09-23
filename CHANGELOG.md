@@ -38,6 +38,7 @@
   - Auto-sized `/settings` modal height dynamically to fit the exact row count of the active category and balanced modal width to 60 columns in `src/tui/overlay.rs` and `src/tui/widgets/settings.rs`, removing the oversized right-side void and bottom blank areas while maintaining uniform margins around all borders.
 - **Modal Backdrop Dimming for Background Deck & Search**:
   - Dimmed favorites/continue-watching card items, browse preset suggestions, and the search bar provider pill when modal popups (such as the provider picker) are active in `src/tui/screens/home.rs`, ensuring background elements properly recede visually.
+  - Aligned provider labels into a clean vertical column in the provider picker popup in `src/tui/screens/home.rs`, applying consistent 4-space indentation for unselected rows so names align with the 2-space checkmark indicator (`✓ `).
 - **Update Check In-Flight Notification Replacement**:
   - Replaced the in-flight `"Checking for updates"` notification toast with the final outcome toast (`Up to date` or `Update check failed`) upon completion in `src/tui/app/system.rs`, avoiding duplicate stacked update notifications.
 - **Live TV Search Isolation & Balanced Landing Geometry**:
