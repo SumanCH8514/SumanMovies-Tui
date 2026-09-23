@@ -157,6 +157,9 @@ impl App {
         }
         state.active_theme_kind = config.active_theme;
         state.default_player = config.default_player;
+        state.vlc_path = config.vlc_path;
+        state.mpv_path = config.mpv_path;
+        state.iina_path = config.iina_path;
         state.download_dir = config.download_dir.map(std::path::PathBuf::from);
         state.installed_addons = crate::config::load_addons();
 
@@ -253,6 +256,9 @@ impl App {
                 .download_dir
                 .as_ref()
                 .map(|p| p.to_string_lossy().to_string()),
+            vlc_path: self.state.vlc_path.clone(),
+            mpv_path: self.state.mpv_path.clone(),
+            iina_path: self.state.iina_path.clone(),
         };
         crate::tui::config::save(&config);
     }

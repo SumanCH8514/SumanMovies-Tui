@@ -31,8 +31,20 @@ All settings in `config.json` can be configured interactively inside the applica
 - **Content Modes**: Toggle Streaming Mode, open the Streaming Sources selector (to enable/disable MovieBox, 4KHDHub, CircleFTP, DhakaFlix), and toggle Live TV.
 - **Appearance**: Open the visual theme swatch picker to select among 6 built-in color themes.
 - **Maintenance**: Purge disk cache, clear watch history, query GitHub for release updates, open GitHub repository, and trigger a manual local network BDIX re-probe.
-## Other persisted files
+## Persisted configuration (`config.json`)
 
+The central configuration file is located at `~/.config/moviebox-tui/config.json` (or `%APPDATA%\MovieBox-Tui\config.json` on Windows). In addition to settings toggled via `/settings`, custom player binary paths can be directly set here:
+
+```json
+{
+  "default_player": "vlc",
+  "vlc_path": "D:\\PortableApps\\VLC\\vlc.exe",
+  "mpv_path": "C:\\Program Files\\mpv\\mpv.exe",
+  "iina_path": "/Applications/IINA.app/Contents/MacOS/iina-cli"
+}
+```
+
+## Other persisted files
 - `addons_config.json` — list of installed HTTP addons in the config directory (see [addons-mode.md](addons-mode.md)).
 - `tv_config.json` — list of M3U playlist sources in the config directory (see [tv-mode.md](tv-mode.md)).
 - `history.json` — watch history in the system data directory (`dirs::data_dir()/moviebox-tui/`).

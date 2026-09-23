@@ -539,10 +539,11 @@ fn probe_iina_resolution() -> Option<IinaResolution> {
 }
 
 #[cfg(target_os = "macos")]
-fn iina_resolution() -> Option<IinaResolution> {
-    static CACHED: std::sync::RwLock<Option<IinaResolution>> = std::sync::RwLock::new(None);
+static IINA_CACHED: std::sync::RwLock<Option<IinaResolution>> = std::sync::RwLock::new(None);
 
-    if let Ok(guard) = CACHED.read() {
+#[cfg(target_os = "macos")]
+fn iina_resolution() -> Option<IinaResolution> {
+    if let Ok(guard) = IINA_CACHED.read() {
         if let Some(res) = &*guard {
             return Some(res.clone());
         }
@@ -550,7 +551,7 @@ fn iina_resolution() -> Option<IinaResolution> {
 
     let detected = probe_iina_resolution();
     if let Some(res) = &detected {
-        if let Ok(mut guard) = CACHED.write() {
+        if let Ok(mut guard) = IINA_CACHED.write() {
             *guard = Some(res.clone());
         }
     }
@@ -1250,10 +1251,11 @@ fn probe_vlc() -> Option<String> {
     )
 }
 
-fn mpv_executable() -> Option<String> {
-    static CACHED: std::sync::RwLock<Option<String>> = std::sync::RwLock::new(None);
+static MPV_CACHED: std::sync::RwLock<Option<String>> = std::sync::RwLock::new(None);
+static VLC_CACHED: std::sync::RwLock<Option<String>> = std::sync::RwLock::new(None);
 
-    if let Ok(guard) = CACHED.read() {
+fn mpv_executable() -> Option<String> {
+    if let Ok(guard) = MPV_CACHED.read() {
         if let Some(path) = &*guard {
             if path.starts_with("flatpak run ") || Path::new(path).is_file() {
                 return Some(path.clone());
@@ -1263,7 +1265,7 @@ fn mpv_executable() -> Option<String> {
 
     let detected = probe_mpv();
     if let Some(path) = &detected {
-        if let Ok(mut guard) = CACHED.write() {
+        if let Ok(mut guard) = MPV_CACHED.write() {
             *guard = Some(path.clone());
         }
     }
@@ -1271,9 +1273,7 @@ fn mpv_executable() -> Option<String> {
 }
 
 fn vlc_executable() -> Option<String> {
-    static CACHED: std::sync::RwLock<Option<String>> = std::sync::RwLock::new(None);
-
-    if let Ok(guard) = CACHED.read() {
+    if let Ok(guard) = VLC_CACHED.read() {
         if let Some(path) = &*guard {
             if path.starts_with("flatpak run ") || Path::new(path).is_file() {
                 return Some(path.clone());
@@ -1283,11 +1283,23 @@ fn vlc_executable() -> Option<String> {
 
     let detected = probe_vlc();
     if let Some(path) = &detected {
-        if let Ok(mut guard) = CACHED.write() {
+        if let Ok(mut guard) = VLC_CACHED.write() {
             *guard = Some(path.clone());
         }
     }
     detected
+}
+pub fn clear_cached_player_executables() {
+    if let Ok(mut guard) = MPV_CACHED.write() {
+        *guard = None;
+    }
+    if let Ok(mut guard) = VLC_CACHED.write() {
+        *guard = None;
+    }
+    #[cfg(target_os = "macos")]
+    if let Ok(mut guard) = IINA_CACHED.write() {
+        *guard = None;
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -1333,8 +1345,16 @@ fn flatpak_executable(app_id: &str) -> Option<String> {
 }
 
 fn configured_executable(variable: &str) -> Option<String> {
-    let val = std::env::var(variable).ok()?;
-    let trimmed = val.trim();
+    let raw = std::env::var(variable).ok().or_else(|| {
+        let cfg = crate::config::load();
+        match variable {
+            "MOVIEBOX_VLC_PATH" => cfg.vlc_path,
+            "MOVIEBOX_MPV_PATH" => cfg.mpv_path,
+            "MOVIEBOX_IINA_PATH" => cfg.iina_path,
+            _ => None,
+        }
+    })?;
+    let trimmed = raw.trim();
     if trimmed.is_empty() {
         return None;
     }
@@ -1591,8 +1611,11 @@ mod tests {
         assert!(args.contains(&"--http-header-fields=Cookie: session=abc, token=123".to_string()));
         assert!(args.contains(&"--http-header-fields=Accept: text/html, */*".to_string()));
     }
+    static ENV_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[test]
     fn test_android_intent_commands_fallback_order() {
+        let _lock = ENV_MUTEX.lock().unwrap();
         let temp_dir =
             std::env::temp_dir().join(format!("termux_fallback_test_{}", std::process::id()));
         let bin_dir = temp_dir.join("bin");
@@ -1690,7 +1713,7 @@ mod tests {
         std::fs::create_dir_all(&bin_dir).unwrap();
         let termux_am = bin_dir.join("termux-am");
         std::fs::write(&termux_am, "#!/bin/sh\nexit 0").unwrap();
-
+        let _lock = ENV_MUTEX.lock().unwrap();
         unsafe {
             std::env::set_var("TERMUX_VERSION", "0.118.0");
             std::env::set_var("PREFIX", temp_dir.to_str().unwrap());
@@ -1806,5 +1829,14 @@ mod tests {
     #[test]
     fn test_create_no_window_constant() {
         assert_eq!(CREATE_NO_WINDOW, 0x0800_0000);
+    }
+    #[test]
+    fn test_configured_executable_fallback_to_config() {
+        clear_cached_player_executables();
+        let _cfg = crate::config::Config {
+            vlc_path: Some("/nonexistent/vlc.exe".to_string()),
+            ..Default::default()
+        };
+        assert!(configured_executable("MOVIEBOX_VLC_PATH").is_none());
     }
 }

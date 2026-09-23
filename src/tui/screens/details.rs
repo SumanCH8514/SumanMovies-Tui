@@ -1831,7 +1831,7 @@ fn pane_styles(
     theme: &Theme,
 ) -> (Style, Style, Style, &'static str) {
     if modal_active {
-        (theme.muted, theme.muted, theme.muted, "  ")
+        (theme.muted, theme.muted, theme.muted, "")
     } else {
         (
             if focused {
@@ -2503,6 +2503,88 @@ mod tests {
         assert!(
             !header_has_selection_bg,
             "Streams table header should not have selection background"
+        );
+    }
+    #[test]
+    fn test_streams_table_alignment_invariant_under_modal() {
+        let backend = ratatui::backend::TestBackend::new(120, 30);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        let mut state = AppState {
+            selected_details: Some(crate::providers::models::MediaDetails {
+                id: crate::providers::models::ProviderMediaId {
+                    provider: crate::providers::models::ProviderKind::MovieBox,
+                    value: "m1".to_string(),
+                },
+                title: "Movie".to_string(),
+                media_type: crate::providers::models::MediaType::Movie,
+                year: Some("2024".to_string()),
+                description: None,
+                tagline: None,
+                imdb_rating: None,
+                director: None,
+                stars: None,
+                prints: None,
+                audios: None,
+                poster_url: None,
+                duration: None,
+                genres: vec![],
+                seasons: vec![],
+                dubs: vec![],
+            }),
+            selected_resources: vec![crate::providers::models::Release {
+                provider: crate::providers::models::ProviderKind::MovieBox,
+                filename: "Movie.1080p.mkv".to_string(),
+                quality: Some("1080p".to_string()),
+                codec: Some("HEVC".to_string()),
+                language: None,
+                size_bytes: Some(1_000_000_000),
+                season: None,
+                episode: None,
+                mirrors: vec![],
+                resource_id: None,
+            }],
+            details_pane: crate::tui::state::DetailsPane::Streams,
+            ..Default::default()
+        };
+        state.resource_list_state.select(Some(0));
+        let theme = Theme::mocha();
+
+        terminal
+            .draw(|frame| {
+                draw(frame, frame.area(), &mut state, &theme);
+            })
+            .unwrap();
+
+        let buffer_normal = terminal.backend().buffer().clone();
+        let normal_header_x = (0..buffer_normal.area.height)
+            .find_map(|y| {
+                let row: String = (0..buffer_normal.area.width)
+                    .map(|x| buffer_normal[(x, y)].symbol())
+                    .collect();
+                row.find("RES")
+            })
+            .expect("header found in normal state");
+
+        state.subtitle_popup = true;
+        terminal
+            .draw(|frame| {
+                draw(frame, frame.area(), &mut state, &theme);
+            })
+            .unwrap();
+
+        let buffer_modal = terminal.backend().buffer().clone();
+        let modal_header_x = (0..buffer_modal.area.height)
+            .find_map(|y| {
+                let row: String = (0..buffer_modal.area.width)
+                    .map(|x| buffer_modal[(x, y)].symbol())
+                    .collect();
+                row.find("RES")
+            })
+            .expect("header found in modal state");
+
+        assert_eq!(
+            normal_header_x, modal_header_x,
+            "Streams table column alignment must not shift when a modal opens"
         );
     }
 

@@ -11,7 +11,13 @@
 - **MovieBox Stream Resolution Picker & Adaptive Bitrate Capping**:
   - Decomposed multi-resolution DASH streams in `src/providers/moviebox/adapt.rs` into individual resolution stream rows (`1080p`, `720p`, `480p`, etc.) sorted by quality, enabling direct stream selection from the details screen.
   - Threaded resolution constraints to player command builders (`src/player.rs` and `src/tui/app/playback.rs`), injecting `--ytdl-format="bestvideo[height<=H]+bestaudio/best"` for `mpv`/`IINA` and `--adaptive-maxheight=H` for `VLC` to prevent playback buffering on slow connections.
+- **Custom Player Executable Path Configuration**:
+  - Added `vlc_path`, `mpv_path`, and `iina_path` fields to `Config` in `src/config.rs` and `src/tui/state.rs`.
+  - Updated player resolution in `src/player.rs` to fall back to persisted configuration files (`config.json`) when custom player paths are not passed via environment variables (`MOVIEBOX_VLC_PATH`, `MOVIEBOX_MPV_PATH`, `MOVIEBOX_IINA_PATH`), allowing users to configure non-standard or portable player executables (e.g. `D:\PortableApps\VLC\vlc.exe`).
+  - Added `clear_cached_player_executables` in `src/player.rs` to safely invalidate in-memory static player path caches when player configurations update.
 ### Fixed
+- **Streams Table Column Alignment Under Modal Backdrops**:
+  - Unified `pane_styles` highlight symbol to `""` during modal active states in `src/tui/screens/details.rs`, preventing Ratatui `Table` from reserving a 2-character highlight prefix column that shifted table headers and columns to the right whenever a popup (subtitles, player picker, help) opened.
 - **In-App Updater Streaming Timeout & Chunk Retry Recovery**:
   - Removed the static 30-second total request deadline from the release binary download client in `src/updater/check.rs`, preventing mid-transfer decode aborts (`download chunk stream error: error decoding response body`) on slow or high-latency network connections.
   - Added mid-stream chunk failure recovery in `src/updater/download.rs` with automatic temporary file cleanup, exponential backoff, and retry loop up to 3 attempts.

@@ -129,13 +129,30 @@ impl App {
             PlaybackResolution::NoPlayersInstalled => {
                 self.state.is_resolving_playback = false;
                 self.state.pending_playback_source = None;
-                let message = if crate::updater::artifact::is_termux_environment() {
-                    "Run 'pkg install termux-tools' and install an Android video player."
-                } else {
-                    "Install mpv, IINA, or VLC to enable video playback."
+                let custom_path = match self.state.default_player.as_deref() {
+                    Some("vlc") => self.state.vlc_path.as_deref(),
+                    Some("mpv") => self.state.mpv_path.as_deref(),
+                    Some("iina") => self.state.iina_path.as_deref(),
+                    _ => None,
                 };
-                self.state
-                    .notify(NotificationKind::Error, "No Media Player Found", message);
+                let (title, message) = if let Some(bad_path) = custom_path {
+                    (
+                        "Invalid Player Path",
+                        format!("Player path not found: {bad_path}"),
+                    )
+                } else if crate::updater::artifact::is_termux_environment() {
+                    (
+                        "No Media Player Found",
+                        "Run 'pkg install termux-tools' and install an Android video player."
+                            .to_string(),
+                    )
+                } else {
+                    (
+                        "No Media Player Found",
+                        "Install mpv, IINA, or VLC to enable video playback.".to_string(),
+                    )
+                };
+                self.state.notify(NotificationKind::Error, title, message);
             }
         }
     }
@@ -1322,6 +1339,30 @@ mod tests {
         assert_eq!(
             app.resolve_playback_player(&source),
             super::PlaybackResolution::Available(crate::tui::state::PlayerKind::AndroidIntent)
+        );
+    }
+    #[tokio::test]
+    async fn test_dispatch_playback_notifies_bad_player_path() {
+        let mut app = crate::tui::app::App::new();
+        app.state.available_players.clear();
+        app.state.default_player = Some("vlc".to_string());
+        app.state.vlc_path = Some("D:\\PortableApps\\VLC\\vlc.exe".to_string());
+        let source = crate::providers::models::PlaybackSource {
+            provider: crate::providers::models::ProviderKind::MovieBox,
+            url: "https://example.com/video.mp4".to_string(),
+            headers: vec![],
+            subtitle: None,
+            source_label: "Direct".to_string(),
+            max_height: None,
+        };
+
+        app.dispatch_playback_or_notify(source);
+
+        let notif = app.state.notifications.back().expect("notification pushed");
+        assert_eq!(notif.title, "Invalid Player Path");
+        assert_eq!(
+            notif.message,
+            "Player path not found: D:\\PortableApps\\VLC\\vlc.exe"
         );
     }
     #[tokio::test]

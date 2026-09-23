@@ -23,6 +23,9 @@ pub struct Config {
     pub addons_enabled: bool,
     pub default_player: Option<String>,
     pub download_dir: Option<String>,
+    pub vlc_path: Option<String>,
+    pub mpv_path: Option<String>,
+    pub iina_path: Option<String>,
 }
 impl Default for Config {
     fn default() -> Self {
@@ -43,6 +46,9 @@ impl Default for Config {
             addons_enabled: false,
             default_player: None,
             download_dir: None,
+            vlc_path: None,
+            mpv_path: None,
+            iina_path: None,
         }
     }
 }
