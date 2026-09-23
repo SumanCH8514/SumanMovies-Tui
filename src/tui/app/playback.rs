@@ -606,14 +606,17 @@ impl App {
                                         || error_output.contains("termux-am"));
 
                                 if is_termux_socket_err {
-                                    let fallback_candidates = crate::player::android_openers();
-                                    let secondary = fallback_candidates.into_iter().find(|op| {
-                                        matches!(
-                                            op,
-                                            crate::player::AndroidOpener::TermuxOpen(_)
-                                                | crate::player::AndroidOpener::TermuxOpenUrl(_)
-                                        )
-                                    });
+                                    let secondary =
+                                        crate::player::android_openers()
+                                            .iter()
+                                            .find(|op| {
+                                                matches!(
+                                                op,
+                                                crate::player::AndroidOpener::TermuxOpen(_)
+                                                    | crate::player::AndroidOpener::TermuxOpenUrl(_)
+                                            )
+                                            })
+                                            .cloned();
                                     if let Some(op) = secondary {
                                         log::warn!(
                                             "primary opener failed socket connection, retrying with fallback opener {op:?}"

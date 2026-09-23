@@ -269,8 +269,11 @@ pub fn probe_android_openers() -> Vec<AndroidOpener> {
     openers
 }
 
-pub fn android_openers() -> Vec<AndroidOpener> {
-    probe_android_openers()
+static ANDROID_OPENERS: std::sync::LazyLock<Vec<AndroidOpener>> =
+    std::sync::LazyLock::new(probe_android_openers);
+
+pub fn android_openers() -> &'static [AndroidOpener] {
+    ANDROID_OPENERS.as_slice()
 }
 
 fn append_android_intent_extras(
@@ -367,10 +370,10 @@ pub fn android_intent_commands(
         return vec![(AndroidOpener::TermuxOpen("termux-open".to_string()), cmd)];
     }
     openers
-        .into_iter()
+        .iter()
         .map(|opener| {
-            let cmd = android_intent_command_for_opener(&opener, url, subtitle, headers);
-            (opener, cmd)
+            let cmd = android_intent_command_for_opener(opener, url, subtitle, headers);
+            (opener.clone(), cmd)
         })
         .collect()
 }
