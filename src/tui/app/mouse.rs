@@ -1205,7 +1205,6 @@ impl App {
         let is_streams = self.state.details_pane == DetailsPane::Streams;
         let is_seasons = self.state.details_pane == DetailsPane::Seasons;
         let is_episodes = self.state.details_pane == DetailsPane::Episodes;
-        let is_languages = self.state.details_pane == DetailsPane::Languages;
         let compact = width < crate::tui::screens::details::DETAILS_FOOTER_SPLIT_THRESHOLD;
 
         let is_favorited = self.state.is_selected_details_favorited();
@@ -1214,51 +1213,32 @@ impl App {
         enum FooterAction {
             PlaySelect,
             Download,
-            Favorite,
             StreamsTab,
-            Back,
+            Favorite,
             Info,
         }
 
-        let mut primary: Vec<(FooterAction, u16)> = Vec::new();
-        let mut secondary: Vec<(FooterAction, u16)> = Vec::new();
-
-        if is_streams {
-            primary.push((FooterAction::PlaySelect, 7 + 1 + 4));
-            let d_label_len = if compact { 4 } else { 8 };
-            primary.push((FooterAction::Download, 3 + 1 + d_label_len));
-            primary.push((FooterAction::Info, 3 + 1 + 4));
-            secondary.push((FooterAction::Favorite, 3 + 1 + fav_label_len));
-            secondary.push((FooterAction::Back, 5 + 1 + 4));
-        } else if is_languages {
-            primary.push((FooterAction::PlaySelect, 7 + 1 + 6));
-            primary.push((FooterAction::Favorite, 3 + 1 + fav_label_len));
-            primary.push((FooterAction::Info, 3 + 1 + 4));
-            secondary.push((FooterAction::StreamsTab, 5 + 1 + 7));
-            secondary.push((FooterAction::Back, 5 + 1 + 4));
+        let (enter_len, d_label_len) = if is_streams {
+            (4, Some(if compact { 4 } else { 8 }))
         } else if is_seasons {
-            primary.push((FooterAction::PlaySelect, 7 + 1 + 6));
-            let d_label_len = if compact { 8 } else { 15 };
-            primary.push((FooterAction::Download, 3 + 1 + d_label_len));
-            primary.push((FooterAction::Favorite, 3 + 1 + fav_label_len));
-            primary.push((FooterAction::Info, 3 + 1 + 4));
-            secondary.push((FooterAction::StreamsTab, 5 + 1 + 7));
-            secondary.push((FooterAction::Back, 5 + 1 + 4));
+            (6, Some(if compact { 8 } else { 15 }))
         } else if is_episodes {
-            primary.push((FooterAction::PlaySelect, 7 + 1 + 6));
-            let d_label_len = if compact { 8 } else { 16 };
-            primary.push((FooterAction::Download, 3 + 1 + d_label_len));
-            primary.push((FooterAction::Favorite, 3 + 1 + fav_label_len));
-            primary.push((FooterAction::Info, 3 + 1 + 4));
-            secondary.push((FooterAction::StreamsTab, 5 + 1 + 7));
-            secondary.push((FooterAction::Back, 5 + 1 + 4));
+            (6, Some(if compact { 8 } else { 16 }))
         } else {
-            primary.push((FooterAction::PlaySelect, 7 + 1 + 6));
-            primary.push((FooterAction::Favorite, 3 + 1 + fav_label_len));
-            secondary.push((FooterAction::StreamsTab, 5 + 1 + 7));
-            primary.push((FooterAction::Info, 3 + 1 + 4));
-            secondary.push((FooterAction::Back, 5 + 1 + 4));
+            (6, None)
+        };
+
+        let mut primary = vec![(FooterAction::PlaySelect, 7 + 1 + enter_len)];
+        if let Some(d_len) = d_label_len {
+            primary.push((FooterAction::Download, 3 + 1 + d_len));
         }
+
+        let mut secondary = Vec::new();
+        if !is_streams {
+            secondary.push((FooterAction::StreamsTab, 5 + 1 + 7));
+        }
+        secondary.push((FooterAction::Favorite, 3 + 1 + fav_label_len));
+        secondary.push((FooterAction::Info, 3 + 1 + 4));
         let active_buttons =
             if width >= crate::tui::screens::details::DETAILS_FOOTER_SPLIT_THRESHOLD {
                 if line_idx > 0 {
@@ -1307,9 +1287,6 @@ impl App {
                     }
                     FooterAction::StreamsTab => {
                         self.action_sender.send(Action::TabPane).ok();
-                    }
-                    FooterAction::Back => {
-                        self.action_sender.send(Action::GoBack).ok();
                     }
                 }
                 return;

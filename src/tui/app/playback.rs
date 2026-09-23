@@ -536,11 +536,7 @@ impl App {
                                     start_time.elapsed().as_secs()
                                 );
                                 let has_tracker = tracker_opts.is_some()
-                                    && matches!(
-                                        kind,
-                                        crate::tui::state::PlayerKind::Mpv
-                                            | crate::tui::state::PlayerKind::Iina
-                                    );
+                                    && matches!(kind, crate::tui::state::PlayerKind::Mpv);
 
                                 if has_tracker {
                                     sender.send(Action::ReconcileHistory).ok();

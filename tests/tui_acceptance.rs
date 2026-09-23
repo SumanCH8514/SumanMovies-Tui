@@ -910,9 +910,9 @@ async fn test_tui_layout_truncation_and_bounds() {
     }
 
     let tier = moviebox_tui::tui::screens::details::DetailsLayoutTier::Narrow;
-    assert_eq!(tier.footer_height(80), 2);
-    assert_eq!(tier.footer_height(105), 2);
-    assert_eq!(tier.footer_height(106), 1);
+    assert_eq!(tier.footer_height(70), 2);
+    assert_eq!(tier.footer_height(79), 2);
+    assert_eq!(tier.footer_height(80), 1);
     assert_eq!(tier.footer_height(120), 1);
 }
 

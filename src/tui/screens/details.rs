@@ -95,7 +95,7 @@ impl DetailsLayoutTier {
     }
 }
 
-pub const DETAILS_FOOTER_SPLIT_THRESHOLD: u16 = 106;
+pub const DETAILS_FOOTER_SPLIT_THRESHOLD: u16 = 80;
 
 pub(crate) fn visible_selector_panes(
     available_panes: &[crate::tui::state::DetailsPane],
@@ -2090,11 +2090,6 @@ fn details_footer(
     } else {
         "Favorite"
     };
-    let show_provider = state.active_provider != crate::providers::ProviderKind::Addons
-        && !state
-            .selected_details
-            .as_ref()
-            .is_some_and(|d| d.id.provider == crate::providers::ProviderKind::Addons);
 
     let (enter_label, d_label) = if is_streams {
         ("Play", Some(if compact { "Save" } else { "Download" }))
@@ -2124,22 +2119,13 @@ fn details_footer(
     if let Some(d) = d_label {
         primary.extend(footer_group("d", d, false, theme, modal_active));
     }
-    primary.extend(footer_group("i", "Info", false, theme, modal_active));
 
-    let mut secondary = footer_group("f", fav_label, false, theme, modal_active);
-    if show_provider {
-        secondary.extend(footer_group(
-            crate::tui::text::CTRL_P_STR,
-            "Provider",
-            false,
-            theme,
-            modal_active,
-        ));
-    }
+    let mut secondary = Vec::new();
     if !is_streams {
         secondary.extend(footer_group("Tab", "Streams", false, theme, modal_active));
     }
-    secondary.extend(footer_group("Esc", "Back", false, theme, modal_active));
+    secondary.extend(footer_group("f", fav_label, false, theme, modal_active));
+    secondary.extend(footer_group("i", "Info", false, theme, modal_active));
     if let Some(last) = secondary.last_mut() {
         *last = Span::raw("");
     }
@@ -2651,22 +2637,17 @@ mod tests {
         assert!(!footer_text.contains("[o] Open With"));
         assert!(footer_text.contains("[d] Download"));
         assert!(footer_text.contains("[f] Favorite"));
-        assert!(footer_text.contains("Provider"));
-        assert!(footer_text.contains("[Esc] Back"));
+        assert!(footer_text.contains("[i] Info"));
+        assert!(!footer_text.contains("Provider"));
+        assert!(!footer_text.contains("[Esc] Back"));
 
-        let (compact_primary, compact_secondary) = details_footer(&state, &theme, 90, false);
+        let (compact_primary, compact_secondary) = details_footer(&state, &theme, 70, false);
         let mut compact_spans = compact_primary;
         compact_spans.extend(compact_secondary);
         let compact_text: String = compact_spans.iter().map(|s| s.content.as_ref()).collect();
         assert!(compact_text.contains("[d] Save"));
-
-        state.active_provider = crate::providers::ProviderKind::Addons;
-        let (addon_primary, addon_secondary) = details_footer(&state, &theme, 120, false);
-        let mut addon_spans = addon_primary;
-        addon_spans.extend(addon_secondary);
-        let addon_text: String = addon_spans.iter().map(|s| s.content.as_ref()).collect();
-        assert!(!addon_text.contains("Provider"));
-        state.active_provider = crate::providers::ProviderKind::MovieBox;
+        assert!(!compact_text.contains("Provider"));
+        assert!(!compact_text.contains("[Esc] Back"));
 
         state.details_pane = crate::tui::state::DetailsPane::Seasons;
         let (primary, secondary) = details_footer(&state, &theme, 120, false);
@@ -2675,9 +2656,10 @@ mod tests {
         let footer_text: String = all_spans.iter().map(|s| s.content.as_ref()).collect();
         assert!(footer_text.contains("[Enter] Select"));
         assert!(footer_text.contains("[d] Download Season"));
-        assert!(footer_text.contains("[f] Favorite"));
         assert!(footer_text.contains("[Tab] Streams"));
-        assert!(footer_text.contains("[Esc] Back"));
+        assert!(footer_text.contains("[f] Favorite"));
+        assert!(footer_text.contains("[i] Info"));
+        assert!(!footer_text.contains("[Esc] Back"));
 
         state.details_pane = crate::tui::state::DetailsPane::Episodes;
         let (primary, secondary) = details_footer(&state, &theme, 120, false);
@@ -2686,9 +2668,10 @@ mod tests {
         let footer_text: String = all_spans.iter().map(|s| s.content.as_ref()).collect();
         assert!(footer_text.contains("[Enter] Select"));
         assert!(footer_text.contains("[d] Download Episode"));
-        assert!(footer_text.contains("[f] Favorite"));
         assert!(footer_text.contains("[Tab] Streams"));
-        assert!(footer_text.contains("[Esc] Back"));
+        assert!(footer_text.contains("[f] Favorite"));
+        assert!(footer_text.contains("[i] Info"));
+        assert!(!footer_text.contains("[Esc] Back"));
     }
 
     #[test]

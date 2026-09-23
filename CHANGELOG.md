@@ -40,6 +40,19 @@
   - Dimmed favorites/continue-watching card items and the search bar provider pill when modal popups (such as the provider picker) are active in `src/tui/screens/home.rs`, ensuring background elements properly recede visually.
 - **Update Check In-Flight Notification Replacement**:
   - Replaced the in-flight `"Checking for updates"` notification toast with the final outcome toast (`Up to date` or `Update check failed`) upon completion in `src/tui/app/system.rs`, avoiding duplicate stacked update notifications.
+- **Media Player Stream Buffering & Readahead Tuning**:
+  - Configured high-throughput buffering in `src/player.rs` for `mpv` and `IINA` (`--cache=yes`, `--cache-pause=yes`, `--cache-pause-wait=8`, `--cache-pause-initial=yes`, `--demuxer-max-bytes=256M`, `--demuxer-max-back-bytes=100M`, `--demuxer-readahead-secs=120`, `--demuxer-lavf-buffersize=1048576`, `--stream-buffer-size=512k`, `--force-seekable=yes`, and `--stream-lavf-o=reconnect=1,reconnect_streamed=1,reconnect_delay_max=5`), eliminating the 1-second re-buffering loop by enforcing an 8-second playback cushion, prefetching up to 2 minutes of stream data, and expanding memory cache size to 256MB.
+  - Configured network caching and adaptive streaming in `src/player.rs` for `VLC` (`--network-caching=10000` and `--adaptive-logic=nearoptimal`), aligning the network buffer floor with the 10.3s MPEG-DASH `minBufferTime` specification and preventing playback stalls when CDN chunk delivery encounters transient packet jitter.
+- **IINA Playback History & Progress Tracking**:
+  - Corrected playback tracker dispatch in `src/tui/app/playback.rs` to route `IINA` through wall-clock elapsed progress recording rather than mpv Lua IPC reconciliation, ensuring watch progress and continue-watching state are recorded upon closing IINA.
+- **Loopback Stream Proxy Buffer Throughput & Non-Timed Streaming**:
+  - Switched loopback reverse proxy upstream client in `src/proxy.rs` to `crate::net::streaming_client_builder()`, removing the 60-second total request deadline from media segment downloads and enabling persistent TCP keep-alive socket reuse across DASH chunk requests.
+  - Buffered TCP loopback chunk forwarding in `src/proxy.rs` using a 128KB `tokio::io::BufWriter`, reducing context-switch syscall overhead when streaming CloudFront DASH and MP4 media to VLC and mobile players.
+- **Details Screen Footer Action Hierarchy & Layout Streamlining**:
+  - Removed redundant `[^P] Provider` and `[Esc] Back` hints from the Details screen footer in `src/tui/screens/details.rs`.
+  - Reorganized footer action items into a clean, intuitive hierarchy: primary playback (`[Enter] Play`), download action (`[d] Download` / `Save`), pane navigation (`[Tab] Streams` on series), library action (`[f] Favorite`), and synopsis overview (`[i] Info`).
+  - Lowered `DETAILS_FOOTER_SPLIT_THRESHOLD` to 80 columns so standard terminals ($\ge 80$ cols) display a single horizontal line, while compact or mobile viewports ($< 80$ cols) split into two balanced lines.
+  - Synchronized mouse click hitboxes in `src/tui/app/mouse.rs` to match the exact updated footer layout.
 - **Details Pane Season & Episode Mouse Hitbox Scrolling Offsets**:
   - Factored `ListState::offset()` into row hitbox calculations in `src/tui/app/mouse.rs`, ensuring mouse clicks accurately select the intended season or episode row in scrolled lists.
 - **Dynamic Application User-Agent Header**:

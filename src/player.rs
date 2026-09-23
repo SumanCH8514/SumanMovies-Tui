@@ -419,6 +419,25 @@ fn mpv_command(
         command.arg(format!("{prefix}autofit={width}x{height}"));
     }
     command.arg(format!("{prefix}geometry=50%:50%"));
+    command.arg(format!("{prefix}cache=yes"));
+    command.arg(format!("{prefix}cache-pause=yes"));
+    command.arg(format!("{prefix}cache-pause-wait=8"));
+    command.arg(format!("{prefix}cache-pause-initial=yes"));
+    let (max_bytes, back_bytes) =
+        if cfg!(target_os = "android") || crate::updater::artifact::is_termux_environment() {
+            ("128M", "50M")
+        } else {
+            ("256M", "100M")
+        };
+    command.arg(format!("{prefix}demuxer-max-bytes={max_bytes}"));
+    command.arg(format!("{prefix}demuxer-max-back-bytes={back_bytes}"));
+    command.arg(format!("{prefix}demuxer-readahead-secs=120"));
+    command.arg(format!("{prefix}demuxer-lavf-buffersize=1048576"));
+    command.arg(format!("{prefix}stream-buffer-size=512k"));
+    command.arg(format!("{prefix}force-seekable=yes"));
+    command.arg(format!(
+        "{prefix}stream-lavf-o=reconnect=1,reconnect_streamed=1,reconnect_delay_max=5"
+    ));
     if !iina {
         command.arg("--idle=no").arg("--keep-open=no");
     }
@@ -657,7 +676,8 @@ fn vlc_command(
             .arg(format!("--height={height}"));
     }
     command.arg("--play-and-exit");
-    command.arg("--adaptive-logic=highest");
+    command.arg("--network-caching=10000");
+    command.arg("--adaptive-logic=nearoptimal");
     if let Some(height) = max_height.filter(|&h| h > 0) {
         command.arg(format!("--adaptive-maxheight={height}"));
     }
@@ -1865,6 +1885,18 @@ mod tests {
         assert!(args.contains(&"--sub-file=/tmp/test.srt".to_string()));
         assert!(args.contains(&"--start=120".to_string()));
         assert!(args.contains(&"--autofit=1920x1080".to_string()));
+        assert!(args.contains(&"--cache=yes".to_string()));
+        assert!(args.contains(&"--cache-pause=yes".to_string()));
+        assert!(args.contains(&"--cache-pause-wait=8".to_string()));
+        assert!(args.contains(&"--cache-pause-initial=yes".to_string()));
+        assert!(args.contains(&"--demuxer-max-bytes=256M".to_string()));
+        assert!(args.contains(&"--demuxer-readahead-secs=120".to_string()));
+        assert!(args.contains(&"--demuxer-lavf-buffersize=1048576".to_string()));
+        assert!(args.contains(&"--stream-buffer-size=512k".to_string()));
+        assert!(args.contains(&"--force-seekable=yes".to_string()));
+        assert!(args.contains(
+            &"--stream-lavf-o=reconnect=1,reconnect_streamed=1,reconnect_delay_max=5".to_string()
+        ));
         assert!(
             args.iter().any(|a| a.starts_with("--http-header-fields="))
                 || args
@@ -1897,6 +1929,8 @@ mod tests {
             .map(|a| a.to_string_lossy().into_owned())
             .collect();
 
+        assert!(args.contains(&"--network-caching=10000".to_string()));
+        assert!(args.contains(&"--adaptive-logic=nearoptimal".to_string()));
         assert!(args.contains(&"--http-user-agent=VLC-Agent".to_string()));
         assert!(args.contains(&"--http-referrer=https://cdn.example.com".to_string()));
         assert!(!args.iter().any(|a| a.contains("CloudFront-Signature")));

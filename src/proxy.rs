@@ -111,7 +111,7 @@ pub async fn run_sidecar(
     headers: Vec<(String, String)>,
     subtitle_url: Option<String>,
 ) {
-    let client = crate::net::http_client_builder()
+    let client = crate::net::streaming_client_builder()
         .connect_timeout(Duration::from_secs(15))
         .build()
         .unwrap_or_default();
@@ -212,8 +212,9 @@ async fn handle_connection(
     target_host: Option<&str>,
     subtitle_url: Option<&str>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let (reader, mut writer) = stream.into_split();
+    let (reader, writer) = stream.into_split();
     let mut buf_reader = BufReader::new(reader);
+    let mut writer = tokio::io::BufWriter::with_capacity(128 * 1024, writer);
 
     let mut request_line = String::new();
     let n = buf_reader.read_line(&mut request_line).await?;
@@ -224,6 +225,7 @@ async fn handle_connection(
         writer
             .write_all(b"HTTP/1.1 431 Request Header Fields Too Large\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
             .await?;
+        writer.flush().await?;
         return Ok(());
     }
 
@@ -262,6 +264,7 @@ async fn handle_connection(
             let response =
                 "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
             writer.write_all(response.as_bytes()).await?;
+            writer.flush().await?;
             return Ok(());
         }
     };
@@ -274,6 +277,7 @@ async fn handle_connection(
             let response =
                 "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
             writer.write_all(response.as_bytes()).await?;
+            writer.flush().await?;
             return Ok(());
         }
     }
@@ -307,6 +311,7 @@ async fn handle_connection(
                 body.len()
             );
             writer.write_all(response.as_bytes()).await?;
+            writer.flush().await?;
             return Ok(());
         }
     };
@@ -342,6 +347,7 @@ async fn handle_connection(
                     .as_bytes(),
                 )
                 .await?;
+            writer.flush().await?;
             return Ok(());
         }
         let manifest_str = String::from_utf8_lossy(&manifest_bytes);
@@ -367,6 +373,7 @@ async fn handle_connection(
 
     let headers_bytes = format_proxy_response_headers(upstream_res.headers(), &target_url);
     writer.write_all(&headers_bytes).await?;
+    writer.flush().await?;
 
     let mut stream = upstream_res.bytes_stream();
     loop {
