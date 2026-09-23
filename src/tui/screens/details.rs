@@ -1347,7 +1347,6 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &mut AppState, theme: &Theme) 
                     metadata_style(theme)
                 };
 
-                let release_title = clean_stream_release_title(&file.filename);
                 let clean_source = crate::tui::text::clean_stream_text(file.source_label());
                 let is_redundant_source = {
                     let l = clean_source.to_ascii_lowercase();
@@ -1393,6 +1392,24 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &mut AppState, theme: &Theme) 
                             "Dramachi CDN".to_string()
                         }
                     }
+                };
+
+                let media_title = state
+                    .selected_details
+                    .as_ref()
+                    .map(|d| d.title.as_str())
+                    .unwrap_or("");
+                let raw_release = clean_stream_release_title(&file.filename);
+                let is_duplicate_media_title =
+                    !media_title.is_empty() && raw_release.eq_ignore_ascii_case(media_title);
+                let release_title = if is_duplicate_media_title {
+                    if is_wide {
+                        "-".to_string()
+                    } else {
+                        upload_by.clone()
+                    }
+                } else {
+                    raw_release
                 };
 
                 let res_badge = resolution_badge_spans(
@@ -2255,6 +2272,72 @@ mod tests {
         assert!(content.contains("MovieBox CDN"));
         assert!(!content.contains("Multi-Res hevc"));
         assert!(content.contains("Summer Dress S01E02"));
+    }
+
+    #[test]
+    fn test_duplicate_movie_title_in_release_column_replaced_with_source() {
+        let backend = ratatui::backend::TestBackend::new(100, 30);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        let mut state = AppState {
+            selected_details: Some(MediaDetails {
+                id: ProviderMediaId {
+                    provider: ProviderKind::MovieBox,
+                    value: "ek_deewane".to_string(),
+                },
+                title: "Ek Deewane Ki Deewaniyat".to_string(),
+                media_type: MediaType::Movie,
+                year: Some("2025".to_string()),
+                description: None,
+                tagline: None,
+                imdb_rating: None,
+                director: None,
+                stars: None,
+                prints: None,
+                audios: None,
+                poster_url: None,
+                duration: None,
+                genres: vec![],
+                seasons: vec![],
+                dubs: vec![],
+            }),
+            selected_resources: vec![Release {
+                provider: ProviderKind::MovieBox,
+                filename: "Ek Deewane Ki Deewaniyat.1080p.hevc".to_string(),
+                quality: Some("1080p".to_string()),
+                codec: Some("hevc".to_string()),
+                language: None,
+                size_bytes: Some(1600 * 1024 * 1024),
+                season: None,
+                episode: None,
+                mirrors: vec![SourceMirror {
+                    label: "1080p hevc".to_string(),
+                    resolver_url: "https://example.com/stream.mpd".to_string(),
+                    headers: vec![],
+                    direct_file: true,
+                }],
+                resource_id: None,
+            }],
+            details_pane: crate::tui::state::DetailsPane::Streams,
+            ..Default::default()
+        };
+        let theme = Theme::dracula();
+
+        terminal
+            .draw(|frame| {
+                draw(frame, frame.area(), &mut state, &theme);
+            })
+            .unwrap();
+
+        let buffer = terminal.backend().buffer();
+        let content = buffer
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+
+        assert!(content.contains("MovieBox CDN"));
+        let occurrences = content.matches("Ek Deewane Ki Deewaniyat").count();
+        assert_eq!(occurrences, 1);
     }
 
     #[test]

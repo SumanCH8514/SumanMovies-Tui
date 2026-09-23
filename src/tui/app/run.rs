@@ -655,20 +655,7 @@ impl App {
         let is_compact = dl_area.width < 60;
         let basic = self.state.basic_terminal;
         let modal_active = self.state.has_active_modal();
-        let raw_title = self
-            .state
-            .download_title
-            .as_deref()
-            .or_else(|| {
-                self.state
-                    .selected_details
-                    .as_ref()
-                    .map(|d| d.title.as_str())
-            })
-            .unwrap_or("Media");
-
         let cancel_label = if is_compact { "[x]" } else { "[x] Cancel" };
-        let cancel_budget = (crate::tui::text::width(cancel_label) as u16).saturating_add(4);
 
         let mut left_title_spans = Vec::new();
         let prefix_style = if modal_active {
@@ -679,7 +666,7 @@ impl App {
         if basic {
             left_title_spans.push(Span::styled(" [DL] ", prefix_style));
         } else {
-            left_title_spans.push(Span::styled(" ⬇ Downloading: ", prefix_style));
+            left_title_spans.push(Span::styled(" ⬇ Downloading ", prefix_style));
         }
 
         if self.state.download_queue_total > 0 {
@@ -699,22 +686,6 @@ impl App {
                 },
             ));
         }
-
-        let prefix_width = left_title_spans.iter().map(Span::width).sum::<usize>() as u16;
-        let title_max_width = dl_area
-            .width
-            .saturating_sub(prefix_width.saturating_add(cancel_budget).saturating_add(4))
-            as usize;
-        let truncated_title = crate::tui::text::truncate_width(raw_title, title_max_width.max(6));
-        left_title_spans.push(Span::styled(
-            truncated_title,
-            if modal_active {
-                self.theme.muted
-            } else {
-                self.theme.title.add_modifier(Modifier::BOLD)
-            },
-        ));
-        left_title_spans.push(Span::raw(" "));
 
         let left_title = Line::from(left_title_spans);
         let right_title = Line::from(vec![Span::styled(
@@ -737,7 +708,6 @@ impl App {
                 self.theme.lavender
             })
             .border_type(crate::tui::overlay::border_type(basic));
-
         let inner_area =
             crate::tui::overlay::render_modal_frame(frame, dl_area, block, &self.theme);
 
@@ -854,34 +824,99 @@ impl App {
             let truncated_status = crate::tui::text::truncate_width(status_str, status_budget);
             if truncated_status.contains(" | ") {
                 let parts: Vec<&str> = truncated_status.split(" | ").collect();
-                for (idx, part) in parts.iter().enumerate() {
-                    if idx > 0 {
+                let mut size_part = None;
+                let mut speed_part = None;
+                let mut eta_part = None;
+                let mut extra_parts = Vec::new();
+
+                for part in parts {
+                    let p = part.trim();
+                    if p.starts_with("ETA") {
+                        eta_part = Some(p);
+                    } else if p.contains("/s") {
+                        speed_part = Some(p);
+                    } else if p.ends_with("B")
+                        || p.ends_with("MB")
+                        || p.ends_with("GB")
+                        || p.ends_with("MiB")
+                        || p.ends_with("GiB")
+                        || p.ends_with("KB")
+                        || p.ends_with("KiB")
+                    {
+                        if size_part.is_none() {
+                            size_part = Some(p);
+                        } else {
+                            extra_parts.push(p);
+                        }
+                    } else {
+                        extra_parts.push(p);
+                    }
+                }
+
+                if let Some(size) = size_part {
+                    row_spans.push(Span::styled(
+                        size.to_string(),
+                        if modal_active {
+                            self.theme.muted
+                        } else {
+                            self.theme.text
+                        },
+                    ));
+                }
+
+                if speed_part.is_some() || eta_part.is_some() {
+                    if size_part.is_some() {
+                        row_spans.push(Span::raw("    "));
+                    }
+                    if let Some(speed) = speed_part {
                         row_spans.push(Span::styled(
-                            " | ",
+                            speed.to_string(),
                             if modal_active {
                                 self.theme.muted
                             } else {
-                                self.theme.surface1
+                                self.theme.teal.add_modifier(Modifier::BOLD)
                             },
                         ));
                     }
-                    if modal_active {
-                        row_spans.push(Span::styled(part.to_string(), self.theme.muted));
-                    } else if part.starts_with("ETA") {
-                        row_spans.push(Span::styled(part.to_string(), self.theme.rating));
-                    } else if part.contains("/s") {
+                    if let Some(eta) = eta_part {
+                        if speed_part.is_some() {
+                            row_spans.push(Span::styled(
+                                " ~ ",
+                                if modal_active {
+                                    self.theme.muted
+                                } else {
+                                    self.theme.surface1
+                                },
+                            ));
+                        }
+                        let eta_clean = eta.strip_prefix("ETA").unwrap_or(eta).trim();
+                        let eta_display =
+                            if eta_clean.ends_with("left") || eta_clean.ends_with("remaining") {
+                                eta_clean.to_string()
+                            } else {
+                                format!("{eta_clean} left")
+                            };
                         row_spans.push(Span::styled(
-                            part.to_string(),
-                            self.theme.teal.add_modifier(Modifier::BOLD),
+                            eta_display,
+                            if modal_active {
+                                self.theme.muted
+                            } else {
+                                self.theme.rating
+                            },
                         ));
-                    } else if part.starts_with("Audio") {
-                        row_spans.push(Span::styled(
-                            part.to_string(),
-                            self.theme.lavender.add_modifier(Modifier::BOLD),
-                        ));
-                    } else {
-                        row_spans.push(Span::styled(part.to_string(), self.theme.subtext1));
                     }
+                }
+
+                for extra in extra_parts {
+                    row_spans.push(Span::raw("   "));
+                    row_spans.push(Span::styled(
+                        extra.to_string(),
+                        if modal_active {
+                            self.theme.muted
+                        } else {
+                            self.theme.subtext1
+                        },
+                    ));
                 }
             } else {
                 row_spans.push(Span::styled(
@@ -894,7 +929,6 @@ impl App {
                 ));
             }
         }
-
         frame.render_widget(Paragraph::new(Line::from(row_spans)), inner_area);
     }
 
@@ -1513,13 +1547,13 @@ mod tests {
             rendered.push('\n');
         }
 
-        assert!(rendered.contains("Downloading:"));
-        assert!(rendered.contains("Ek Deewane Ki Deewaniyat"));
+        assert!(rendered.contains("Downloading"));
+        assert!(!rendered.contains("Ek Deewane Ki Deewaniyat"));
         assert!(rendered.contains("[x] Cancel"));
         assert!(rendered.contains("93.2%"));
         assert!(rendered.contains("778.6 MB"));
         assert!(rendered.contains("4.6 MB/s"));
-        assert!(rendered.contains("ETA 00:12"));
+        assert!(rendered.contains("00:12 left"));
 
         app.state.basic_terminal = true;
         terminal

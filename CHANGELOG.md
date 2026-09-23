@@ -31,6 +31,8 @@
   - Set 10s network cache floor and `nearoptimal` adaptive logic for `VLC`, preventing playback stalls on DASH jitter.
   - Recorded elapsed watch progress for VLC code 1 exits and routed IINA through wall-clock progress tracking.
 - **TUI Layout & Modal Ergonomics**:
+  - Deduplicated movie title repetition in Details screen streams table (`src/tui/screens/details.rs`), displaying source/CDN instead of identical media titles across rows.
+  - Streamlined download progress dock in `src/tui/app/run.rs` to a sleek, minimal header showing queue position and metrics without redundant title repetition.
   - Isolated TV mode search dispatch in `src/tui/app/requests.rs` and balanced landing search input width to 48 columns.
   - Auto-sized `/settings` modal height dynamically to category row counts and balanced modal width to 60 columns.
   - Dimmed background deck items, suggestions, and provider pills when modal popups are active in `src/tui/screens/home.rs`.
