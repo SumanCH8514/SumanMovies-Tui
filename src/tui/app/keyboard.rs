@@ -1139,13 +1139,7 @@ impl App {
                     }
                     match key.code {
                         KeyCode::Tab => {
-                            if self.state.show_season_download_confirm {
-                                self.state.season_download_confirm_yes_selected =
-                                    !self.state.season_download_confirm_yes_selected;
-                            } else if self.state.show_episode_download_confirm {
-                                self.state.episode_download_confirm_yes_selected =
-                                    !self.state.episode_download_confirm_yes_selected;
-                            } else if !self.state.subtitle_popup
+                            if !self.state.subtitle_popup
                                 && !self.state.player_picker_popup
                                 && !self.state.is_download_subtitle_popup
                             {
@@ -1153,52 +1147,20 @@ impl App {
                             }
                         }
                         KeyCode::BackTab => {
-                            if self.state.show_season_download_confirm {
-                                self.state.season_download_confirm_yes_selected =
-                                    !self.state.season_download_confirm_yes_selected;
-                            } else if self.state.show_episode_download_confirm {
-                                self.state.episode_download_confirm_yes_selected =
-                                    !self.state.episode_download_confirm_yes_selected;
-                            } else if !self.state.subtitle_popup
+                            if !self.state.subtitle_popup
                                 && !self.state.player_picker_popup
                                 && !self.state.is_download_subtitle_popup
                             {
                                 self.action_sender.send(Action::BackTabPane).ok();
                             }
                         }
-                        KeyCode::Char('y') | KeyCode::Char('Y') => {
-                            if self.state.show_season_download_confirm {
-                                self.action_sender.send(Action::ConfirmDownloadSeason).ok();
-                            } else if self.state.show_episode_download_confirm {
-                                self.action_sender.send(Action::ConfirmDownloadEpisode).ok();
-                            } else {
-                                return None;
-                            }
-                        }
-                        KeyCode::Char('n') | KeyCode::Char('N') => {
-                            if self.state.show_season_download_confirm {
-                                self.state.show_season_download_confirm = false;
-                            } else if self.state.show_episode_download_confirm {
-                                self.state.show_episode_download_confirm = false;
-                            } else {
-                                return None;
-                            }
-                        }
                         KeyCode::Esc => {
-                            if self.state.show_season_download_confirm {
-                                self.state.show_season_download_confirm = false;
-                            } else if self.state.show_episode_download_confirm {
-                                self.state.show_episode_download_confirm = false;
-                            } else {
-                                self.action_sender.send(Action::GoBack).ok();
-                            }
+                            self.action_sender.send(Action::GoBack).ok();
                         }
                         KeyCode::Char(' ') | KeyCode::Char('p') | KeyCode::Char('P') => {
                             if !self.state.subtitle_popup
                                 && !self.state.player_picker_popup
                                 && !self.state.is_download_subtitle_popup
-                                && !self.state.show_season_download_confirm
-                                && !self.state.show_episode_download_confirm
                             {
                                 match self.state.details_pane {
                                     crate::tui::state::DetailsPane::Streams => {
@@ -1230,10 +1192,10 @@ impl App {
                                     self.state.details_pane
                                 {
                                     if !self.state.available_seasons.is_empty() {
-                                        self.action_sender.send(Action::PromptDownloadSeason).ok();
+                                        self.action_sender.send(Action::DownloadSeason).ok();
                                     }
                                 } else {
-                                    self.action_sender.send(Action::PromptDownloadEpisode).ok();
+                                    self.action_sender.send(Action::DownloadEpisode).ok();
                                 }
                             }
                         }
@@ -1241,8 +1203,6 @@ impl App {
                             if !self.state.subtitle_popup
                                 && !self.state.player_picker_popup
                                 && !self.state.is_download_subtitle_popup
-                                && !self.state.show_season_download_confirm
-                                && !self.state.show_episode_download_confirm
                             {
                                 if let Some((title, content)) = self.state.active_overview() {
                                     self.state.open_overview_modal(title, content);
@@ -1253,8 +1213,6 @@ impl App {
                             if !self.state.subtitle_popup
                                 && !self.state.player_picker_popup
                                 && !self.state.is_download_subtitle_popup
-                                && !self.state.show_season_download_confirm
-                                && !self.state.show_episode_download_confirm
                             {
                                 self.action_sender.send(Action::Refresh).ok();
                             }
@@ -1266,8 +1224,6 @@ impl App {
                             if !self.state.subtitle_popup
                                 && !self.state.player_picker_popup
                                 && !self.state.is_download_subtitle_popup
-                                && !self.state.show_season_download_confirm
-                                && !self.state.show_episode_download_confirm
                                 && self.state.favorites_available()
                             {
                                 self.action_sender.send(Action::ToggleFavorite).ok();
@@ -1281,11 +1237,7 @@ impl App {
                             self.action_sender.send(Action::MoveDown).ok();
                         }
                         KeyCode::Left | KeyCode::Char('h') | KeyCode::Char('H') => {
-                            if self.state.show_season_download_confirm {
-                                self.state.season_download_confirm_yes_selected = true;
-                            } else if self.state.show_episode_download_confirm {
-                                self.state.episode_download_confirm_yes_selected = true;
-                            } else if !self.state.subtitle_popup
+                            if !self.state.subtitle_popup
                                 && !self.state.player_picker_popup
                                 && !self.state.is_download_subtitle_popup
                             {
@@ -1293,11 +1245,7 @@ impl App {
                             }
                         }
                         KeyCode::Right | KeyCode::Char('l') | KeyCode::Char('L') => {
-                            if self.state.show_season_download_confirm {
-                                self.state.season_download_confirm_yes_selected = false;
-                            } else if self.state.show_episode_download_confirm {
-                                self.state.episode_download_confirm_yes_selected = false;
-                            } else if !self.state.subtitle_popup
+                            if !self.state.subtitle_popup
                                 && !self.state.player_picker_popup
                                 && !self.state.is_download_subtitle_popup
                             {
@@ -1305,19 +1253,7 @@ impl App {
                             }
                         }
                         KeyCode::Enter => {
-                            if self.state.show_season_download_confirm {
-                                if self.state.season_download_confirm_yes_selected {
-                                    self.action_sender.send(Action::ConfirmDownloadSeason).ok();
-                                } else {
-                                    self.state.show_season_download_confirm = false;
-                                }
-                            } else if self.state.show_episode_download_confirm {
-                                if self.state.episode_download_confirm_yes_selected {
-                                    self.action_sender.send(Action::ConfirmDownloadEpisode).ok();
-                                } else {
-                                    self.state.show_episode_download_confirm = false;
-                                }
-                            } else if self.state.subtitle_popup
+                            if self.state.subtitle_popup
                                 || self.state.player_picker_popup
                                 || self.state.is_download_subtitle_popup
                             {
@@ -1711,5 +1647,30 @@ mod tests {
         app.handle_key(KeyEvent::new(KeyCode::Char('i'), KeyModifiers::empty()))
             .await;
         assert!(!app.state.show_overview_modal);
+    }
+
+    #[tokio::test]
+    async fn test_details_download_key_triggers_download_directly() {
+        let mut app = App::new();
+        app.state.active_screen = Screen::Details;
+        app.state.details_pane = crate::tui::state::DetailsPane::Streams;
+        app.handle_key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::empty()))
+            .await;
+        assert!(matches!(
+            app.action_receiver.try_recv().ok(),
+            Some(Action::DownloadEpisode)
+        ));
+
+        app.state.details_pane = crate::tui::state::DetailsPane::Seasons;
+        app.state.available_seasons = vec![crate::providers::models::Season {
+            number: 1,
+            episodes: vec![],
+        }];
+        app.handle_key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::empty()))
+            .await;
+        assert!(matches!(
+            app.action_receiver.try_recv().ok(),
+            Some(Action::DownloadSeason)
+        ));
     }
 }

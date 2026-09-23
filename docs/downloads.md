@@ -23,7 +23,7 @@ Upon completion, temporary sidecars are verified and renamed atomically to the t
 
 ## Download Controls
 
-- Press **`d`** on any stream in the Details screen to open the download confirmation dialog.
+- Press **`d`** on any stream in the Details screen to start downloading immediately.
 - Press **`x`** or **`X`** during an active download to cancel or pause the transfer. Partial `.part` data is preserved on disk for resumption.
 - Downloads run cooperatively in the background, allowing you to browse or search without interrupting transfers.
 

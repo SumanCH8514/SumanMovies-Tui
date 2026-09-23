@@ -18,8 +18,6 @@ impl App {
         self.state.pending_play_link = None;
         self.state.subtitle_list.clear();
         self.state.subtitle_list_state.select(None);
-        self.state.show_season_download_confirm = false;
-        self.state.show_episode_download_confirm = false;
         self.state.is_resolving_playback = false;
         self.state.tv_input_active = false;
         self.state.tv_input_buffer.clear();

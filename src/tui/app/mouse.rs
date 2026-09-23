@@ -412,56 +412,6 @@ impl App {
             return true;
         }
 
-        if self.state.show_season_download_confirm {
-            let summary = crate::tui::screens::details::season_confirm_summary(&self.state);
-            let longest = summary
-                .iter()
-                .map(|line| crate::tui::text::width(line))
-                .max()
-                .unwrap_or(36);
-            let popup = crate::tui::overlay::download_confirm_layout(area, summary.len(), longest);
-            if popup.contains(ratatui::layout::Position::new(col, row)) {
-                let action_y =
-                    crate::tui::overlay::download_confirm_action_row(popup, summary.len());
-                if row == action_y {
-                    let mid_x = popup.x + popup.width / 2;
-                    if col < mid_x {
-                        self.action_sender.send(Action::ConfirmDownloadSeason).ok();
-                    } else {
-                        self.state.show_season_download_confirm = false;
-                    }
-                }
-            } else {
-                self.state.show_season_download_confirm = false;
-            }
-            return true;
-        }
-
-        if self.state.show_episode_download_confirm {
-            let summary = crate::tui::screens::details::episode_confirm_summary(&self.state);
-            let longest = summary
-                .iter()
-                .map(|line| crate::tui::text::width(line))
-                .max()
-                .unwrap_or(36);
-            let popup = crate::tui::overlay::download_confirm_layout(area, summary.len(), longest);
-            if popup.contains(ratatui::layout::Position::new(col, row)) {
-                let action_y =
-                    crate::tui::overlay::download_confirm_action_row(popup, summary.len());
-                if row == action_y {
-                    let mid_x = popup.x + popup.width / 2;
-                    if col < mid_x {
-                        self.action_sender.send(Action::ConfirmDownloadEpisode).ok();
-                    } else {
-                        self.state.show_episode_download_confirm = false;
-                    }
-                }
-            } else {
-                self.state.show_episode_download_confirm = false;
-            }
-            return true;
-        }
-
         if self.state.tv_config_popup {
             let rows = self.state.tv_manager_rows();
             let total_rows = rows.len();
@@ -1268,9 +1218,9 @@ impl App {
                     }
                     FooterAction::Download => {
                         if is_seasons {
-                            self.action_sender.send(Action::PromptDownloadSeason).ok();
+                            self.action_sender.send(Action::DownloadSeason).ok();
                         } else {
-                            self.action_sender.send(Action::PromptDownloadEpisode).ok();
+                            self.action_sender.send(Action::DownloadEpisode).ok();
                         }
                     }
                     FooterAction::Favorite => {

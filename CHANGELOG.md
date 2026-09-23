@@ -83,11 +83,20 @@
 - **Documentation Overhaul & Clarity Streamlining**:
   - Overhauled all user and technical guides in `docs/` (`players.md`, `controls.md`, `tv-mode.md`, `config.md`, `addons-mode.md`, `providers.md`, `cross-platform.md`, `cache.md`, `downloads.md`), cutting redundant tables, eliminating dense run-on text walls, and standardizing on direct, beginner-accessible explanations.
   - Added complete environment variable documentation for `MOVIEBOX_LOG`, `MOVIEBOX_IMAGE_PROTOCOL`, `MOVIEBOX_CELL_SIZE`, and `NO_COLOR` in `docs/config.md`.
+  - Documented missing Details screen pane navigation, stream download triggers, synopsis overlay controls, `/settings` interactive modal keybindings, in-app update prompt shortcuts, and `Ctrl+P` provider cycling in `docs/controls.md`.
+  - Corrected theme catalog count to 9 themes and clarified `/settings` invocation without invalid single-key shortcuts in `docs/config.md`.
+  - Clarified non-toggle mode switching semantics (`Ctrl+T` to TV mode, `Ctrl+S` to Streaming mode) in `docs/tv-mode.md`.
+- **Instant Stream and Season Download Triggering**:
+  - Streamlined download initiation by starting stream and season downloads immediately upon pressing `d` (or clicking `[d] Download`) on the details screen, bypassing the intermediate confirmation popup.
 - **Automated Test Architecture Hardening**:
   - Replaced thread-shared `cargo test` execution with process-isolated `cargo nextest run` across testing rules in `.omp/AGENTS.md`.
   - Added hermetic local loopback server download tests in `src/download.rs` verifying custom authentication headers (`X-Auth-Token`, `User-Agent`, `Referer`), byte streaming, and progress callbacks.
   - Added deterministic CLI argument and header verification tests in `src/player.rs` for `mpv` and `VLC`.
   - Pruned tautological assertions and dead code (`step_header_aware_list`).
+### Removed
+- **Download Confirmation Modal & Transient Dialog States**:
+  - Removed `PromptDownloadEpisode`, `ConfirmDownloadEpisode`, `PromptDownloadSeason`, and `ConfirmDownloadSeason` in favor of direct `DownloadEpisode` and `DownloadSeason` actions.
+  - Pruned transient modal state flags (`show_episode_download_confirm`, `show_season_download_confirm`, `episode_download_confirm_yes_selected`, `season_download_confirm_yes_selected`) and confirmation render helpers (`confirmation`, `download_confirm_layout`, `download_confirm_action_row`).
 ## [0.1.23] - 2026-09-21
 
 ### Fixed

@@ -1569,134 +1569,7 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &mut AppState, theme: &Theme) 
             theme,
             state.basic_terminal,
         );
-    } else if state.show_season_download_confirm {
-        let summary_strings = season_confirm_summary(state);
-        let summary_lines: Vec<Line<'_>> = summary_strings
-            .iter()
-            .map(|s| Line::from(s.as_str()))
-            .collect();
-        crate::tui::overlay::confirmation(
-            frame,
-            area,
-            " Confirm Season Download ",
-            &summary_lines,
-            state.season_download_confirm_yes_selected,
-            theme,
-            state.basic_terminal,
-        );
-    } else if state.show_episode_download_confirm {
-        let summary_strings = episode_confirm_summary(state);
-        let summary_lines: Vec<Line<'_>> = summary_strings
-            .iter()
-            .map(|s| Line::from(s.as_str()))
-            .collect();
-        crate::tui::overlay::confirmation(
-            frame,
-            area,
-            " Confirm Episode Download ",
-            &summary_lines,
-            state.episode_download_confirm_yes_selected,
-            theme,
-            state.basic_terminal,
-        );
     }
-}
-
-pub(crate) fn season_confirm_summary(state: &AppState) -> Vec<String> {
-    let title = state
-        .selected_details
-        .as_ref()
-        .map(|d| d.title.as_str())
-        .unwrap_or("Series");
-    let season_idx = state.season_list_state.selected().unwrap_or(0);
-    let eps_count = state
-        .available_episode_numbers
-        .get(season_idx)
-        .map(|eps| eps.len())
-        .unwrap_or(0);
-    let season_number = state.selected_season;
-    let mut summary = vec![format!(
-        "{title} • Season {season_number} ({eps_count} Episodes)"
-    )];
-    if let Some(stream) = selected_stream_summary(state) {
-        summary.push(format!("Quality: {stream}"));
-    }
-    let dest = state
-        .download_dir
-        .as_ref()
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_else(|| {
-            crate::service::resolve_download_dir(None)
-                .to_string_lossy()
-                .to_string()
-        });
-    summary.push(format!("Save to: {dest}"));
-    summary
-}
-
-pub(crate) fn episode_confirm_summary(state: &AppState) -> Vec<String> {
-    let title = state
-        .selected_details
-        .as_ref()
-        .map(|d| d.title.as_str())
-        .unwrap_or("Media");
-    let year = state
-        .selected_details
-        .as_ref()
-        .and_then(|d| d.year.as_deref())
-        .unwrap_or("");
-    let season_idx = state.selected_season;
-    let ep_idx = state.selected_episode;
-    let is_series = state
-        .selected_details
-        .as_ref()
-        .is_some_and(|d| d.is_series());
-    let mut summary = if is_series {
-        vec![format!("{title} • Season {season_idx} Episode {ep_idx}")]
-    } else if !year.is_empty() && year != "N/A" {
-        vec![format!("{title} ({year}) • Movie")]
-    } else {
-        vec![format!("{title} • Movie")]
-    };
-    if let Some(stream) = selected_stream_summary(state) {
-        summary.push(format!("Quality: {stream}"));
-    }
-    let dest = state
-        .download_dir
-        .as_ref()
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_else(|| {
-            crate::service::resolve_download_dir(None)
-                .to_string_lossy()
-                .to_string()
-        });
-    summary.push(format!("Save to: {dest}"));
-    summary
-}
-
-fn selected_stream_summary(state: &AppState) -> Option<String> {
-    let idx = state.resource_list_state.selected().unwrap_or(0);
-    let resource = state.selected_resources.get(idx)?;
-    let resolution = if resource.is_multi_resolution() {
-        Some("Multi-Res".to_string())
-    } else if resource.resolution_u64() > 0 {
-        Some(format!("{}p", resource.resolution_u64()))
-    } else {
-        None
-    };
-    let codec = resource
-        .codec
-        .as_deref()
-        .filter(|value| !value.is_empty())
-        .map(str::to_uppercase);
-    let size = resource
-        .size_bytes
-        .map(|value| crate::tui::text::format_file_size(value as f64));
-    let fields = [size, resolution, codec]
-        .into_iter()
-        .flatten()
-        .collect::<Vec<_>>();
-    (!fields.is_empty()).then(|| fields.join(" · "))
 }
 
 fn clean_language_name(value: &str) -> String {
@@ -3399,7 +3272,9 @@ mod tests {
                 resource_id: Some("res-1".to_string()),
             }],
             details_pane: crate::tui::state::DetailsPane::Streams,
-            show_episode_download_confirm: true,
+            show_overview_modal: true,
+            overview_modal_title: "Overview Modal".to_string(),
+            overview_modal_content: "Overview content".to_string(),
             basic_terminal: false,
             ..Default::default()
         };
@@ -3419,7 +3294,7 @@ mod tests {
             .map(|cell| cell.symbol())
             .collect::<String>();
 
-        assert!(content.contains("Confirm Episode Download"));
+        assert!(content.contains("Overview Modal"));
         assert!(!content.contains("› Streams"));
         assert!(content.contains("Multi"));
         assert!(content.contains("Hindi"));

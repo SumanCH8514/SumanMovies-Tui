@@ -183,10 +183,6 @@ pub struct AppState {
     pub selected_resources: Vec<Release>,
     pub stream_pool: std::collections::HashMap<String, SubjectStreamPool>,
     pub fetch_cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
-    pub show_season_download_confirm: bool,
-    pub season_download_confirm_yes_selected: bool,
-    pub show_episode_download_confirm: bool,
-    pub episode_download_confirm_yes_selected: bool,
     pub is_waiting_for_download_stream: bool,
     pub auto_play_on_ready: bool,
     pub is_fetching_streams: bool,
@@ -363,10 +359,6 @@ impl Default for AppState {
             selected_resources: vec![],
             stream_pool: std::collections::HashMap::new(),
             fetch_cancel: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
-            show_season_download_confirm: false,
-            season_download_confirm_yes_selected: false,
-            show_episode_download_confirm: false,
-            episode_download_confirm_yes_selected: false,
             is_waiting_for_download_stream: false,
             is_fetching_streams: false,
             auto_play_on_ready: false,
@@ -532,8 +524,6 @@ impl AppState {
         self.subtitle_popup = false;
         self.is_download_subtitle_popup = false;
         self.player_picker_popup = false;
-        self.show_season_download_confirm = false;
-        self.show_episode_download_confirm = false;
         self.selected_details = None;
         self.selected_resources.clear();
         self.active_subject_id = None;
@@ -816,8 +806,6 @@ impl AppState {
             || self.player_picker_popup
             || self.subtitle_popup
             || self.is_download_subtitle_popup
-            || self.show_season_download_confirm
-            || self.show_episode_download_confirm
             || self.show_overview_modal
             || (self.update_available.is_some() && self.input_mode != InputMode::Editing)
             || self.is_updating
@@ -1469,14 +1457,6 @@ mod tests {
         state.is_download_subtitle_popup = true;
         assert!(state.has_active_modal());
         state.is_download_subtitle_popup = false;
-
-        state.show_season_download_confirm = true;
-        assert!(state.has_active_modal());
-        state.show_season_download_confirm = false;
-
-        state.show_episode_download_confirm = true;
-        assert!(state.has_active_modal());
-        state.show_episode_download_confirm = false;
 
         state.update_available = Some(("v2.0.0".to_string(), "Notes".to_string()));
         assert!(state.has_active_modal());

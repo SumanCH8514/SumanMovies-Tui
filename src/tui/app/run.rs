@@ -475,10 +475,8 @@ impl App {
 
             Action::DownloadStream(..)
             | Action::StartDownload(..)
-            | Action::PromptDownloadEpisode
-            | Action::ConfirmDownloadEpisode
-            | Action::PromptDownloadSeason
-            | Action::ConfirmDownloadSeason
+            | Action::DownloadEpisode
+            | Action::DownloadSeason
             | Action::ProcessDownloadQueue
             | Action::UpdateDownload(..)
             | Action::DownloadCompleted(..)

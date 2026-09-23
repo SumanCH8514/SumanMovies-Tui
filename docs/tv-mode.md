@@ -4,7 +4,7 @@ TV mode streams live television channels from M3U playlists. Playlists can be lo
 
 ## Entering TV Mode
 
-- Press **`Ctrl+T`** to toggle between Streaming and TV mode.
+- Press **`Ctrl+T`** to switch to TV mode (and **`Ctrl+S`** to switch back to Streaming mode).
 - If no playlists are loaded on entry, the playlist manager opens automatically.
 - Type in the search bar to filter channels by name or group; press `Enter` to play.
 

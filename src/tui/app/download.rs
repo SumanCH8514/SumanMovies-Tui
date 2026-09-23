@@ -625,14 +625,7 @@ impl App {
                 self.start_resilient_download(subtitle_url, link, headers);
                 return None;
             }
-            Action::PromptDownloadEpisode => {
-                self.state.show_episode_download_confirm = true;
-                self.state.episode_download_confirm_yes_selected = false;
-            }
-
-            Action::ConfirmDownloadEpisode => {
-                self.state.show_episode_download_confirm = false;
-
+            Action::DownloadEpisode => {
                 let subject_id = self.state.active_subject_id.clone().unwrap_or_default();
                 let resource_id = self.get_selected_resource_id();
 
@@ -673,14 +666,7 @@ impl App {
                     self.action_sender.send(Action::DownloadStream(None)).ok();
                 }
             }
-
-            Action::PromptDownloadSeason => {
-                self.state.show_season_download_confirm = true;
-                self.state.season_download_confirm_yes_selected = false;
-            }
-
-            Action::ConfirmDownloadSeason => {
-                self.state.show_season_download_confirm = false;
+            Action::DownloadSeason => {
                 self.state.season_subtitle_preference = None;
                 let season_num = self.state.selected_season;
 
@@ -1104,7 +1090,7 @@ mod tests {
         }];
         app.state.resource_list_state.select(Some(0));
 
-        app.handle_download(Action::ConfirmDownloadEpisode).await;
+        app.handle_download(Action::DownloadEpisode).await;
 
         let notif = app.state.notifications.back().expect("notification posted");
         assert_eq!(notif.kind, NotificationKind::Info);

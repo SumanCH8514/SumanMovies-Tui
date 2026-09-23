@@ -132,8 +132,6 @@ impl App {
                         self.state.player_picker_popup = false;
                         self.state.subtitle_popup = false;
                         self.state.is_download_subtitle_popup = false;
-                        self.state.show_season_download_confirm = false;
-                        self.state.show_episode_download_confirm = false;
                     }
                 }
             }

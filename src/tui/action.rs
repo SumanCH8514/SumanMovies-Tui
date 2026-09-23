@@ -86,10 +86,8 @@ pub enum Action {
     DownloadPaused(String),
     ClearDownload,
     CancelDownload,
-    PromptDownloadEpisode,
-    ConfirmDownloadEpisode,
-    PromptDownloadSeason,
-    ConfirmDownloadSeason,
+    DownloadEpisode,
+    DownloadSeason,
     ProcessDownloadQueue,
     FetchDetails(String, bool),
     DetailsSuccess(

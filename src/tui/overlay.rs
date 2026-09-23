@@ -1,6 +1,6 @@
 use ratatui::{
     Frame,
-    layout::{Alignment, Constraint, Layout, Rect},
+    layout::{Alignment, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, List, ListItem, ListState, Paragraph},
@@ -180,25 +180,6 @@ pub fn help_modal_layout(area: Rect, desired_width: u16, desired_height: u16) ->
     let search_y = home_search_y(area);
     let y = search_y.min(area.bottom().saturating_sub(height));
     Rect::new(x, y, width, height)
-}
-
-pub fn download_confirm_layout(
-    area: Rect,
-    summary_lines: usize,
-    longest_line_width: usize,
-) -> Rect {
-    let content_width = longest_line_width.max(36);
-    centered(
-        area,
-        content_width.saturating_add(4) as u16,
-        summary_lines as u16 + 4,
-        36,
-        64,
-    )
-}
-
-pub fn download_confirm_action_row(popup: Rect, summary_lines: usize) -> u16 {
-    (popup.y + summary_lines as u16 + 1).min(popup.bottom().saturating_sub(1))
 }
 
 pub fn overview_modal_layout_with_wrapped(area: Rect, content: &str) -> (Rect, Vec<String>) {
@@ -448,68 +429,6 @@ pub fn browse_category_badge<'a>(label: &str, theme: &'a Theme) -> (Span<'a>, &'
             " ",
         )
     }
-}
-
-pub fn confirmation(
-    frame: &mut Frame,
-    area: Rect,
-    title: &str,
-    summary: &[Line<'_>],
-    confirm_selected: bool,
-    theme: &Theme,
-    basic_terminal: bool,
-) {
-    let content_width = summary.iter().map(Line::width).max().unwrap_or(0).max(36);
-    let popup = centered(
-        area,
-        content_width.saturating_add(4) as u16,
-        summary.len() as u16 + 4,
-        36,
-        64,
-    );
-    let inner = crate::tui::widgets::ModalFrame::new(title, theme, basic_terminal)
-        .render(frame, popup, area);
-    let sections = Layout::vertical([
-        Constraint::Length(summary.len() as u16),
-        Constraint::Length(2),
-    ])
-    .split(inner);
-    frame.render_widget(
-        Paragraph::new(summary.to_vec()).alignment(Alignment::Center),
-        sections[0],
-    );
-    let confirm_btn_style = if confirm_selected {
-        if basic_terminal {
-            theme.text.add_modifier(Modifier::REVERSED | Modifier::BOLD)
-        } else {
-            Style::default()
-                .bg(theme.accent.fg.unwrap_or(theme.base))
-                .fg(theme.crust_color())
-                .add_modifier(Modifier::BOLD)
-        }
-    } else {
-        theme.subtext1
-    };
-
-    let cancel_btn_style = if !confirm_selected {
-        if basic_terminal {
-            theme.text.add_modifier(Modifier::REVERSED | Modifier::BOLD)
-        } else {
-            Style::default()
-                .bg(theme.surface1_color())
-                .fg(theme.text.fg.unwrap_or(theme.base))
-                .add_modifier(Modifier::BOLD)
-        }
-    } else {
-        theme.subtext1
-    };
-
-    let actions = vec![
-        Span::styled(" [ Download ] ", confirm_btn_style),
-        Span::raw("    "),
-        Span::styled(" [ Cancel ] ", cancel_btn_style),
-    ];
-    crate::tui::widgets::render_modal_footer(frame, sections[1], actions, theme);
 }
 
 pub fn notifications(
@@ -997,28 +916,6 @@ mod tests {
         assert_eq!(large.popup_area.width, 64);
         assert_eq!(large.display_count, 10);
         assert!(large.has_more);
-    }
-
-    #[test]
-    fn test_download_confirm_action_row_matches_rendered_button_section() {
-        let popup = Rect::new(10, 10, 40, 10);
-        let summary_lines = 3;
-        let action_row = download_confirm_action_row(popup, summary_lines);
-
-        assert_eq!(action_row, popup.y + 4);
-        assert!(popup.contains(ratatui::layout::Position::new(popup.x + 2, action_row)));
-    }
-
-    #[test]
-    fn test_download_confirm_zones_do_not_overlap() {
-        let area = Rect::new(0, 0, 80, 24);
-        let summary_lines = 4;
-        let longest = 30;
-        let popup = download_confirm_layout(area, summary_lines, longest);
-        let action_row = download_confirm_action_row(popup, summary_lines);
-
-        assert!(popup.contains(ratatui::layout::Position::new(popup.x + 1, action_row)));
-        assert!(action_row < popup.bottom() - 1);
     }
 
     #[test]

@@ -4,11 +4,11 @@ MovieBox-TUI stores its settings in `config.json` inside your platform configura
 
 ## Interactive Settings Hub (`/settings`)
 
-Enter `/settings` or press `s` on the Home screen to configure options interactively:
+Enter `/settings` in the search bar or click `[ ⚙ Settings ]` on the Home screen to configure options interactively:
 
 - **General**: Toggle automatic update checks, select default media player (`mpv`, `VLC`, `IINA`, `Android`), and customize download directory.
-- **Content Modes**: Toggle Streaming Mode, enable or disable specific streaming providers (MovieBox, 4KHDHub, CircleFTP, DhakaFlix), and toggle Live TV Mode.
-- **Appearance**: Select among 6 color themes with live preview.
+- **Content Modes**: Toggle Streaming Mode, enable or disable specific streaming providers (MovieBox, 4KHDHub, Dramachi, CircleFTP, DhakaFlix), and toggle Live TV Mode.
+- **Appearance**: Select among 9 color themes (Mocha, Latte, Macchiato, Frappe, Nord, TokyoNight, Dracula, Gruvbox, RosePine) with live preview.
 - **Maintenance**: Check for updates, re-test local BDIX network connectivity, clear disk cache, clear watch history, and open the GitHub repository.
 
 ## Configuration File Paths
