@@ -111,7 +111,6 @@ async fn fetch_latest_tag() -> Result<String, String> {
     }
     Ok(tag.to_string())
 }
-
 pub(crate) fn http_client() -> Result<reqwest::Client, String> {
     crate::net::http_client_builder()
         .user_agent("MovieBox-Tui")
@@ -119,4 +118,12 @@ pub(crate) fn http_client() -> Result<reqwest::Client, String> {
         .connect_timeout(std::time::Duration::from_secs(10))
         .build()
         .map_err(|e| format!("HTTP client: {e}"))
+}
+
+pub(crate) fn download_client() -> Result<reqwest::Client, String> {
+    crate::net::http_client_builder()
+        .user_agent("MovieBox-Tui")
+        .connect_timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| format!("Download client: {e}"))
 }

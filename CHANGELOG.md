@@ -8,6 +8,10 @@
   - Automated Scoop manifest synchronization alongside Homebrew in `.github/workflows/manifests.yml`, extracting `MovieBox_Windows_x64.zip` and `MovieBox_Windows_arm64.zip` checksums from `SHA256SUMS`.
   - Added `InstallationEnvironment::Scoop` detection in `src/updater/apply.rs` via executable path inspection (`/scoop/apps/`, `\scoop\apps\`, `/scoop/shims/`, `\scoop\shims\`).
   - Added dedicated update notification modal handling with `[s]` shortcut to display `scoop update moviebox-tui` on Scoop-managed Windows installations.
+### Fixed
+- **In-App Updater Streaming Timeout & Chunk Retry Recovery**:
+  - Removed the static 30-second total request deadline from the release binary download client in `src/updater/check.rs`, preventing mid-transfer decode aborts (`download chunk stream error: error decoding response body`) on slow or high-latency network connections.
+  - Added mid-stream chunk failure recovery in `src/updater/download.rs` with automatic temporary file cleanup, exponential backoff, and retry loop up to 3 attempts.
 ## [0.1.23] - 2026-09-21
 
 ### Fixed
