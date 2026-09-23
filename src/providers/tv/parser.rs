@@ -30,7 +30,7 @@ impl M3UParser {
         &self,
         url: &str,
     ) -> Result<Vec<Channel>, Box<dyn std::error::Error>> {
-        let trimmed = url.trim();
+        let trimmed = url.trim().trim_matches(|c| c == '"' || c == '\'').trim();
         let is_remote = crate::net::is_http_url(trimmed);
         let content = if is_remote {
             let file_path = self.cache_dir.join(cache_filename(trimmed));
@@ -77,7 +77,18 @@ impl M3UParser {
                 }
             }
         } else {
-            let path = std::path::PathBuf::from(trimmed);
+            let path = if let Some(stripped) = trimmed
+                .strip_prefix("~/")
+                .or_else(|| trimmed.strip_prefix("~\\"))
+            {
+                dirs::home_dir()
+                    .map(|h| h.join(stripped))
+                    .unwrap_or_else(|| std::path::PathBuf::from(trimmed))
+            } else if trimmed == "~" {
+                dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from(trimmed))
+            } else {
+                std::path::PathBuf::from(trimmed)
+            };
             let metadata = tokio::fs::metadata(&path)
                 .await
                 .map_err(|error| format!("failed to read playlist file {}: {error}", trimmed))?;

@@ -486,19 +486,10 @@ impl App {
                         self.state.tv_manager_selected = clicked_idx;
                         if let Some(r) = rows.get(clicked_idx) {
                             match r {
-                                crate::tui::state::TvManagerRow::AddUrl => {
+                                crate::tui::state::TvManagerRow::AddPlaylist => {
                                     self.action_sender.send(Action::TvInputToggle(false)).ok();
                                 }
-                                crate::tui::state::TvManagerRow::AddFile => {
-                                    self.action_sender.send(Action::TvInputToggle(true)).ok();
-                                }
-                                crate::tui::state::TvManagerRow::Reload => {
-                                    self.action_sender.send(Action::TvReloadPlaylists).ok();
-                                }
-                                crate::tui::state::TvManagerRow::Done => {
-                                    self.state.tv_config_popup = false;
-                                }
-                                _ => {}
+                                crate::tui::state::TvManagerRow::Playlist(_) => {}
                             }
                         }
                     }

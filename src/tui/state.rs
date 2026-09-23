@@ -1151,12 +1151,8 @@ pub fn step_list_selection(state: &mut ListState, total_items: usize, step: isiz
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TvManagerRow {
-    Header(&'static str),
     Playlist(usize),
-    AddUrl,
-    AddFile,
-    Reload,
-    Done,
+    AddPlaylist,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1164,112 +1160,38 @@ pub enum AddonManagerRow {
     Addon(usize),
     AddUrl,
 }
-pub fn step_header_aware_list<F>(current: usize, total: usize, step: isize, is_header: F) -> usize
-where
-    F: Fn(usize) -> bool,
-{
-    if total == 0 {
-        return 0;
-    }
-    if step == 0 {
-        return current;
-    }
-
-    if step < -1 {
-        let jump = (-step) as usize;
-        let mut target = current.saturating_sub(jump);
-        while target > 0 && is_header(target) {
-            target = target.saturating_sub(1);
-        }
-        if is_header(target) {
-            if let Some(first_valid) = (0..total).find(|&i| !is_header(i)) {
-                target = first_valid;
-            }
-        }
-        return target;
-    } else if step > 1 {
-        let jump = step as usize;
-        let mut target = (current + jump).min(total.saturating_sub(1));
-        while target < total && is_header(target) {
-            target += 1;
-        }
-        if target >= total || is_header(target) {
-            if let Some(last_valid) = (0..total).rposition(|i| !is_header(i)) {
-                target = last_valid;
-            }
-        }
-        return target;
-    }
-
-    let forward = step > 0;
-    let mut next = if forward {
-        if current + 1 >= total { 0 } else { current + 1 }
-    } else if current == 0 {
-        total.saturating_sub(1)
-    } else {
-        current - 1
-    };
-
-    while next != current && is_header(next) {
-        next = if forward {
-            if next + 1 >= total { 0 } else { next + 1 }
-        } else if next == 0 {
-            total.saturating_sub(1)
-        } else {
-            next - 1
-        };
-    }
-
-    next
-}
 
 impl AppState {
     pub fn tv_manager_rows(&self) -> Vec<TvManagerRow> {
-        let mut rows = vec![TvManagerRow::Header("URL playlists")];
-        for (index, source) in self.tv_playlists.iter().enumerate() {
-            if crate::tui::text::is_http_url(source) {
-                rows.push(TvManagerRow::Playlist(index));
-            }
+        let mut rows = Vec::with_capacity(self.tv_playlists.len() + 1);
+        for index in 0..self.tv_playlists.len() {
+            rows.push(TvManagerRow::Playlist(index));
         }
-        rows.push(TvManagerRow::AddUrl);
-        rows.push(TvManagerRow::Header("File playlists"));
-        for (index, source) in self.tv_playlists.iter().enumerate() {
-            if !crate::tui::text::is_http_url(source) {
-                rows.push(TvManagerRow::Playlist(index));
-            }
-        }
-        rows.push(TvManagerRow::AddFile);
-        rows.push(TvManagerRow::Reload);
-        rows.push(TvManagerRow::Done);
+        rows.push(TvManagerRow::AddPlaylist);
         rows
     }
 
     pub fn step_tv_manager_selected(&mut self, step: isize) {
-        let rows = self.tv_manager_rows();
-        self.tv_manager_selected =
-            step_header_aware_list(self.tv_manager_selected, rows.len(), step, |idx| {
-                matches!(rows.get(idx), Some(TvManagerRow::Header(_)))
-            });
+        let rows_len = self.tv_manager_rows().len();
+        if rows_len == 0 {
+            self.tv_manager_selected = 0;
+            return;
+        }
+        if step > 0 {
+            self.tv_manager_selected = (self.tv_manager_selected + step as usize) % rows_len;
+        } else {
+            let back = (-step) as usize % rows_len;
+            self.tv_manager_selected = (self.tv_manager_selected + rows_len - back) % rows_len;
+        }
     }
 
     pub fn first_tv_manager_selected(&mut self) {
-        let rows = self.tv_manager_rows();
-        if let Some(idx) = rows
-            .iter()
-            .position(|r| !matches!(r, TvManagerRow::Header(_)))
-        {
-            self.tv_manager_selected = idx;
-        }
+        self.tv_manager_selected = 0;
     }
 
     pub fn last_tv_manager_selected(&mut self) {
-        let rows = self.tv_manager_rows();
-        if let Some(idx) = rows
-            .iter()
-            .rposition(|r| !matches!(r, TvManagerRow::Header(_)))
-        {
-            self.tv_manager_selected = idx;
-        }
+        let total = self.tv_manager_rows().len();
+        self.tv_manager_selected = total.saturating_sub(1);
     }
 
     pub fn addon_manager_rows(&self) -> Vec<AddonManagerRow> {

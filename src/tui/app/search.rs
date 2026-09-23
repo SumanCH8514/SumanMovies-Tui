@@ -131,13 +131,10 @@ impl App {
                 {
                     self.action_sender.send(Action::ShowAddonManager).ok();
                 } else {
-                    let ctrl_p = crate::tui::text::CTRL_P_STR;
                     self.state.notify(
                         NotificationKind::Info,
-                        "Configuration",
-                        format!(
-                            "Use /settings for preferences, or switch to Addons ({ctrl_p}) to configure addons."
-                        ),
+                        "Config",
+                        "Use /settings for preferences, or switch provider.",
                     );
                 }
                 Some(true)
@@ -744,8 +741,8 @@ impl App {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_handle_search_command_config_in_streaming_mode_shows_guidance() {
+    #[tokio::test]
+    async fn test_handle_search_command_config_in_streaming_mode_shows_guidance() {
         let mut app = App::new();
         app.state.active_provider = ProviderKind::MovieBox;
         app.state.is_tv_mode = false;
@@ -756,12 +753,12 @@ mod tests {
         assert!(!app.state.addon_manager_popup);
         assert!(!app.state.tv_config_popup);
         assert_eq!(app.state.notifications.len(), 1);
-        assert_eq!(app.state.notifications[0].title, "Configuration");
+        assert_eq!(app.state.notifications[0].title, "Config");
         assert!(app.state.notifications[0].message.contains("/settings"));
     }
 
-    #[test]
-    fn test_handle_search_command_config_in_addons_mode_opens_addon_manager() {
+    #[tokio::test]
+    async fn test_handle_search_command_config_in_addons_mode_opens_addon_manager() {
         let mut app = App::new();
         app.state.active_provider = ProviderKind::Addons;
         app.state.is_tv_mode = false;
@@ -772,8 +769,8 @@ mod tests {
         assert!(app.state.notifications.is_empty());
     }
 
-    #[test]
-    fn test_handle_search_command_config_in_tv_mode_opens_tv_config() {
+    #[tokio::test]
+    async fn test_handle_search_command_config_in_tv_mode_opens_tv_config() {
         let mut app = App::new();
         app.state.is_tv_mode = true;
 

@@ -801,6 +801,9 @@ impl App {
                             KeyCode::PageDown => {
                                 self.state.step_tv_manager_selected(5);
                             }
+                            KeyCode::Char('r') => {
+                                self.action_sender.send(Action::TvReloadPlaylists).ok();
+                            }
                             KeyCode::Char('d') | KeyCode::Delete => {
                                 use crate::tui::state::TvManagerRow;
                                 if let Some(TvManagerRow::Playlist(index)) = self

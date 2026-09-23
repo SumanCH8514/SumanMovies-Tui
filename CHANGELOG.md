@@ -26,6 +26,20 @@
   - Bound parallel sibling provider queries in `get_ext_captions` (`src/service.rs`) with individual 8-second `tokio::time::timeout` futures, preventing single uncommunicative sibling mirrors from delaying caption availability.
 - **Overview Modal Persistence Across Screen Transitions**:
   - Reset `show_overview_modal` and `overview_modal_scroll` flags within `reset_transient_overlays` (`src/tui/app/tv.rs`), preventing overview backdrops from lingering across mode changes.
+- **Details Header Metadata Position Jitter**:
+  - Top-aligned metadata paragraph rendering and synopsis hitboxes in `src/tui/screens/details.rs`, preventing vertical layout jumps when stream details or synopsis text expand during background metadata fetches.
+- **TV Playlists Management Interface Streamlining**:
+  - Streamlined the TV mode playlist configuration popup to match the clean design of Addons mode, replacing noisy section headers and bracket buttons with a unified list, `✓` status indicators, dynamic auto-sizing, and a single `+ Add playlist` prompt.
+- **TV Mode Search Bar Provider Pill Removal**:
+  - Removed the redundant `[Live TV · ^T]` pill from the search input box in TV mode (`src/tui/screens/home.rs`), reclaiming search input width and keeping the search bar minimal.
+- **Maintenance Settings Menu Organization**:
+  - Reordered actions in `/settings` → Maintenance so safe diagnostic tools appear first (`Check for Updates`, `Re-check BDIX Network`), followed by cleanup actions (`Clear Disk Cache`, `Clear Watch History`), and ending with the external repository link.
+- **Settings Modal Balanced Geometry & Dynamic Height**:
+  - Auto-sized `/settings` modal height dynamically to fit the exact row count of the active category and balanced modal width to 60 columns in `src/tui/overlay.rs` and `src/tui/widgets/settings.rs`, removing the oversized right-side void and bottom blank areas while maintaining uniform margins around all borders.
+- **Modal Backdrop Dimming for Background Deck & Search**:
+  - Dimmed favorites/continue-watching card items and the search bar provider pill when modal popups (such as the provider picker) are active in `src/tui/screens/home.rs`, ensuring background elements properly recede visually.
+- **Update Check In-Flight Notification Replacement**:
+  - Replaced the in-flight `"Checking for updates"` notification toast with the final outcome toast (`Up to date` or `Update check failed`) upon completion in `src/tui/app/system.rs`, avoiding duplicate stacked update notifications.
 - **Details Pane Season & Episode Mouse Hitbox Scrolling Offsets**:
   - Factored `ListState::offset()` into row hitbox calculations in `src/tui/app/mouse.rs`, ensuring mouse clicks accurately select the intended season or episode row in scrolled lists.
 - **Dynamic Application User-Agent Header**:

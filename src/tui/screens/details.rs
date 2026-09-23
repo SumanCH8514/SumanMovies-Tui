@@ -320,10 +320,7 @@ fn compute_synopsis_area(
         return Rect::default();
     }
 
-    let rendered_count =
-        fixed_lines + if include_spacer { 1 } else { 0 } + actual_synopsis_lines + reserved_bottom;
-    let top_offset = total_height.saturating_sub(rendered_count) / 2;
-    let synopsis_rel_y = top_offset + fixed_lines + if include_spacer { 1 } else { 0 };
+    let synopsis_rel_y = fixed_lines + if include_spacer { 1 } else { 0 };
 
     let abs_y = meta_area.y + synopsis_rel_y as u16;
     let height = actual_synopsis_lines as u16;
@@ -838,21 +835,8 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &mut AppState, theme: &Theme) 
         rendered_lines.push(Line::from(extra_meta_spans));
     }
 
-    let top_offset = total_height.saturating_sub(rendered_lines.len()) / 2;
-    let final_lines = if top_offset > 0 {
-        let mut padded = Vec::with_capacity(total_height);
-        for _ in 0..top_offset {
-            padded.push(Line::from(""));
-        }
-        padded.extend(rendered_lines);
-        padded
-    } else {
-        rendered_lines
-    };
-
-    let meta_p = Paragraph::new(final_lines);
+    let meta_p = Paragraph::new(rendered_lines);
     frame.render_widget(meta_p, meta_area);
-
     let streams_count = state.selected_resources.len();
 
     render_workflow(

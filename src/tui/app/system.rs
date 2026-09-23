@@ -523,6 +523,24 @@ impl App {
                 crate::tui::state::SettingsCategory::StorageInfo => {
                     match self.state.settings_selected_row {
                         0 => {
+                            self.state.manual_update_check = true;
+                            self.state.notify(
+                                NotificationKind::Info,
+                                "Checking for updates",
+                                "Checking GitHub releases...",
+                            );
+                            self.action_sender.send(Action::CheckForUpdates).ok();
+                        }
+                        1 => {
+                            self.state.bdix_probed = false;
+                            self.action_sender.send(Action::CheckBdixNetwork).ok();
+                            self.state.notify(
+                                NotificationKind::Info,
+                                "BDIX Check",
+                                "Probing local network mirrors...",
+                            );
+                        }
+                        2 => {
                             self.state.notify(
                                 NotificationKind::Info,
                                 "Clearing Cache",
@@ -530,7 +548,7 @@ impl App {
                             );
                             self.action_sender.send(Action::ClearCache).ok();
                         }
-                        1 => {
+                        3 => {
                             self.state.history.clear();
                             self.state.homepage_cache.clear();
                             if self
@@ -548,16 +566,7 @@ impl App {
                                 "Watch history cleared",
                             );
                         }
-                        2 => {
-                            self.state.manual_update_check = true;
-                            self.state.notify(
-                                NotificationKind::Info,
-                                "Checking for updates",
-                                "Checking GitHub releases...",
-                            );
-                            self.action_sender.send(Action::CheckForUpdates).ok();
-                        }
-                        3 => {
+                        4 => {
                             const REPO_URL: &str = "https://github.com/mesamirh/MovieBox-Tui";
                             match open::that(REPO_URL) {
                                 Ok(()) => {
@@ -576,15 +585,6 @@ impl App {
                                     );
                                 }
                             }
-                        }
-                        4 => {
-                            self.state.bdix_probed = false;
-                            self.action_sender.send(Action::CheckBdixNetwork).ok();
-                            self.state.notify(
-                                NotificationKind::Info,
-                                "BDIX Check",
-                                "Probing local network mirrors...",
-                            );
                         }
                         _ => {}
                     }
@@ -698,6 +698,10 @@ impl App {
                     .unwrap_or_default()
                     .as_secs();
                 self.persist_config();
+
+                self.state
+                    .notifications
+                    .retain(|n| !n.title.eq_ignore_ascii_case("Checking for updates"));
 
                 match result {
                     Ok(None) => {

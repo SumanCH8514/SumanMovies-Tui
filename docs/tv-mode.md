@@ -12,9 +12,8 @@ file path, and the app parses, groups, dedupes, and lets you search and play the
 
 ## Adding playlists
 
-1. `/config` opens the playlist manager, split into **URL playlists** and
-   **File playlists**.
-2. Select `[ Add URL ]` or `[ Add file ]`, type the source, `Enter` to add.
+1. `/config` opens the playlist manager.
+2. Select `+ Add playlist`, type the URL or local file path, `Enter` to add.
    - URL example: `https://example.com/playlist.m3u`
    - File example: `~/playlists/mine.m3u`
 3. Sources persist in `tv_config.json` (under the config dir). Local file playlists are

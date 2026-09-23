@@ -327,8 +327,7 @@ async fn test_settings_hub_clear_cache_activation_and_notification() {
     ))
     .await;
     assert_eq!(app.state().settings_category, SettingsCategory::StorageInfo);
-    assert_eq!(app.state().settings_selected_row, 0);
-
+    app.state_mut().settings_selected_row = 2;
     app.handle_action(Action::SettingsActivateRow).await;
     let clearing = app.state().notifications.back();
     assert_eq!(clearing.map(|n| n.title.as_str()), Some("Clearing Cache"));
@@ -360,7 +359,7 @@ async fn test_settings_hub_browser_open_row_activation() {
         SettingsCategory::StorageInfo,
     ))
     .await;
-    app.state_mut().settings_selected_row = 3;
+    app.state_mut().settings_selected_row = 4;
     app.handle_action(Action::SettingsActivateRow).await;
     let notification = app.state().notifications.back();
     assert!(notification.is_some());
@@ -393,7 +392,7 @@ async fn test_settings_hub_clear_watch_history_activation() {
         SettingsCategory::StorageInfo,
     ))
     .await;
-    app.state_mut().settings_selected_row = 1;
+    app.state_mut().settings_selected_row = 3;
     app.handle_action(Action::SettingsActivateRow).await;
 
     assert!(app.state().history.recent.is_empty());

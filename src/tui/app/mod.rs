@@ -331,9 +331,12 @@ impl App {
     }
 
     fn reload_tv_playlists(&self) {
+        let Ok(handle) = tokio::runtime::Handle::try_current() else {
+            return;
+        };
         let playlists = self.state.tv_playlists.clone();
         let sender = self.action_sender.clone();
-        tokio::spawn(async move {
+        handle.spawn(async move {
             let parser = crate::providers::tv::M3UParser::new();
             let mut all_channels = Vec::new();
             let mut failed = 0usize;
@@ -369,20 +372,9 @@ impl App {
                     .send(Action::TvPlaylistRemove(index))
                     .ok();
             }
-            TvManagerRow::AddUrl => {
+            TvManagerRow::AddPlaylist => {
                 self.action_sender.send(Action::TvInputToggle(false)).ok();
             }
-            TvManagerRow::AddFile => {
-                self.action_sender.send(Action::TvInputToggle(true)).ok();
-            }
-            TvManagerRow::Reload => {
-                self.action_sender.send(Action::TvReloadPlaylists).ok();
-            }
-            TvManagerRow::Done => {
-                self.reset_transient_overlays();
-                self.state.tv_config_popup = false;
-            }
-            TvManagerRow::Header(_) => {}
         }
     }
 

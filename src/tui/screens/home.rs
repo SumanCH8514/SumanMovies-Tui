@@ -605,11 +605,21 @@ pub(crate) fn render_landing_deck(frame: &mut Frame, area: Rect, state: &AppStat
                 let pad_len = (inner_area.width as usize)
                     .saturating_sub(margins_len + hl_sym_len + title_width + tag_len);
 
+                let title_style = if modal_active {
+                    theme.muted
+                } else {
+                    theme.text
+                };
+                let tag_style = if modal_active {
+                    theme.muted
+                } else {
+                    theme.text_dim
+                };
                 let line = Line::from(vec![
                     Span::raw(left_margin),
-                    Span::styled(truncated_title, theme.text),
+                    Span::styled(truncated_title, title_style),
                     Span::raw(" ".repeat(pad_len)),
-                    Span::styled(right_tag, theme.text_dim),
+                    Span::styled(right_tag, tag_style),
                     Span::raw(right_margin),
                 ]);
                 ListItem::new(line)
@@ -640,11 +650,21 @@ pub(crate) fn render_landing_deck(frame: &mut Frame, area: Rect, state: &AppStat
                 let pad_len = (inner_area.width as usize)
                     .saturating_sub(margins_len + hl_sym_len + title_width + tag_len);
 
+                let title_style = if modal_active {
+                    theme.muted
+                } else {
+                    theme.text
+                };
+                let tag_style = if modal_active {
+                    theme.muted
+                } else {
+                    theme.text_dim
+                };
                 let line = Line::from(vec![
                     Span::raw(left_margin),
-                    Span::styled(truncated_title, theme.text),
+                    Span::styled(truncated_title, title_style),
                     Span::raw(" ".repeat(pad_len)),
-                    Span::styled(right_tag, theme.text_dim),
+                    Span::styled(right_tag, tag_style),
                     Span::raw(right_margin),
                 ]);
                 ListItem::new(line)
@@ -866,11 +886,6 @@ fn render_search_bar(
         } else {
             crate::tui::text::CTRL_P_STR
         };
-        let ctrl_t = if is_ultra_compact {
-            "T"
-        } else {
-            crate::tui::text::CTRL_T_STR
-        };
 
         let is_query_empty = state.search_query.is_empty();
         let (pill_text, pill_style) = if state.show_provider_popup {
@@ -882,11 +897,9 @@ fn render_search_bar(
                 format!("[{label} {sep} {ctrl_p}]")
             };
             let style = if state.basic_terminal {
-                theme.sapphire.add_modifier(Modifier::BOLD)
+                theme.muted
             } else {
-                let bg = theme.surface1_color();
-                let fg = theme.sapphire.fg.unwrap_or(theme.base);
-                Style::default().bg(bg).fg(fg).add_modifier(Modifier::BOLD)
+                theme.muted.add_modifier(Modifier::BOLD)
             };
             (text, style)
         } else if modal_active {
@@ -897,12 +910,7 @@ fn render_search_bar(
                     "[Enter] Search".to_string()
                 }
             } else if state.is_tv_mode {
-                if is_ultra_compact {
-                    "[TV]".to_string()
-                } else {
-                    let sep = if state.basic_terminal { "-" } else { "·" };
-                    format!("[Live TV {sep} {ctrl_t}]")
-                }
+                String::new()
             } else if state.active_provider == crate::providers::models::ProviderKind::Addons {
                 "[Addons]".to_string()
             } else {
@@ -924,18 +932,7 @@ fn render_search_bar(
                 ("[Enter] Search".to_string(), theme.accent)
             }
         } else if state.is_tv_mode {
-            let text = if is_ultra_compact {
-                "[TV]".to_string()
-            } else {
-                let sep = if state.basic_terminal { "-" } else { "·" };
-                format!("[Live TV {sep} {ctrl_t}]")
-            };
-            let style = if state.basic_terminal {
-                theme.lavender
-            } else {
-                theme.lavender.add_modifier(Modifier::BOLD)
-            };
-            (text, style)
+            (String::new(), Style::default())
         } else if state.active_provider == crate::providers::models::ProviderKind::Addons {
             let text = "[Addons]".to_string();
             let style = if state.basic_terminal {
@@ -986,7 +983,7 @@ fn render_search_bar(
         let editing = view == SearchViewState::Editing;
         let real_cursor = editing && !state.basic_terminal && !modal_active;
         let prefix_style = if modal_active {
-            theme.text_dim
+            theme.muted
         } else if editing {
             theme.accent
         } else {
@@ -1008,19 +1005,29 @@ fn render_search_bar(
         let search_line = if is_query_empty {
             let placeholder_text: &str = placeholder_text.as_ref();
             if has_status {
+                let status_style = if modal_active {
+                    theme.muted
+                } else {
+                    theme.accent
+                };
                 Line::from(vec![
                     Span::styled(prefix, prefix_style),
-                    Span::styled(placeholder_text, theme.accent),
+                    Span::styled(placeholder_text, status_style),
                 ])
             } else {
+                let placeholder_style = if modal_active {
+                    theme.muted
+                } else {
+                    theme.text_dim
+                };
                 Line::from(vec![
                     Span::styled(prefix, prefix_style),
-                    Span::styled(placeholder_text, theme.text_dim),
+                    Span::styled(placeholder_text, placeholder_style),
                 ])
             }
         } else {
             let text_style = if modal_active {
-                theme.text_dim
+                theme.muted
             } else {
                 theme.text
             };
@@ -1905,85 +1912,73 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &mut AppState, theme: &Theme) 
             total_rows,
             state.tv_input_active,
         );
-        let title = format!(
-            "TV Playlists · {}/{}",
-            state.tv_manager_selected.saturating_add(1),
-            total_rows.max(1)
-        );
-        let inner_area = crate::tui::widgets::ModalFrame::new(&title, theme, state.basic_terminal)
+        let title = if state.tv_input_active {
+            "Add TV Playlist"
+        } else {
+            "TV Playlists"
+        };
+        let inner_area = crate::tui::widgets::ModalFrame::new(title, theme, state.basic_terminal)
             .render(frame, popup_area, area);
 
         if state.tv_input_active {
-            let label = if state.tv_input_is_file {
-                "Enter playlist file path:"
-            } else {
-                "Enter playlist URL:"
-            };
             crate::tui::widgets::render_single_line_input(
                 frame,
                 inner_area,
-                label,
+                "Enter playlist URL or file path:",
                 &state.tv_input_buffer,
                 theme,
                 state.basic_terminal,
             );
         } else {
-            let items: Vec<ratatui::widgets::ListItem> = rows
-                .iter()
-                .map(|row| {
-                    use crate::tui::state::TvManagerRow;
-                    match row {
-                        TvManagerRow::Header(label) => {
-                            ratatui::widgets::ListItem::new(ratatui::text::Line::from(vec![
-                                ratatui::text::Span::raw(" "),
-                                ratatui::text::Span::styled(label.to_string(), theme.muted),
-                            ]))
-                        }
-                        TvManagerRow::Playlist(index) => {
-                            let source =
-                                state.tv_playlists.get(*index).cloned().unwrap_or_default();
-                            let index_str = format!("{}", index + 1);
-                            let url_budget = (inner_area.width as usize)
-                                .saturating_sub(index_str.len() + 6)
-                                .max(10);
-                            let display_source =
-                                crate::tui::text::truncate_middle_width(&source, url_budget);
-                            ratatui::widgets::ListItem::new(ratatui::text::Line::from(vec![
-                                ratatui::text::Span::raw(" "),
-                                ratatui::text::Span::styled(
-                                    format!("{} {}", index_str, display_source),
-                                    theme.text,
-                                ),
-                            ]))
-                        }
-                        TvManagerRow::AddUrl => {
-                            ratatui::widgets::ListItem::new(ratatui::text::Line::from(vec![
-                                ratatui::text::Span::raw(" "),
-                                ratatui::text::Span::styled("[ Add URL ]", theme.sapphire),
-                            ]))
-                        }
-                        TvManagerRow::AddFile => {
-                            ratatui::widgets::ListItem::new(ratatui::text::Line::from(vec![
-                                ratatui::text::Span::raw(" "),
-                                ratatui::text::Span::styled("[ Add file ]", theme.sapphire),
-                            ]))
-                        }
-                        TvManagerRow::Reload => {
-                            ratatui::widgets::ListItem::new(ratatui::text::Line::from(vec![
-                                ratatui::text::Span::raw(" "),
-                                ratatui::text::Span::styled("[ Reload ]", theme.rating),
-                            ]))
-                        }
-                        TvManagerRow::Done => {
-                            ratatui::widgets::ListItem::new(ratatui::text::Line::from(vec![
-                                ratatui::text::Span::raw(" "),
-                                ratatui::text::Span::styled("[ Done ]", theme.success),
-                            ]))
-                        }
-                    }
-                })
-                .collect();
+            let mut items = Vec::with_capacity(state.tv_playlists.len() + 1);
 
+            for (idx, source) in state.tv_playlists.iter().enumerate() {
+                let is_selected = state.tv_manager_selected == idx;
+                let (prefix, prefix_style) = if state.basic_terminal {
+                    (
+                        "* ",
+                        theme.success.add_modifier(ratatui::style::Modifier::BOLD),
+                    )
+                } else {
+                    (
+                        "✓ ",
+                        theme.success.add_modifier(ratatui::style::Modifier::BOLD),
+                    )
+                };
+                let name_style = if is_selected {
+                    theme.text.add_modifier(ratatui::style::Modifier::BOLD)
+                } else {
+                    theme.text
+                };
+                let name_budget = (inner_area.width as usize).saturating_sub(6).max(8);
+                let truncated = crate::tui::text::truncate_middle_width(source, name_budget);
+                let item = ratatui::widgets::ListItem::new(ratatui::text::Line::from(vec![
+                    ratatui::text::Span::raw("  "),
+                    ratatui::text::Span::styled(prefix, prefix_style),
+                    ratatui::text::Span::styled(truncated, name_style),
+                    ratatui::text::Span::raw("  "),
+                ]));
+                items.push(item);
+            }
+
+            let is_add_selected = state.tv_manager_selected == state.tv_playlists.len();
+            let add_style = if is_add_selected {
+                theme.text.add_modifier(ratatui::style::Modifier::BOLD)
+            } else {
+                theme.sapphire
+            };
+            let add_prefix_style = if is_add_selected {
+                theme.text.add_modifier(ratatui::style::Modifier::BOLD)
+            } else {
+                theme.sapphire
+            };
+            let add_item = ratatui::widgets::ListItem::new(ratatui::text::Line::from(vec![
+                ratatui::text::Span::raw("  "),
+                ratatui::text::Span::styled("+ ", add_prefix_style),
+                ratatui::text::Span::styled("Add playlist", add_style),
+                ratatui::text::Span::raw("  "),
+            ]));
+            items.push(add_item);
             let list = ratatui::widgets::List::new(items)
                 .highlight_style(crate::tui::overlay::selection_style(
                     theme,
@@ -2362,18 +2357,9 @@ pub fn search_bar_provider_pill_rect(search_card_area: Rect, state: &AppState) -
     } else {
         crate::tui::text::CTRL_P_STR
     };
-    let ctrl_t = if is_ultra_compact {
-        "T"
-    } else {
-        crate::tui::text::CTRL_T_STR
-    };
     let sep = if state.basic_terminal { "-" } else { "·" };
     let pill_text = if state.is_tv_mode {
-        if is_ultra_compact {
-            "[TV]".to_string()
-        } else {
-            format!("[Live TV {sep} {ctrl_t}]")
-        }
+        String::new()
     } else if state.active_provider == crate::providers::models::ProviderKind::Addons {
         "[Addons]".to_string()
     } else {
@@ -2385,6 +2371,9 @@ pub fn search_bar_provider_pill_rect(search_card_area: Rect, state: &AppState) -
         }
     };
     let pill_width = crate::tui::text::width(&pill_text) as u16;
+    if pill_width == 0 {
+        return Rect::default();
+    }
     let search_split = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
@@ -3432,7 +3421,7 @@ mod tests {
             }
             tv_rendered.push('\n');
         }
-        assert!(tv_rendered.contains("[Live TV"));
+        assert!(!tv_rendered.contains("[Live TV"));
         assert!(tv_rendered.contains("Search live TV channels…"));
         let mut addon_state = AppState {
             active_provider: crate::providers::models::ProviderKind::Addons,

@@ -20,8 +20,8 @@ pub fn category_tab_rects(
 ) -> Vec<(SettingsCategory, Rect)> {
     let mut results = Vec::new();
     let mut current_x = tabs_area.x;
-    let compact = tabs_area.width < 52;
-    let gap = if compact { 2 } else { 5 };
+    let compact = tabs_area.width < 50;
+    let gap = if compact { 2 } else { 3 };
 
     for cat in SettingsCategory::ALL {
         let title = if compact {
@@ -156,10 +156,10 @@ fn render_tabs(frame: &mut Frame, area: Rect, popup_area: Rect, state: &AppState
     let mut line0_spans = Vec::new();
     let mut line1_spans = Vec::new();
 
-    let compact = popup_area.width < 58;
+    let compact = popup_area.width < 56;
     for (i, cat) in SettingsCategory::ALL.iter().enumerate() {
         if i > 0 {
-            let gap = if compact { "  " } else { "     " };
+            let gap = if compact { "  " } else { "   " };
             line0_spans.push(Span::raw(gap));
             line1_spans.push(Span::raw(gap));
         }
@@ -197,7 +197,7 @@ fn render_tabs(frame: &mut Frame, area: Rect, popup_area: Rect, state: &AppState
     let tabs_render_area = Rect {
         x: popup_area.x + 3,
         y: area.y,
-        width: popup_area.width.saturating_sub(6),
+        width: popup_area.width.saturating_sub(4),
         height: area.height.min(2),
     };
     let lines = if area.height >= 2 {
@@ -312,8 +312,8 @@ fn render_row(
         .map(|s| crate::tui::text::width(&s.content))
         .sum();
 
-    let right_margin = 1;
-    let left_margin = 1;
+    let right_margin = 3;
+    let left_margin = 2;
     let area_width = area.width as usize;
     let max_label_w = area_width.saturating_sub(left_margin + right_width + right_margin + 1);
     let display_label = if label_width > max_label_w && max_label_w >= 4 {
@@ -602,74 +602,6 @@ fn render_storage_settings(frame: &mut Frame, area: Rect, state: &AppState, them
     if let Some(&row_area) = row_rects.first() {
         let is_selected = state.settings_selected_row == 0;
         let is_active_selected = is_selected && !has_active_popup;
-        let glyph = if state.basic_terminal { ">" } else { "▸" };
-        let value_spans = vec![Span::styled(
-            format!("Purge {glyph}"),
-            if has_active_popup {
-                theme.muted
-            } else if state.basic_terminal {
-                if is_active_selected {
-                    theme.text.add_modifier(Modifier::BOLD)
-                } else {
-                    theme.text_dim
-                }
-            } else if is_active_selected {
-                theme.error.add_modifier(Modifier::BOLD)
-            } else {
-                theme.error
-            },
-        )];
-        render_row(
-            frame,
-            row_area,
-            SettingRow {
-                is_selected,
-                has_active_popup,
-                label: "Clear Disk Cache",
-                value_spans,
-            },
-            theme,
-            state.basic_terminal,
-        );
-    }
-
-    if let Some(&row_area) = row_rects.get(1) {
-        let is_selected = state.settings_selected_row == 1;
-        let is_active_selected = is_selected && !has_active_popup;
-        let glyph = if state.basic_terminal { ">" } else { "▸" };
-        let value_spans = vec![Span::styled(
-            format!("Clear {glyph}"),
-            if has_active_popup {
-                theme.muted
-            } else if state.basic_terminal {
-                if is_active_selected {
-                    theme.text.add_modifier(Modifier::BOLD)
-                } else {
-                    theme.text_dim
-                }
-            } else if is_active_selected {
-                theme.error.add_modifier(Modifier::BOLD)
-            } else {
-                theme.error
-            },
-        )];
-        render_row(
-            frame,
-            row_area,
-            SettingRow {
-                is_selected,
-                has_active_popup,
-                label: "Clear Watch History",
-                value_spans,
-            },
-            theme,
-            state.basic_terminal,
-        );
-    }
-
-    if let Some(&row_area) = row_rects.get(2) {
-        let is_selected = state.settings_selected_row == 2;
-        let is_active_selected = is_selected && !has_active_popup;
         let value_spans = if state.is_checking_updates {
             vec![Span::styled(
                 "Checking...",
@@ -714,41 +646,8 @@ fn render_storage_settings(frame: &mut Frame, area: Rect, state: &AppState, them
         );
     }
 
-    if let Some(&row_area) = row_rects.get(3) {
-        let is_selected = state.settings_selected_row == 3;
-        let is_active_selected = is_selected && !has_active_popup;
-        let glyph = if state.basic_terminal { "->" } else { "↗" };
-        let value_spans = vec![Span::styled(
-            format!("Open {glyph}"),
-            if has_active_popup {
-                theme.muted
-            } else if state.basic_terminal {
-                if is_active_selected {
-                    theme.text.add_modifier(Modifier::BOLD)
-                } else {
-                    theme.text_dim
-                }
-            } else if is_active_selected {
-                theme.lavender.add_modifier(Modifier::BOLD)
-            } else {
-                theme.lavender
-            },
-        )];
-        render_row(
-            frame,
-            row_area,
-            SettingRow {
-                is_selected,
-                has_active_popup,
-                label: "GitHub Repository",
-                value_spans,
-            },
-            theme,
-            state.basic_terminal,
-        );
-    }
-    if let Some(&row_area) = row_rects.get(4) {
-        let is_selected = state.settings_selected_row == 4;
+    if let Some(&row_area) = row_rects.get(1) {
+        let is_selected = state.settings_selected_row == 1;
         let is_active_selected = is_selected && !has_active_popup;
         let glyph = if state.basic_terminal { "->" } else { "▸" };
         let value_spans = vec![Span::styled(
@@ -774,6 +673,108 @@ fn render_storage_settings(frame: &mut Frame, area: Rect, state: &AppState, them
                 is_selected,
                 has_active_popup,
                 label: "Re-check BDIX Network",
+                value_spans,
+            },
+            theme,
+            state.basic_terminal,
+        );
+    }
+
+    if let Some(&row_area) = row_rects.get(2) {
+        let is_selected = state.settings_selected_row == 2;
+        let is_active_selected = is_selected && !has_active_popup;
+        let glyph = if state.basic_terminal { ">" } else { "▸" };
+        let value_spans = vec![Span::styled(
+            format!("Purge {glyph}"),
+            if has_active_popup {
+                theme.muted
+            } else if state.basic_terminal {
+                if is_active_selected {
+                    theme.text.add_modifier(Modifier::BOLD)
+                } else {
+                    theme.text_dim
+                }
+            } else if is_active_selected {
+                theme.error.add_modifier(Modifier::BOLD)
+            } else {
+                theme.error
+            },
+        )];
+        render_row(
+            frame,
+            row_area,
+            SettingRow {
+                is_selected,
+                has_active_popup,
+                label: "Clear Disk Cache",
+                value_spans,
+            },
+            theme,
+            state.basic_terminal,
+        );
+    }
+
+    if let Some(&row_area) = row_rects.get(3) {
+        let is_selected = state.settings_selected_row == 3;
+        let is_active_selected = is_selected && !has_active_popup;
+        let glyph = if state.basic_terminal { ">" } else { "▸" };
+        let value_spans = vec![Span::styled(
+            format!("Clear {glyph}"),
+            if has_active_popup {
+                theme.muted
+            } else if state.basic_terminal {
+                if is_active_selected {
+                    theme.text.add_modifier(Modifier::BOLD)
+                } else {
+                    theme.text_dim
+                }
+            } else if is_active_selected {
+                theme.error.add_modifier(Modifier::BOLD)
+            } else {
+                theme.error
+            },
+        )];
+        render_row(
+            frame,
+            row_area,
+            SettingRow {
+                is_selected,
+                has_active_popup,
+                label: "Clear Watch History",
+                value_spans,
+            },
+            theme,
+            state.basic_terminal,
+        );
+    }
+
+    if let Some(&row_area) = row_rects.get(4) {
+        let is_selected = state.settings_selected_row == 4;
+        let is_active_selected = is_selected && !has_active_popup;
+        let glyph = if state.basic_terminal { "->" } else { "↗" };
+        let value_spans = vec![Span::styled(
+            format!("Open {glyph}"),
+            if has_active_popup {
+                theme.muted
+            } else if state.basic_terminal {
+                if is_active_selected {
+                    theme.text.add_modifier(Modifier::BOLD)
+                } else {
+                    theme.text_dim
+                }
+            } else if is_active_selected {
+                theme.lavender.add_modifier(Modifier::BOLD)
+            } else {
+                theme.lavender
+            },
+        )];
+        render_row(
+            frame,
+            row_area,
+            SettingRow {
+                is_selected,
+                has_active_popup,
+                label: "GitHub Repository",
                 value_spans,
             },
             theme,

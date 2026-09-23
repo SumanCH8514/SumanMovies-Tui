@@ -105,20 +105,20 @@ pub fn tv_config_layout(
     total_rows: usize,
     input_active: bool,
 ) -> Rect {
-    let content_width = longest_source_width.max(48).max(crate::tui::text::width(
-        "[ Add URL ] [ Add file ] [ Reload ] [ Done ]",
-    ));
-    let min_width = 44u16.min(area.width.saturating_sub(2));
-    let popup_width = 68u16
-        .max(content_width.saturating_add(6) as u16)
-        .min(area.width.saturating_sub(2))
-        .max(min_width);
-    let popup_height = if input_active {
-        5u16
+    let (popup_width, popup_height) = if input_active {
+        let w = 52u16.min(area.width.saturating_sub(2)).max(28);
+        (w, 5u16)
     } else {
-        (total_rows.min(10) as u16)
-            .saturating_add(4)
+        let longest_line = (longest_source_width as u16).saturating_add(6).max(24);
+        let w = longest_line
+            .saturating_add(2)
+            .min(area.width.saturating_sub(2))
+            .max(28);
+        let h = (total_rows as u16)
+            .saturating_add(2)
             .min(area.height.saturating_sub(2))
+            .max(3);
+        (w, h)
     };
     let available_width = area.width.saturating_sub(2).max(1);
     let width = popup_width.min(available_width);
@@ -160,8 +160,8 @@ pub fn addon_manager_layout(
 
 pub fn settings_modal_layout(area: Rect, category: crate::tui::state::SettingsCategory) -> Rect {
     let min_width = 44u16.min(area.width.saturating_sub(2));
-    let popup_width = 68u16.min(area.width.saturating_sub(2)).max(min_width);
-    let content_height = (category.row_count() as u16).max(5);
+    let popup_width = 58u16.min(area.width.saturating_sub(2)).max(min_width);
+    let content_height = category.row_count() as u16;
     let popup_height = (content_height + 4).min(area.height.saturating_sub(2));
     let available_width = area.width.saturating_sub(2).max(1);
     let width = popup_width.min(available_width);

@@ -166,21 +166,16 @@ impl App {
                     });
                 if self.state.tv_channels.is_empty() {
                     let status = if failed > 0 {
-                        format!(
-                            "No TV channels found. {failed} playlist(s) failed to load. Add a playlist (/config)."
-                        )
+                        format!("No channels. {failed} failed. Add playlist (/config).")
                     } else {
-                        "No TV channels found. Add a playlist (/config).".to_string()
+                        "No channels. Add playlist (/config).".to_string()
                     };
                     self.state.set_status_long(status);
                 } else {
-                    let mut status = format!(
-                        "{} TV channels imported from {} playlist(s).",
-                        self.state.tv_channels.len(),
-                        self.state.tv_playlists.len().max(1)
-                    );
+                    let count = self.state.tv_channels.len();
+                    let mut status = format!("{count} channels loaded.");
                     if failed > 0 {
-                        status.push_str(&format!(" {failed} playlist(s) failed to load."));
+                        status.push_str(&format!(" {failed} failed."));
                     }
                     self.state.set_status_long(status);
                 }
