@@ -57,6 +57,15 @@
   - Added fast-fail handling in `src/download.rs` when segment workers receive `200 OK`, avoiding wasteful retries and falling back immediately to single-stream downloading.
   - Buffered single-connection file writes in `src/download.rs` with a 256KB `tokio::io::BufWriter`, reducing syscall overhead during single-stream downloads.
   - Sanitized download failure notices via `DownloadError::user_message()` in `src/download.rs` and `src/tui/app/download.rs`, replacing raw error dumps and URL tokens with clean, actionable status messages.
+### Changed
+- **Documentation Overhaul & Clarity Streamlining**:
+  - Overhauled all user and technical guides in `docs/` (`players.md`, `controls.md`, `tv-mode.md`, `config.md`, `addons-mode.md`, `providers.md`, `cross-platform.md`, `cache.md`, `downloads.md`), cutting redundant tables, eliminating dense run-on text walls, and standardizing on direct, beginner-accessible explanations.
+  - Added complete environment variable documentation for `MOVIEBOX_LOG`, `MOVIEBOX_IMAGE_PROTOCOL`, `MOVIEBOX_CELL_SIZE`, and `NO_COLOR` in `docs/config.md`.
+- **Automated Test Architecture Hardening**:
+  - Replaced thread-shared `cargo test` execution with process-isolated `cargo nextest run` across testing rules in `.omp/AGENTS.md`.
+  - Added hermetic local loopback server download tests in `src/download.rs` verifying custom authentication headers (`X-Auth-Token`, `User-Agent`, `Referer`), byte streaming, and progress callbacks.
+  - Added deterministic CLI argument and header verification tests in `src/player.rs` for `mpv` and `VLC`.
+  - Pruned tautological assertions and dead code (`step_header_aware_list`).
 ## [0.1.23] - 2026-09-21
 
 ### Fixed

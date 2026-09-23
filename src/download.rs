@@ -947,4 +947,72 @@ mod tests {
         let err_paused = DownloadError::Paused;
         assert_eq!(err_paused.user_message(), "Download paused.");
     }
+
+    #[tokio::test]
+    async fn test_download_forwards_custom_headers_and_content_to_local_server() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let url = format!("http://127.0.0.1:{port}/video.mp4");
+
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut buf = [0u8; 1024];
+            let n = socket.read(&mut buf).await.unwrap();
+            let req = String::from_utf8_lossy(&buf[..n]);
+            let lower = req.to_lowercase();
+            assert!(lower.contains("user-agent: moviebox-custom-ua"));
+            assert!(lower.contains("referer: https://custom.referer.test/"));
+            assert!(lower.contains("x-auth-token: secret-token-123"));
+            let body = b"test video binary chunk stream";
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nContent-Type: video/mp4\r\nConnection: close\r\n\r\n",
+                body.len()
+            );
+            socket.write_all(response.as_bytes()).await.unwrap();
+            socket.write_all(body).await.unwrap();
+        });
+
+        let temp_dir = std::env::temp_dir().join(format!("mbx_dl_test_{}", std::process::id()));
+        tokio::fs::create_dir_all(&temp_dir).await.unwrap();
+        let dest_file = temp_dir.join("test_video.mp4");
+
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(
+            reqwest::header::USER_AGENT,
+            "MovieBox-Custom-UA".parse().unwrap(),
+        );
+        headers.insert(
+            reqwest::header::REFERER,
+            "https://custom.referer.test/".parse().unwrap(),
+        );
+        headers.insert(
+            reqwest::header::HeaderName::from_static("x-auth-token"),
+            "secret-token-123".parse().unwrap(),
+        );
+
+        let client = crate::net::streaming_client_builder()
+            .default_headers(headers)
+            .build()
+            .unwrap();
+
+        let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let mut progress_count = 0usize;
+
+        let res = download(&client, &url, &dest_file, cancel, |_prog| {
+            progress_count += 1;
+        })
+        .await;
+
+        server.await.unwrap();
+        assert!(matches!(res, Ok(DownloadOutcome::Completed { .. })));
+        assert!(dest_file.exists());
+        let saved = tokio::fs::read(&dest_file).await.unwrap();
+        assert_eq!(saved, b"test video binary chunk stream");
+        assert!(progress_count > 0);
+
+        let _ = tokio::fs::remove_dir_all(&temp_dir).await;
+    }
 }

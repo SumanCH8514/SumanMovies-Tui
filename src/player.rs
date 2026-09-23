@@ -1839,4 +1839,70 @@ mod tests {
         };
         assert!(configured_executable("MOVIEBOX_VLC_PATH").is_none());
     }
+
+    #[test]
+    fn test_mpv_command_headers_and_arguments_assembly() {
+        let headers = vec![
+            ("User-Agent".to_string(), "MovieBox-Tui/0.1.23".to_string()),
+            ("Referer".to_string(), "https://upstream.cdn/".to_string()),
+            ("Origin".to_string(), "https://upstream.cdn".to_string()),
+        ];
+        let cmd = mpv_command(
+            "https://upstream.cdn/stream.m3u8",
+            Some("/tmp/test.srt"),
+            &headers,
+            false,
+            Some((1920, 1080)),
+            Some(120),
+            None,
+            None,
+        );
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+
+        assert!(args.contains(&"--sub-file=/tmp/test.srt".to_string()));
+        assert!(args.contains(&"--start=120".to_string()));
+        assert!(args.contains(&"--autofit=1920x1080".to_string()));
+        assert!(
+            args.iter().any(|a| a.starts_with("--http-header-fields="))
+                || args
+                    .iter()
+                    .any(|a| a.starts_with("--ytdl-raw-options-append="))
+        );
+        assert_eq!(
+            args.last().map(String::as_str),
+            Some("https://upstream.cdn/stream.m3u8")
+        );
+    }
+
+    #[test]
+    fn test_vlc_command_cookie_header_filtering() {
+        let headers = vec![
+            ("User-Agent".to_string(), "VLC-Agent".to_string()),
+            ("Referer".to_string(), "https://cdn.example.com".to_string()),
+            ("Cookie".to_string(), "CloudFront-Signature=abc".to_string()),
+        ];
+        let cmd = vlc_command(
+            "http://127.0.0.1:4567/proxy/manifest.mpd",
+            None,
+            &headers,
+            None,
+            None,
+            None,
+        );
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+
+        assert!(args.contains(&"--http-user-agent=VLC-Agent".to_string()));
+        assert!(args.contains(&"--http-referrer=https://cdn.example.com".to_string()));
+        assert!(!args.iter().any(|a| a.contains("CloudFront-Signature")));
+        assert_eq!(
+            args.last().map(String::as_str),
+            Some("http://127.0.0.1:4567/proxy/manifest.mpd")
+        );
+    }
 }

@@ -1,118 +1,41 @@
-# Providers
+# Streaming Providers
 
-MovieBox-Tui aggregates several movie/stream providers plus user M3U playlists. Each
-provider is an independent async client exposing a similar shape, normalized into the
-shared typed models in `providers/models.rs` and the moviebox JSON schema used by the UI.
+MovieBox-TUI searches and streams media across multiple independent providers.
 
-## Provider kinds
+## Available Providers
 
-| Provider | Module | Description |
-| :--- | :--- | :--- |
-| **MovieBox** | `providers/moviebox` | Primary provider. Signed API requests with Edge-Cache and CloudFront DASH manifest resolution. |
-| **FourKHdHub** | `providers/fourkhdhub` | 4K releases; hubcloud mirror resolver. |
-| **BdixCircleFtp** | `providers/bdix/circleftp` | BDIX FTP directory scrapes. |
-| **BdixDhakaFlix** | `providers/bdix/dhakaflix` | BDIX indexer. |
-| **Addons** | `providers/addons` | Community HTTP addons (Cinemeta, streams). |
+| Provider | Description |
+| :--- | :--- |
+| **MovieBox** | Primary streaming catalog with multi-language audio, seasons, and subtitles. |
+| **4KHDHub** | High-bitrate 4K UHD and 1080p releases with fast CDN mirrors. |
+| **Dramachi** | Asian dramas and series catalog. |
+| **CircleFTP** | High-speed local BDIX mirror (Bangladesh ISPs). |
+| **DhakaFlix** | Local BDIX media indexer (Bangladesh ISPs). |
+| **Addons** | Community Stremio HTTP addons (Cinemeta catalog and streams). |
 
-BDIX sources are local optical mirrors reachable from supported Bangladeshi ISPs.
-On first startup, MovieBox-Tui automatically probes BDIX mirror endpoints on your local network
-and enables available ones. Individual providers (MovieBox, 4KHDHub, CircleFTP, DhakaFlix) can
-also be manually toggled in `/settings` (or `s`) → Content Modes. A manual re-probe can be
-triggered via `/settings` → Maintenance → Re-check BDIX Network.
-Active streaming providers can be cycled via `Ctrl+P` or visually selected by clicking the provider badge (`[MovieBox · ^P]`) on the landing search bar to open the anchored provider popup menu.
-## Shared Provider Contract
+## Switching Providers
 
-Search, details, and episode-streams are dispatched per provider. Pluggable provider seams
-in `providers/mod.rs` give every client a shared, strictly-typed async trait shape:
+- **Cycle Provider**: Press **`Ctrl+P`** on the home screen to switch to the next provider.
+- **Provider Menu**: Click the provider badge in the search bar (or press `Enter` on it) to open the provider selection menu.
+- **Enable / Disable Providers**: Open `/settings` → **Content Modes** → **Streaming Sources** to toggle providers on or off.
 
-- `Provider::id(&self) -> ProviderKind`: Returns the provider's unique identifier.
-- `Provider::capabilities(&self) -> ProviderCapabilities`: Reports supported capabilities (`supports_search`, `supports_pagination`, `supports_series`, `supports_subtitles`, `supports_homepage`).
-- `Provider::search(&self, query: &str, page: usize) -> Result<Vec<CatalogItem>, ProviderError>`: Dispatches search queries, returning strongly-typed `CatalogItem`s.
-- `Provider::details(&self, id: &str) -> Result<MediaDetails, ProviderError>`: Dispatches metadata queries, returning strongly-typed `MediaDetails`.
-- `ReleaseProvider::episode_streams(&self, id: &str, season: usize, episode: usize) -> Result<Vec<Release>, ProviderError>`: Returns the typed `Release` list for release-based providers.
-- `ProviderError`: Standardized error boundary (`Network`, `RateLimited`, `NotFound`, `Parsing`, `Unavailable`) with `.user_message(provider)` generating clean UI toast notifications.
+## BDIX Network Detection
 
-### Strongly Typed Architecture & Binary Disk Caching
+If you are connected through a Bangladeshi ISP supporting BDIX:
+- MovieBox-TUI automatically tests local BDIX mirrors on startup and enables them if reachable.
+- You can manually re-test your connection anytime via `/settings` → **Maintenance** → **Re-check BDIX Network**.
 
-All internal state (`AppState`), UI screens (`details.rs`, `home.rs`), and the action event bus transport native Rust structs directly:
-- `CatalogItem` / `SearchResult` for search results and discover catalogs.
-- `MediaDetails` (with `Vec<Season>` and `Vec<AudioTrackOption>`) for media metadata.
-- `Release` (with `Vec<SourceMirror>` and optional `resource_id`) for streams.
-- `SubtitleOption` for external subtitles.
+## Provider Architecture (For Developers)
 
-Disk caching in `src/cache.rs` uses portable binary serialization via `rmp-serde` (MessagePack) with a 4-byte magic signature (`MBC1`) and versioned TTL envelope (`CacheEnvelope<T>`).
+All providers implement a shared Rust trait in `src/providers/`:
 
-Playback resolves to a `PlaybackSource { provider, url, headers, subtitle, source_label }`,
-which `app/playback.rs::launch_player` feeds to the external player.
+```rust
+pub trait Provider: Send + Sync {
+    fn id(&self) -> ProviderKind;
+    fn capabilities(&self) -> ProviderCapabilities;
+    async fn search(&self, query: &str, page: usize) -> Result<Vec<CatalogItem>, ProviderError>;
+    async fn details(&self, id: &str) -> Result<MediaDetails, ProviderError>;
+}
+```
 
-## Adding a New Provider
-
-Adding a new streaming or BDIX provider to MovieBox TUI takes 3 simple steps:
-
-1. **Define the Provider Variant (`src/providers/models.rs`)**:
-   Add the new variant to `ProviderKind` with its label, cache key, and serialization aliases.
-
-2. **Implement the `Provider` Trait (`src/providers/<new_provider>/`)**:
-   Implement `Provider::id`, `Provider::capabilities`, `Provider::search`, and `Provider::details` for your client struct, returning typed domain models (`CatalogItem`, `MediaDetails`). If your provider resolves release streams, also implement `ReleaseProvider`.
-
-3. **Register the Client in `MovieBoxService` (`src/service.rs`)**:
-   Add your client struct to `MovieBoxService`, instantiate it in `MovieBoxService::new()`, and map it in `capabilities`, `search_typed`, and `details_typed`. All search, details, and stream dispatches operate natively with zero JSON shims.
-
-## MovieBox
-- Base host pool + per-request HMAC-MD5 signature, client token, and a spoofed Android
-  device identity (`crypto.rs`) spoofing APK `v4.0.01.0813.03` (`version_codes: 50020117..50020121`)
-  to satisfy the backend gateway and prevent notice video substitution.
-- Hosts are retried; a shared runtime token is re-initialized when all hosts fail.
-- Mobile `User-Agent` generated by the crypto module is forwarded through playback and download
-  pipelines to satisfy CDN anti-bot checks.
-- Stream resolution in `providers/moviebox/mod.rs` merges mobile DASH manifests (`play-info/v2`) and high-bitrate community/server releases (`/subject-api/resource`) with automatic deprecation notice URL filtering (`is_deprecation_notice_url`), deduplicating stream links and sorting releases by descending numeric quality and byte size.
-- Multi-resolution discovery (`fetch_collection_resolutions`) dynamically discovers available
-  stream resolutions with descending quality sorting.
-- Multi-resolution DASH manifests (`index.mpd`) and adaptive streams are labeled with a distinct
-  `[Multi]` badge, stripping confusing raw CDN resolution tags from release titles.
-- Title normalization lives in `moviebox/title.rs` (`clean_moviebox_title`).
-- **DASH Manifest Playback & Downloads**: Media streams are hosted on CloudFront as segmented MPEG-DASH manifests (`index.mpd`) protected by signed policy cookies. Stream playback forwards `Cookie`, `Referer`, and `User-Agent` headers to external players (`mpv`, `IINA`). Local downloads utilize `yt-dlp` with forwarded authentication headers to demux and assemble audio/video streams into `.mp4`.
-## 4KHDHub
-
-- Quality detection in `parser.rs::detect_quality` normalizes `4K`, `UHD`, `2160`, `1080`, `FHD`, `720`, `HD`, and `480` tokens, ensuring 4K/2160p releases are never treated as unknown resolution.
-- Releases in `parser.rs::parse_releases` sort by numeric resolution (`resolution_u64()`) descending and file size descending, prioritizing 4K UHD BluRay REMUXes over lower-resolution encodes.
-- `client.rs::resolve_release` resolves release mirrors concurrently using bounded-concurrency probing (`select_ok` in batches of 3) with a 3.5s per-probe timeout.
-- Preflight probes issue a bounded range probe (`Range: bytes=0-8191`) and inspect response bodies for expired mirror errors (`"Failed to extract link"`, `"Token Expired"`, `"404"`) to fail fast on expired torrents.
-- `hubcloud.rs` scores and prioritizes candidate streams based on `ResolutionIntent`:
-  - **Playback (`ResolutionIntent::Playback`)**: Prioritizes seekable multi-connection streaming CDNs (`pixel.hubcloud.` -> Google Video CDN, Cloudflare R2, PixelDrain API) while deprioritizing single-use download workers (`workers.dev`) to prevent HTTP 403 token-burn and player authentication popups.
-  - **Download (`ResolutionIntent::Download`)**: Permits both high-speed streaming CDNs and direct file download proxies for maximum throughput.
-- **Mediator Redirector Resolution**: `hubcloud.rs::resolve_greenmotors` transparently unpacks intermediate JavaScript mediator domains (`greenmotors.club`, `greenmountmotors.`) using a multi-stage decoding pipeline (double Base64, ROT13, JSON extraction) to recover downstream `hubcloud.` and `hubdrive.` mirror endpoints without requiring an external browser engine.
-- **Multilingual audio detection**: `parser.rs::detect_language` parses release titles and
-  metadata for 30+ regional and international languages (Hindi, Tamil, Telugu, Kannada,
-  Malayalam, Bengali, Marathi, Punjabi, Gujarati, Urdu, Japanese, Korean, Chinese, Spanish,
-  French, German, Italian, etc.) and formats all available audio tracks for stream display.
-- Errors are mapped into `ProviderError::Unavailable` with user-actionable instructions guiding selection of alternate releases.
-
-## Dramachi
-- Asian drama, anime, and international movie provider backed by `https://api.nodeobjects.com/`.
-- Zero authentication, cookies, or signing required.
-- Direct HTTP byte-range video streaming (`Accept-Ranges: bytes`) over dynamic media CDNs (`https://{hostInfo.host}/cdn/{fileInfo.url}`).
-- Audio dubs and rips are mapped into `AudioTrackOption` and resolved dynamically via composite subject IDs (`{title_id}::{rip}`).
-- Movie and series streams play directly without proxy overhead (`direct_file: true`).
-
-## BDIX
-- `circleftp` and `dhakaflix` scrape FTP-style indexes; both are used behind the
-  Bangladesh-only gate.
-
-## Community HTTP Addons
-
-- `providers/addons` communicates with HTTP addon manifests (`/manifest.json`).
-- Cinemeta provides catalog searches and metadata details (`/catalog`, `/meta`).
-- Stream addons (e.g. HdHub, direct CDN manifests) resolve playable HTTP/HTTPS streams concurrently. See [addons-mode.md](addons-mode.md).
-
-## M3U playlists (TV mode)
-
-`providers/tv` parses an M3U playlist from an `https://` URL or a local file path.
-Each channel yields `{ id, name, logo, group, stream_url }`; TV mode groups channels by
-`group-title` and dedupes by `stream_url`. See [tv-mode.md](tv-mode.md).
-
-## Error handling
-
-Each provider defines its own `thiserror` enum (`ScraperError`, `FourKHdHubError`,
-`DramachiError`, `CircleFtpError`, `DhakaFlixError`). Errors bubble to `app/requests.rs` handlers, which
-surface them in the UI status bar and log the full detail (see [logging.md](logging.md)).
+New providers implement `Provider` (and optionally `ReleaseProvider` for multi-mirror streams), then register in `src/service.rs`. Responses are automatically cached as MessagePack envelopes.

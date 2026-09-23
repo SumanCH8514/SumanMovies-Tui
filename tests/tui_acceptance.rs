@@ -71,18 +71,6 @@ async fn test_download_subtitle_popup_renders_in_app_draw() {
 }
 
 #[tokio::test]
-async fn test_tui_startup_and_home_screen_rendering() {
-    let backend = TestBackend::new(100, 30);
-    let mut terminal = Terminal::new(backend).unwrap();
-    let mut app = App::new();
-
-    terminal.draw(|frame| app.draw(frame)).unwrap();
-    let buffer = terminal.backend().buffer();
-    assert_eq!(buffer.area.width, 100);
-    assert_eq!(buffer.area.height, 30);
-}
-
-#[tokio::test]
 async fn test_tui_all_theme_rendering() {
     for theme_kind in ThemeKind::ALL {
         let backend = TestBackend::new(100, 30);
