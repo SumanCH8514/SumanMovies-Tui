@@ -79,16 +79,6 @@ impl App {
         };
         let destination = target_dir.join(format!("{base_name}.{extension}"));
         {
-            let normalize_unc = |p: std::path::PathBuf| -> std::path::PathBuf {
-                #[cfg(windows)]
-                {
-                    let s = p.to_string_lossy();
-                    if let Some(stripped) = s.strip_prefix(r"\\?\") {
-                        return std::path::PathBuf::from(stripped);
-                    }
-                }
-                p
-            };
             let resolved_base =
                 normalize_unc(std::fs::canonicalize(&base_dir).unwrap_or(base_dir.clone()));
             let resolved_dest = normalize_unc(
@@ -170,16 +160,12 @@ impl App {
         let is_dash = link.ends_with(".mpd") || link.contains("/dash/");
 
         self.request_tasks.cancel_download();
+        let validation_base_dir = base_dir.clone();
         let handle = tokio::spawn(async move {
-            if let Err(error) = tokio::fs::create_dir_all(&target_dir).await {
-                sender
-                    .send(Action::DownloadFailed(format!(
-                        "Cannot create download directory: {error}"
-                    )))
-                    .ok();
+            if let Err(error) = prepare_target_dir(&validation_base_dir, &target_dir).await {
+                sender.send(Action::DownloadFailed(error)).ok();
                 return;
             }
-
             if let Some(subtitle_url) = subtitle_url {
                 let subtitle_extension = subtitle_url
                     .rsplit('.')
@@ -262,10 +248,21 @@ impl App {
 
                 let mut cmd = tokio::process::Command::new(ytdlp_bin);
                 for (k, v) in &headers {
-                    if k.eq_ignore_ascii_case("user-agent") {
-                        cmd.arg("--user-agent").arg(v);
+                    let clean_k: String = k
+                        .chars()
+                        .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
+                        .collect();
+                    let clean_v: String = v
+                        .chars()
+                        .filter(|c| !c.is_control() && *c != '\r' && *c != '\n')
+                        .collect();
+                    if clean_k.is_empty() || clean_v.is_empty() {
+                        continue;
+                    }
+                    if clean_k.eq_ignore_ascii_case("user-agent") {
+                        cmd.arg("--user-agent").arg(clean_v);
                     } else {
-                        cmd.arg("--add-header").arg(format!("{k}: {v}"));
+                        cmd.arg("--add-header").arg(format!("{clean_k}: {clean_v}"));
                     }
                 }
                 cmd.arg("-f")
@@ -963,6 +960,41 @@ fn is_media_already_downloaded(target_dir: &std::path::Path, base_name: &str) ->
         }
     }
     false
+}
+
+fn normalize_unc(p: std::path::PathBuf) -> std::path::PathBuf {
+    #[cfg(windows)]
+    {
+        let s = p.to_string_lossy();
+        if let Some(stripped) = s.strip_prefix(r"\\?\") {
+            return std::path::PathBuf::from(stripped);
+        }
+    }
+    p
+}
+
+async fn prepare_target_dir(
+    base_dir: &std::path::Path,
+    target_dir: &std::path::Path,
+) -> Result<(), String> {
+    tokio::fs::create_dir_all(target_dir)
+        .await
+        .map_err(|error| format!("Cannot create download directory: {error}"))?;
+
+    let resolved_base = match tokio::fs::canonicalize(base_dir).await {
+        Ok(p) => normalize_unc(p),
+        Err(_) => normalize_unc(base_dir.to_path_buf()),
+    };
+    let resolved_dest = match tokio::fs::canonicalize(target_dir).await {
+        Ok(p) => normalize_unc(p),
+        Err(error) => return Err(format!("Invalid download destination path: {error}")),
+    };
+    if !resolved_dest.starts_with(&resolved_base) {
+        return Err(
+            "Download blocked: destination path is outside download directory.".to_string(),
+        );
+    }
+    Ok(())
 }
 pub(crate) fn yt_dlp_missing_guidance() -> String {
     if crate::updater::artifact::is_termux_environment() {
