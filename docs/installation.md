@@ -19,7 +19,8 @@ brew tap mesamirh/moviebox-tui https://github.com/mesamirh/MovieBox-Tui
 brew install moviebox-tui
 ```
 
-*Note:* If Homebrew prompts for tap verification, run `brew trust mesamirh/moviebox-tui`.
+> [!NOTE]
+> If Homebrew prompts for tap verification on initial install, run `brew trust mesamirh/moviebox-tui`.
 
 ---
 
@@ -49,7 +50,8 @@ curl -fsSL https://raw.githubusercontent.com/mesamirh/MovieBox-Tui/main/install.
 termux-setup-storage
 ```
 
-*Note:* Requires an external video player installed on Android (e.g. VLC or any supported player).
+> [!IMPORTANT]
+> Video playback on Android launches through your installed external media player (such as VLC, Just Player, or MX Player).
 ---
 
 ## Cargo (Crates.io)
@@ -106,5 +108,6 @@ Enter `2` to completely remove MovieBox-TUI from your system.
 
 ```bash
 brew uninstall moviebox-tui     # Homebrew (macOS)
+scoop uninstall moviebox-tui    # Scoop (Windows)
 cargo uninstall moviebox-tui    # Cargo
 ```

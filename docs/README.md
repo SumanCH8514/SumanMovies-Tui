@@ -6,37 +6,47 @@
 
 [ English ](../README.md) • [ বাংলা ](../README_BN.md) • [ हिन्दी ](../README_HI.md) • [ Español ](../README_ES.md)
 
-[![Telegram](https://telegram-badge.vercel.app/api/telegram-badge?channelId=@getfromme&style=flat&logo=true)](https://t.me/getfromme)
-[![Donate](https://img.shields.io/badge/Donate-Crypto-F7931A?style=flat&logo=bitcoin&logoColor=white)](../README.md#optional-support)
+[![CI](https://img.shields.io/github/actions/workflow/status/mesamirh/MovieBox-Tui/ci.yml?branch=main&label=CI&logo=github&style=flat)](https://github.com/mesamirh/MovieBox-Tui/actions/workflows/ci.yml)
+[![crates.io](https://img.shields.io/crates/v/moviebox-tui.svg?logo=rust&style=flat)](https://crates.io/crates/moviebox-tui)
+[![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg?style=flat)](../README.md#license)
+[![Telegram](https://img.shields.io/badge/Telegram-Channel-2CA5E0?style=flat&logo=telegram&logoColor=white)](https://t.me/getfromme)
+[![Support](https://img.shields.io/badge/Support-Crypto-F7931A?style=flat&logo=bitcoin&logoColor=white)](../README.md#optional-support)
 </div>
 
 [moviebox-tui-walkthrough.webm](https://github.com/user-attachments/assets/7554a7e5-6ff5-49ec-9d87-f821ea99950e)
 
 ## Features
 
-- **On Demand Streaming**: Stream movies, series, and anime across multiple providers and community Stremio addons.
-- **Live TV and IPTV**: Import custom M3U playlist URLs to search channels, browse categories, and stream live television.
-- **Native Video Playback**: Plays directly in your favorite player (`mpv`, `IINA`, `VLC`, or Android video players) with smooth hardware acceleration.
-- **Automatic Subtitles**: Automatically searches and loads subtitles in your preferred language into your player.
-- **Fast Downloads**: Save single episodes or entire seasons to your computer with pause and resume support.
-- **Visual Posters**: Displays cover art and movie posters directly inside your terminal window.
-- **Library and History**: Bookmark your favorite titles and pick up watching right where you left off.
-- **Custom Themes**: Built in color themes and settings to match your personal terminal look and feel.
-- **Cross Platform**: Works identically on macOS, Linux, Windows, and Android.
+- **On Demand Streaming**: Stream movies, TV series, anime, and Asian dramas across multiple native providers and community Stremio addons.
+- **Live TV & IPTV**: Import custom M3U playlist URLs to search channels, browse categories, and stream live television.
+- **Quality & Resolution Selection**: Choose preferred stream resolutions (`1080p`, `720p`, `480p`) directly from the details screen.
+- **Hardware Accelerated Playback**: Plays directly in your preferred local media player with automatic authentication and cookie forwarding.
+- **Multi Segment Downloader**: Download individual episodes or full seasons concurrently with HTTP range pause and resume support.
+- **Automatic Subtitles**: Searches and synchronizes subtitles in your preferred language automatically.
+- **Interactive Terminal UI**: Full keyboard and mouse support with vim navigation and command auto suggestions.
+- **Visual Posters & Themes**: Renders cover art directly in your terminal, with 9 built-in themes and automatic light and dark detection.
+- **Library & Progress Tracking**: Star favorites, track watch history, and resume playback where you left off.
+- **Cross Platform & Private**: Runs natively on macOS, Linux, Windows, and Android (Termux) with zero telemetry or data collection.
 
 ## Prerequisites
 
-Requires at least one media player for streaming:
+### Supported Media Players
 
-- **mpv** (recommended across Linux, macOS, and Windows)
-- **IINA** (macOS)
-- **VLC** (cross platform)
-- **Any Android Video Player** via Termux (VLC, Just Player, MX Player)
+Requires at least one supported media player installed on your system:
 
-*Poster graphics:* Image rendering requires a graphics capable terminal (Ghostty, Kitty, WezTerm, or iTerm2). Standard terminals display clean text layouts automatically.
+- **Desktop (macOS, Linux, Windows):** [mpv](https://mpv.io/), [VLC](https://www.videolan.org/), or [IINA](https://iina.io/) *(macOS)*.
+- **Android (Termux):** Any external video player ([VLC](https://play.google.com/store/apps/details?id=org.videolan.vlc), Just Player, or MX Player).
 
-*Optional for MovieBox downloads:* `yt-dlp` and `ffmpeg` are required only for downloading DASH streams from the MovieBox provider. All other providers download directly with the built in engine.
+### Terminal Graphics (Posters)
 
+Poster rendering automatically adapts to your terminal environment:
+
+- **Graphics-capable terminals:** Displays high-resolution movie and series posters natively.
+- **Standard terminals:** Displays clean, structured text placeholders automatically.
+
+### Optional Dependencies
+
+- **`yt-dlp` & `ffmpeg`:** Required only when downloading DASH streams from the MovieBox provider. All other providers download directly through the built-in HTTP engine.
 ---
 
 ## Documentation Directory Map
