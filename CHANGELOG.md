@@ -37,9 +37,17 @@
 - **Settings Modal Balanced Geometry & Dynamic Height**:
   - Auto-sized `/settings` modal height dynamically to fit the exact row count of the active category and balanced modal width to 60 columns in `src/tui/overlay.rs` and `src/tui/widgets/settings.rs`, removing the oversized right-side void and bottom blank areas while maintaining uniform margins around all borders.
 - **Modal Backdrop Dimming for Background Deck & Search**:
-  - Dimmed favorites/continue-watching card items and the search bar provider pill when modal popups (such as the provider picker) are active in `src/tui/screens/home.rs`, ensuring background elements properly recede visually.
+  - Dimmed favorites/continue-watching card items, browse preset suggestions, and the search bar provider pill when modal popups (such as the provider picker) are active in `src/tui/screens/home.rs`, ensuring background elements properly recede visually.
 - **Update Check In-Flight Notification Replacement**:
   - Replaced the in-flight `"Checking for updates"` notification toast with the final outcome toast (`Up to date` or `Update check failed`) upon completion in `src/tui/app/system.rs`, avoiding duplicate stacked update notifications.
+- **Live TV Search Isolation & Balanced Landing Geometry**:
+  - Isolated `Action::Search` dispatch in `src/tui/app/requests.rs` to route TV mode queries directly through `apply_tv_search_results` instead of launching movie/series upstream scrapers against `active_provider` (MovieBox).
+  - Reduced landing search bar width in Live TV mode to 48 columns (44 on compact viewports) in `src/tui/screens/home.rs`, centering the input cleanly under the header logo without the horizontal void left by the absent provider selector pill.
+  - Suppressed the streaming provider badge (`[MovieBox]`) on channel search results in `src/tui/screens/home.rs`, maintaining visual separation between streaming catalogs and live TV channels.
+  - Streamlined empty search feedback in `src/tui/screens/home.rs` to display `"No TV channels found matching “<query>”"` with a single `[ Clear Search (c) ]` action button, eliminating redundant playlist reload prompts.
+- **Idempotent Mode Switching & Shortcut Isolation**:
+  - Replaced `Action::ToggleTvMode` with dedicated `Action::SwitchToTvMode` in `src/tui/action.rs` and `src/tui/app/tv.rs`, aligning behavior symmetrically with `Action::SwitchToStreamingMode`.
+  - Hardened `Ctrl+T` and `Ctrl+S` keystroke handling in `src/tui/app/keyboard.rs` to report status without toggling when already in the active mode (`"Already in TV Mode."` / `"Already in Streaming Mode."`), preventing unintended mode flips when pressing `Ctrl+T` while in Live TV mode.
 - **Media Player Stream Buffering & Readahead Tuning**:
   - Configured high-throughput buffering in `src/player.rs` for `mpv` and `IINA` (`--cache=yes`, `--cache-pause=yes`, `--cache-pause-wait=8`, `--cache-pause-initial=yes`, `--demuxer-max-bytes=256M`, `--demuxer-max-back-bytes=100M`, `--demuxer-readahead-secs=120`, `--demuxer-lavf-buffersize=1048576`, `--stream-buffer-size=512k`, `--force-seekable=yes`, and `--stream-lavf-o=reconnect=1,reconnect_streamed=1,reconnect_delay_max=5`), eliminating the 1-second re-buffering loop by enforcing an 8-second playback cushion, prefetching up to 2 minutes of stream data, and expanding memory cache size to 256MB.
   - Configured network caching and adaptive streaming in `src/player.rs` for `VLC` (`--network-caching=10000` and `--adaptive-logic=nearoptimal`), aligning the network buffer floor with the 10.3s MPEG-DASH `minBufferTime` specification and preventing playback stalls when CDN chunk delivery encounters transient packet jitter.

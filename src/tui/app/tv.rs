@@ -63,15 +63,10 @@ impl App {
 
     pub(super) async fn handle_tv(&mut self, action: Action) -> Option<()> {
         match action {
-            Action::ToggleTvMode => {
-                self.reset_mode_state();
-                let will_be_tv = !self.state.is_tv_mode;
-                if will_be_tv {
+            Action::SwitchToTvMode => {
+                if !self.state.is_tv_mode {
+                    self.reset_mode_state();
                     self.state.set_mode(crate::tui::state::AppMode::Tv);
-                } else {
-                    self.state.set_mode(crate::tui::state::AppMode::Streaming);
-                }
-                if self.state.is_tv_mode {
                     self.state.tv_config_popup = false;
                     self.state.tv_channels.clear();
                     self.announce_mode();
@@ -80,18 +75,8 @@ impl App {
                     if self.state.tv_playlists.is_empty() {
                         self.action_sender.send(Action::ShowTvConfig).ok();
                     }
-                } else {
-                    self.state.tv_config_popup = false;
-                    self.state.search_query.clear();
-                    self.state.search_results.clear();
-                    if self.state.active_provider == crate::providers::models::ProviderKind::Addons
-                    {
-                        self.state.active_provider =
-                            crate::providers::models::ProviderKind::MovieBox;
-                    }
-                    self.announce_mode();
+                    self.persist_config();
                 }
-                self.persist_config();
             }
 
             Action::ShowTvConfig => {

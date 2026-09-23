@@ -126,12 +126,19 @@ pub fn landing_split(
     )
 }
 
-pub fn search_deck_width(area: Rect, _state: &AppState, landing: bool) -> u16 {
+pub fn search_deck_width(area: Rect, state: &AppState, landing: bool) -> u16 {
     let tier = HomeLayoutTier::for_width(area.width);
     if landing {
-        let target_width = match tier {
-            HomeLayoutTier::Compact => 54,
-            HomeLayoutTier::Normal | HomeLayoutTier::Wide => 64,
+        let target_width = if state.is_tv_mode {
+            match tier {
+                HomeLayoutTier::Compact => 44,
+                HomeLayoutTier::Normal | HomeLayoutTier::Wide => 48,
+            }
+        } else {
+            match tier {
+                HomeLayoutTier::Compact => 54,
+                HomeLayoutTier::Normal | HomeLayoutTier::Wide => 64,
+            }
         };
         target_width.min(area.width.saturating_sub(4)).max(24)
     } else {
@@ -225,6 +232,8 @@ fn render_search_state(
                 "No watch history found".to_string()
             } else if state.search_query.trim().eq_ignore_ascii_case("/favorites") {
                 "No favorites saved yet".to_string()
+            } else if state.is_tv_mode && !state.search_query.trim().is_empty() {
+                format!("No TV channels found matching “{query}”")
             } else if !state.search_query.trim().is_empty() {
                 format!("No results for “{query}” on {provider_label}")
             } else {
@@ -243,17 +252,13 @@ fn render_search_state(
             let pills = if is_history_or_fav {
                 vec![]
             } else if state.is_tv_mode {
-                let (btn1_label, btn2_label) = if is_compact_btn {
-                    ("[ Reload (", "[ Clear (")
+                let btn_label = if is_compact_btn {
+                    "[ Clear ("
                 } else {
-                    ("[ Reload Playlists (", "[ Clear Search (")
+                    "[ Clear Search ("
                 };
                 vec![
-                    Span::styled(btn1_label, theme.subtext1),
-                    Span::styled("r", theme.shortcut),
-                    Span::styled(") ]", theme.subtext1),
-                    Span::raw(sep),
-                    Span::styled(btn2_label, theme.subtext1),
+                    Span::styled(btn_label, theme.subtext1),
                     Span::styled("c", theme.shortcut),
                     Span::styled(") ]", theme.subtext1),
                 ]
@@ -381,39 +386,46 @@ pub(crate) fn no_results_button_hitboxes(
     is_tv_mode: bool,
 ) -> (Rect, Rect) {
     let is_compact_btn = area.width < 56;
-    let (btn1_w, btn2_w, sep_w) = if is_compact_btn {
-        let b1 = if is_tv_mode {
-            14
-        } else {
-            18 + ctrl_p.len() as u16
+    if is_tv_mode {
+        let btn_w = if is_compact_btn { 13 } else { 20 };
+        let start_x = area.x + area.width.saturating_sub(btn_w) / 2;
+        let card_y = area.y + area.height.saturating_sub(3) / 3;
+        let btn = Rect {
+            x: start_x,
+            y: card_y + 2,
+            width: btn_w,
+            height: 1,
         };
-        (b1, 13, 2)
+        (Rect::default(), btn)
     } else {
-        let b1 = if is_tv_mode {
-            24
+        let (btn1_w, btn2_w, sep_w) = if is_compact_btn {
+            (18 + ctrl_p.len() as u16, 13, 2)
         } else {
-            (14 + next_provider_label.len() + ctrl_p.len()) as u16
+            (
+                (14 + next_provider_label.len() + ctrl_p.len()) as u16,
+                20,
+                8,
+            )
         };
-        (b1, 20, 8)
-    };
-    let total_w = btn1_w + sep_w + btn2_w;
-    let start_x = area.x + area.width.saturating_sub(total_w) / 2;
-    let card_y = area.y + area.height.saturating_sub(3) / 3;
-    let btn_y = card_y + 2;
+        let total_w = btn1_w + sep_w + btn2_w;
+        let start_x = area.x + area.width.saturating_sub(total_w) / 2;
+        let card_y = area.y + area.height.saturating_sub(3) / 3;
+        let btn_y = card_y + 2;
 
-    let btn1 = Rect {
-        x: start_x,
-        y: btn_y,
-        width: btn1_w,
-        height: 1,
-    };
-    let btn2 = Rect {
-        x: start_x + btn1_w + sep_w,
-        y: btn_y,
-        width: btn2_w,
-        height: 1,
-    };
-    (btn1, btn2)
+        let btn1 = Rect {
+            x: start_x,
+            y: btn_y,
+            width: btn1_w,
+            height: 1,
+        };
+        let btn2 = Rect {
+            x: start_x + btn1_w + sep_w,
+            y: btn_y,
+            width: btn2_w,
+            height: 1,
+        };
+        (btn1, btn2)
+    }
 }
 
 pub(crate) fn render_landing_deck(frame: &mut Frame, area: Rect, state: &AppState, theme: &Theme) {
@@ -797,12 +809,28 @@ pub(crate) fn render_discover_landing(
         let tag_len = crate::tui::text::width(&display_desc);
         let pad_len = (inner_area.width as usize).saturating_sub(margins_len + title_w + tag_len);
 
+        let pointer_style = if modal_active {
+            theme.muted
+        } else {
+            theme.accent
+        };
+        let title_style = if modal_active {
+            theme.muted
+        } else {
+            theme.text.add_modifier(Modifier::BOLD)
+        };
+        let desc_style = if modal_active {
+            theme.muted
+        } else {
+            theme.text_dim
+        };
+
         let line = Line::from(vec![
             Span::raw("  "),
-            Span::styled(pointer, theme.accent),
-            Span::styled(title, theme.text.add_modifier(Modifier::BOLD)),
+            Span::styled(pointer, pointer_style),
+            Span::styled(title, title_style),
             Span::raw(" ".repeat(pad_len)),
-            Span::styled(display_desc, theme.text_dim),
+            Span::styled(display_desc, desc_style),
             Span::raw(" "),
         ]);
 
@@ -1811,12 +1839,14 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &mut AppState, theme: &Theme) 
                         ));
                     }
 
-                    row3_spans.push(crate::tui::widgets::badge::provider_badge_span(
-                        res.provider,
-                        theme,
-                        state.basic_terminal,
-                        modal_active,
-                    ));
+                    if !state.is_tv_mode {
+                        row3_spans.push(crate::tui::widgets::badge::provider_badge_span(
+                            res.provider,
+                            theme,
+                            state.basic_terminal,
+                            modal_active,
+                        ));
+                    }
 
                     if let Some(meta) = matching_meta {
                         if is_selected {
@@ -3019,8 +3049,19 @@ mod tests {
         assert_eq!(search_deck_width(compact_area, &state, true), 54);
         assert_eq!(search_deck_width(normal_area, &state, true), 64);
         assert_eq!(search_deck_width(wide_area, &state, true), 64);
-    }
 
+        let mut tv_state = AppState {
+            is_tv_mode: true,
+            ..Default::default()
+        };
+        assert_eq!(search_deck_width(compact_area, &tv_state, true), 44);
+        assert_eq!(search_deck_width(normal_area, &tv_state, true), 48);
+        assert_eq!(search_deck_width(wide_area, &tv_state, true), 48);
+        tv_state.search_query = "Deepto TV".into();
+        assert_eq!(search_deck_width(compact_area, &tv_state, true), 44);
+        assert_eq!(search_deck_width(normal_area, &tv_state, true), 48);
+        assert_eq!(search_deck_width(wide_area, &tv_state, true), 48);
+    }
     #[test]
     fn test_search_content_ghost_placeholder() {
         let state_rich = AppState {

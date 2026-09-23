@@ -9,7 +9,7 @@ pub enum Action {
     SelectLanguage(usize),
     Resize(u16, u16),
     ToggleHelp,
-    ToggleTvMode,
+    SwitchToTvMode,
     SwitchToStreamingMode,
     SwitchProvider(crate::providers::models::ProviderKind),
     ShowTvConfig,

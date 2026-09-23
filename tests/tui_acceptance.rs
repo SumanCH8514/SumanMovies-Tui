@@ -368,15 +368,154 @@ async fn test_full_user_journey_mode_switching_and_theme_selection() {
     let mut app = App::new();
     app.state_mut().is_tv_mode = false;
 
-    app.handle_action(Action::ToggleTvMode).await;
+    app.handle_action(Action::SwitchToTvMode).await;
+    assert!(app.state().is_tv_mode);
+    app.handle_action(Action::SwitchToTvMode).await;
     assert!(app.state().is_tv_mode);
 
+    app.handle_action(Action::SwitchToStreamingMode).await;
+    assert!(!app.state().is_tv_mode);
     app.handle_action(Action::SwitchToStreamingMode).await;
     assert!(!app.state().is_tv_mode);
     app.handle_action(Action::SelectTheme("TokyoNight".to_string()))
         .await;
     assert_eq!(app.state().active_theme_kind, "TokyoNight");
     app.handle_action(Action::SwitchToStreamingMode).await;
+}
+
+#[tokio::test]
+async fn test_ctrl_t_and_ctrl_s_mode_switch_keys() {
+    let mut app = App::new();
+    app.state_mut().tv_enabled = true;
+    app.state_mut().streaming_enabled = true;
+    app.state_mut().is_tv_mode = false;
+
+    let ctrl_t = crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Char('t'),
+        crossterm::event::KeyModifiers::CONTROL,
+    );
+    let ctrl_s = crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Char('s'),
+        crossterm::event::KeyModifiers::CONTROL,
+    );
+
+    app.handle_action(Action::Key(ctrl_t)).await;
+    app.handle_action(Action::SwitchToTvMode).await;
+    assert!(app.state().is_tv_mode);
+
+    app.handle_action(Action::Key(ctrl_t)).await;
+    assert!(app.state().is_tv_mode);
+    assert_eq!(app.state().status_message, "Already in TV Mode.");
+
+    app.handle_action(Action::Key(ctrl_s)).await;
+    app.handle_action(Action::SwitchToStreamingMode).await;
+    assert!(!app.state().is_tv_mode);
+
+    app.handle_action(Action::Key(ctrl_s)).await;
+    assert!(!app.state().is_tv_mode);
+    assert_eq!(app.state().status_message, "Already in Streaming Mode.");
+}
+
+#[tokio::test]
+async fn test_tv_mode_search_isolated_to_channels() {
+    let mut app = App::new();
+    app.state_mut().tv_enabled = true;
+    app.state_mut().is_tv_mode = true;
+    app.state_mut().tv_channels = vec![
+        moviebox_tui::providers::tv::Channel {
+            id: "ch1".to_string(),
+            name: "Deepto TV".to_string(),
+            stream_url: "https://example.com/deepto.m3u8".to_string(),
+            group: "Bangla".to_string(),
+            logo: "https://example.com/deepto.png".to_string(),
+        },
+        moviebox_tui::providers::tv::Channel {
+            id: "ch2".to_string(),
+            name: "Somoy TV".to_string(),
+            stream_url: "https://example.com/somoy.m3u8".to_string(),
+            group: "Bangla".to_string(),
+            logo: "https://example.com/somoy.png".to_string(),
+        },
+    ];
+
+    app.handle_action(Action::Search {
+        query: "deepto".to_string(),
+        force_refresh: false,
+    })
+    .await;
+
+    assert_eq!(app.state().search_results.len(), 1);
+    assert_eq!(app.state().search_results[0].title, "Deepto TV");
+    assert_eq!(
+        app.state().search_results[0].id,
+        "https://example.com/deepto.m3u8"
+    );
+
+    app.handle_action(Action::Search {
+        query: "nonexistent".to_string(),
+        force_refresh: false,
+    })
+    .await;
+
+    assert!(app.state().search_results.is_empty());
+    assert_eq!(app.state().status_message, "No matches for 'nonexistent'.");
+}
+#[tokio::test]
+async fn test_tv_mode_no_provider_badge_and_single_clear_button() {
+    let mut app = App::new();
+    app.state_mut().tv_enabled = true;
+    app.state_mut().is_tv_mode = true;
+    app.state_mut().active_screen = Screen::Home;
+    app.state_mut().tv_channels = vec![moviebox_tui::providers::tv::Channel {
+        id: "ch1".to_string(),
+        name: "Deepto TV".to_string(),
+        stream_url: "https://example.com/deepto.m3u8".to_string(),
+        group: "Bangla".to_string(),
+        logo: "https://example.com/deepto.png".to_string(),
+    }];
+
+    app.state_mut().search_query.set_content("deepto");
+    app.handle_action(Action::Search {
+        query: "deepto".to_string(),
+        force_refresh: false,
+    })
+    .await;
+
+    let backend = ratatui::backend::TestBackend::new(100, 30);
+    let mut terminal = ratatui::Terminal::new(backend).unwrap();
+    terminal.draw(|frame| app.draw(frame)).unwrap();
+
+    let rendered: String = terminal
+        .backend()
+        .buffer()
+        .content()
+        .iter()
+        .map(|c| c.symbol())
+        .collect();
+
+    assert!(rendered.contains("Deepto TV"));
+    assert!(!rendered.contains("[MovieBox]"));
+
+    app.state_mut().search_query.set_content("nonexistent");
+    app.handle_action(Action::Search {
+        query: "nonexistent".to_string(),
+        force_refresh: false,
+    })
+    .await;
+
+    terminal.draw(|frame| app.draw(frame)).unwrap();
+    let rendered_empty: String = terminal
+        .backend()
+        .buffer()
+        .content()
+        .iter()
+        .map(|c| c.symbol())
+        .collect();
+
+    assert!(rendered_empty.contains("No TV channels found matching “nonexistent”"));
+    assert!(rendered_empty.contains("Clear Search"));
+    assert!(!rendered_empty.contains("Reload Playlists"));
+    assert!(!rendered_empty.contains("MovieBox"));
 }
 
 #[tokio::test]
@@ -998,6 +1137,40 @@ async fn test_home_deck_tab_switching() {
         app.state().effective_home_deck_tab(),
         moviebox_tui::tui::state::HomeDeckTab::ContinueWatching
     );
+}
+
+#[tokio::test]
+async fn test_browse_suggestions_dimmed_when_modal_active() {
+    let mut app = App::new();
+    app.state_mut().active_screen = Screen::Home;
+    app.state_mut().input_mode = InputMode::Normal;
+    app.state_mut().history.recent.clear();
+    app.state_mut().favorites.clear();
+    app.state_mut().is_tv_mode = false;
+
+    let backend = ratatui::backend::TestBackend::new(90, 30);
+    let mut terminal = ratatui::Terminal::new(backend).unwrap();
+
+    terminal.draw(|frame| app.draw(frame)).unwrap();
+    let buffer_normal = terminal.backend().buffer().clone();
+
+    app.state_mut().show_provider_popup = true;
+    terminal.draw(|frame| app.draw(frame)).unwrap();
+    let buffer_modal = terminal.backend().buffer().clone();
+
+    let cell_normal = buffer_normal
+        .content()
+        .iter()
+        .find(|c| c.symbol() == "T")
+        .expect("Trending Now should be rendered in normal mode");
+
+    let cell_modal = buffer_modal
+        .content()
+        .iter()
+        .find(|c| c.symbol() == "T")
+        .expect("Trending Now should be rendered when modal is active");
+
+    assert_ne!(cell_normal.style().fg, cell_modal.style().fg);
 }
 
 #[tokio::test]

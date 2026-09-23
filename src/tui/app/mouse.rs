@@ -668,7 +668,7 @@ impl App {
                             self.state.provider_list_state.select(Some(current_idx));
                             self.state.input_mode = InputMode::Normal;
                         } else if self.state.mode() == crate::tui::state::AppMode::Tv {
-                            self.action_sender.send(Action::ToggleTvMode).ok();
+                            self.action_sender.send(Action::SwitchToStreamingMode).ok();
                         }
                         return None;
                     }
@@ -870,12 +870,8 @@ impl App {
                     self.state.is_tv_mode,
                 );
                 let pos = ratatui::layout::Position::new(col, row);
-                if btn1.contains(pos) {
-                    if self.state.is_tv_mode {
-                        self.action_sender.send(Action::TvReloadPlaylists).ok();
-                    } else {
-                        self.cycle_provider();
-                    }
+                if !self.state.is_tv_mode && btn1.contains(pos) {
+                    self.cycle_provider();
                     return None;
                 }
                 if btn2.contains(pos) {
@@ -985,7 +981,7 @@ impl App {
                     }
                     BottomBtn::Tv => {
                         if self.state.mode() != crate::tui::state::AppMode::Tv {
-                            self.action_sender.send(Action::ToggleTvMode).ok();
+                            self.action_sender.send(Action::SwitchToTvMode).ok();
                         }
                     }
                 }
@@ -1425,6 +1421,7 @@ mod tests {
         let mut app = App::new();
         app.state.active_screen = crate::tui::state::Screen::Home;
         app.state.input_mode = crate::tui::state::InputMode::Normal;
+        app.state.is_tv_mode = false;
         app.state.active_provider = ProviderKind::FourKHdHub;
         app.state.search_query.set_content("deewaniyat");
         app.state.search_results = vec![];
@@ -1454,6 +1451,7 @@ mod tests {
         let mut app = App::new();
         app.state.active_screen = crate::tui::state::Screen::Home;
         app.state.input_mode = crate::tui::state::InputMode::Normal;
+        app.state.is_tv_mode = false;
         app.state.active_provider = ProviderKind::MovieBox;
         app.state.search_query.clear();
 

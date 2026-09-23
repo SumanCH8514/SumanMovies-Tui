@@ -46,12 +46,14 @@ impl App {
             }
             if !self.state.has_active_modal() {
                 if let KeyCode::Char('t') = key.code {
-                    if self.state.tv_enabled {
-                        self.action_sender.send(Action::ToggleTvMode).ok();
-                        self.state.set_status_short("Switched to TV Mode.");
-                    } else {
+                    if !self.state.tv_enabled {
                         self.state
                             .set_status_short("TV Mode is disabled. Use /settings to enable.");
+                    } else if self.state.is_tv_mode {
+                        self.state.set_status_short("Already in TV Mode.");
+                    } else {
+                        self.action_sender.send(Action::SwitchToTvMode).ok();
+                        self.state.set_status_short("Switched to TV Mode.");
                     }
                     return None;
                 }
@@ -1588,6 +1590,7 @@ mod tests {
         let mut app = App::new();
         app.state.active_screen = crate::tui::state::Screen::Home;
         app.state.input_mode = InputMode::Normal;
+        app.state.is_tv_mode = false;
         app.state.active_provider = crate::models::ProviderKind::MovieBox;
         app.state.show_provider_popup = true;
         app.state.provider_list_state.select(Some(0));

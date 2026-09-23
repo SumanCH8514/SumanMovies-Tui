@@ -198,11 +198,14 @@ impl App {
                     self.load_favorites_virtual_list();
                     return None;
                 }
-
                 if self.handle_search_command(&query, &lower_query).is_some() {
                     return None;
                 }
                 if query.trim().starts_with('/') {
+                    return None;
+                }
+                if self.state.is_tv_mode {
+                    self.apply_tv_search_results(&query, &lower_query);
                     return None;
                 }
                 let context = self.prepare_search_request(&query);

@@ -395,7 +395,7 @@ impl App {
                 self.handle_system(action).await;
             }
 
-            Action::ToggleTvMode
+            Action::SwitchToTvMode
             | Action::ShowTvConfig
             | Action::TvPlaylistAdd(..)
             | Action::TvPlaylistRemove(..)
