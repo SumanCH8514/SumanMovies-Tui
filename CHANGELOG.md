@@ -3,100 +3,66 @@
 ## [Unreleased]
 
 ### Added
-- **Scoop Package Manager Distribution & In-App Environment Detection**:
-  - Added native Scoop manifest in `bucket/moviebox-tui.json` supporting x64 and arm64 Windows architectures with automated release hash verification.
-  - Automated Scoop manifest synchronization alongside Homebrew in `.github/workflows/manifests.yml`, extracting `MovieBox_Windows_x64.zip` and `MovieBox_Windows_arm64.zip` checksums from `SHA256SUMS`.
-  - Added `InstallationEnvironment::Scoop` detection in `src/updater/apply.rs` via executable path inspection (`/scoop/apps/`, `\scoop\apps\`, `/scoop/shims/`, `\scoop\shims\`).
-  - Added dedicated update notification modal handling with `[s]` shortcut to display `scoop update moviebox-tui` on Scoop-managed Windows installations.
-- **MovieBox Stream Resolution Picker & Adaptive Bitrate Capping**:
-  - Decomposed multi-resolution DASH streams in `src/providers/moviebox/adapt.rs` into individual resolution stream rows (`1080p`, `720p`, `480p`, etc.) sorted by quality, enabling direct stream selection from the details screen.
-  - Threaded resolution constraints to player command builders (`src/player.rs` and `src/tui/app/playback.rs`), injecting `--ytdl-format="bestvideo[height<=H]+bestaudio/best"` for `mpv`/`IINA` and `--adaptive-maxheight=H` for `VLC` to prevent playback buffering on slow connections.
+- **Scoop Package Manager Distribution**:
+  - Added native Scoop manifest in `bucket/moviebox-tui.json` supporting Windows x64 and arm64 architectures with automated hash verification.
+  - Automated Scoop manifest synchronization alongside Homebrew in `.github/workflows/manifests.yml` from release `SHA256SUMS`.
+  - Added `InstallationEnvironment::Scoop` detection in `src/updater/apply.rs` with update prompt shortcuts (`[s]`).
+- **Adaptive Stream Resolution Picker**:
+  - Decomposed multi-bitrate DASH streams in `src/providers/moviebox/adapt.rs` into selectable quality rows (`1080p`, `720p`, `480p`).
+  - Threaded quality constraints to player builders, injecting `--ytdl-format` for `mpv`/`IINA` and `--adaptive-maxheight` for `VLC`.
 - **Custom Player Executable Path Configuration**:
   - Added `vlc_path`, `mpv_path`, and `iina_path` fields to `Config` in `src/config.rs` and `src/tui/state.rs`.
-  - Updated player resolution in `src/player.rs` to fall back to persisted configuration files (`config.json`) when custom player paths are not passed via environment variables (`MOVIEBOX_VLC_PATH`, `MOVIEBOX_MPV_PATH`, `MOVIEBOX_IINA_PATH`), allowing users to configure non-standard or portable player executables (e.g. `D:\PortableApps\VLC\vlc.exe`).
-  - Added `clear_cached_player_executables` in `src/player.rs` to safely invalidate in-memory static player path caches when player configurations update.
+  - Supported persisted custom player paths with automatic static path cache invalidation upon configuration updates.
+
 ### Fixed
-- **Proxy Sidecar Child Process Lifecycle & Zombie Prevention**:
-  - Detached proxy sidecar `Child` handle via `std::mem::forget` upon successful loopback port acquisition in `src/proxy.rs`, preventing defunct zombie process leaks on Linux and Unix environments when sidecars exit cleanly.
-- **Proxy HTTP Status Line Timing on Oversized Manifests**:
-  - Deferred emitting the HTTP status line in `src/proxy.rs` until DASH manifest sizing is verified, returning `HTTP/1.1 502 Bad Gateway` on oversized manifests instead of a malformed `200 OK` error payload.
-- **VLC Player Clean Exit Progress Tracking**:
-  - Recorded elapsed watch progress for VLC when it exits with status code 1 and clean stderr in `src/tui/app/playback.rs`, ensuring normal VLC exits update watch history and continue watching rows identically to code 0 exits.
-- **External Caption Sibling Query Isolation & Timeouts**:
-  - Bound parallel sibling provider queries in `get_ext_captions` (`src/service.rs`) with individual 8-second `tokio::time::timeout` futures, preventing single uncommunicative sibling mirrors from delaying caption availability.
-- **Overview Modal Persistence Across Screen Transitions**:
-  - Reset `show_overview_modal` and `overview_modal_scroll` flags within `reset_transient_overlays` (`src/tui/app/tv.rs`), preventing overview backdrops from lingering across mode changes.
-- **Details Header Metadata Position Jitter**:
-  - Top-aligned metadata paragraph rendering and synopsis hitboxes in `src/tui/screens/details.rs`, preventing vertical layout jumps when stream details or synopsis text expand during background metadata fetches.
-- **TV Playlists Management Interface Streamlining**:
-  - Streamlined the TV mode playlist configuration popup to match the clean design of Addons mode, replacing noisy section headers and bracket buttons with a unified list, `✓` status indicators, dynamic auto-sizing, and a single `+ Add playlist` prompt.
-- **TV Mode Search Bar Provider Pill Removal**:
-  - Removed the redundant `[Live TV · ^T]` pill from the search input box in TV mode (`src/tui/screens/home.rs`), reclaiming search input width and keeping the search bar minimal.
-- **Maintenance Settings Menu Organization**:
-  - Reordered actions in `/settings` → Maintenance so safe diagnostic tools appear first (`Check for Updates`, `Re-check BDIX Network`), followed by cleanup actions (`Clear Disk Cache`, `Clear Watch History`), and ending with the external repository link.
-- **Settings Modal Balanced Geometry & Dynamic Height**:
-  - Auto-sized `/settings` modal height dynamically to fit the exact row count of the active category and balanced modal width to 60 columns in `src/tui/overlay.rs` and `src/tui/widgets/settings.rs`, removing the oversized right-side void and bottom blank areas while maintaining uniform margins around all borders.
-- **Modal Backdrop Dimming for Background Deck & Search**:
-  - Dimmed favorites/continue-watching card items, browse preset suggestions, and the search bar provider pill when modal popups (such as the provider picker) are active in `src/tui/screens/home.rs`, ensuring background elements properly recede visually.
-  - Aligned provider labels into a clean vertical column in the provider picker popup in `src/tui/screens/home.rs`, applying consistent 4-space indentation for unselected rows so names align with the 2-space checkmark indicator (`✓ `).
-- **Update Check In-Flight Notification Replacement**:
-  - Replaced the in-flight `"Checking for updates"` notification toast with the final outcome toast (`Up to date` or `Update check failed`) upon completion in `src/tui/app/system.rs`, avoiding duplicate stacked update notifications.
-- **Live TV Search Isolation & Balanced Landing Geometry**:
-  - Isolated `Action::Search` dispatch in `src/tui/app/requests.rs` to route TV mode queries directly through `apply_tv_search_results` instead of launching movie/series upstream scrapers against `active_provider` (MovieBox).
-  - Reduced landing search bar width in Live TV mode to 48 columns (44 on compact viewports) in `src/tui/screens/home.rs`, centering the input cleanly under the header logo without the horizontal void left by the absent provider selector pill.
-  - Suppressed the streaming provider badge (`[MovieBox]`) on channel search results in `src/tui/screens/home.rs`, maintaining visual separation between streaming catalogs and live TV channels.
-  - Streamlined empty search feedback in `src/tui/screens/home.rs` to display `"No TV channels found matching “<query>”"` with a single `[ Clear Search (c) ]` action button, eliminating redundant playlist reload prompts.
-- **Idempotent Mode Switching & Shortcut Isolation**:
-  - Replaced `Action::ToggleTvMode` with dedicated `Action::SwitchToTvMode` in `src/tui/action.rs` and `src/tui/app/tv.rs`, aligning behavior symmetrically with `Action::SwitchToStreamingMode`.
-  - Hardened `Ctrl+T` and `Ctrl+S` keystroke handling in `src/tui/app/keyboard.rs` to report status without toggling when already in the active mode (`"Already in TV Mode."` / `"Already in Streaming Mode."`), preventing unintended mode flips when pressing `Ctrl+T` while in Live TV mode.
-- **Media Player Stream Buffering & Readahead Tuning**:
-  - Configured high-throughput buffering in `src/player.rs` for `mpv` and `IINA` (`--cache=yes`, `--cache-pause=yes`, `--cache-pause-wait=8`, `--cache-pause-initial=yes`, `--demuxer-max-bytes=256M`, `--demuxer-max-back-bytes=100M`, `--demuxer-readahead-secs=120`, `--demuxer-lavf-buffersize=1048576`, `--stream-buffer-size=512k`, `--force-seekable=yes`, and `--stream-lavf-o=reconnect=1,reconnect_streamed=1,reconnect_delay_max=5`), eliminating the 1-second re-buffering loop by enforcing an 8-second playback cushion, prefetching up to 2 minutes of stream data, and expanding memory cache size to 256MB.
-  - Configured network caching and adaptive streaming in `src/player.rs` for `VLC` (`--network-caching=10000` and `--adaptive-logic=nearoptimal`), aligning the network buffer floor with the 10.3s MPEG-DASH `minBufferTime` specification and preventing playback stalls when CDN chunk delivery encounters transient packet jitter.
-- **IINA Playback History & Progress Tracking**:
-  - Corrected playback tracker dispatch in `src/tui/app/playback.rs` to route `IINA` through wall-clock elapsed progress recording rather than mpv Lua IPC reconciliation, ensuring watch progress and continue-watching state are recorded upon closing IINA.
-- **Loopback Stream Proxy Buffer Throughput & Non-Timed Streaming**:
-  - Switched loopback reverse proxy upstream client in `src/proxy.rs` to `crate::net::streaming_client_builder()`, removing the 60-second total request deadline from media segment downloads and enabling persistent TCP keep-alive socket reuse across DASH chunk requests.
-  - Buffered TCP loopback chunk forwarding in `src/proxy.rs` using a 128KB `tokio::io::BufWriter`, reducing context-switch syscall overhead when streaming CloudFront DASH and MP4 media to VLC and mobile players.
-- **Details Screen Footer Action Hierarchy & Layout Streamlining**:
-  - Removed redundant `[^P] Provider` and `[Esc] Back` hints from the Details screen footer in `src/tui/screens/details.rs`.
-  - Reorganized footer action items into a clean, intuitive hierarchy: primary playback (`[Enter] Play`), download action (`[d] Download` / `Save`), pane navigation (`[Tab] Streams` on series), library action (`[f] Favorite`), and synopsis overview (`[i] Info`).
-  - Lowered `DETAILS_FOOTER_SPLIT_THRESHOLD` to 80 columns so standard terminals ($\ge 80$ cols) display a single horizontal line, while compact or mobile viewports ($< 80$ cols) split into two balanced lines.
-  - Synchronized mouse click hitboxes in `src/tui/app/mouse.rs` to match the exact updated footer layout.
-- **Details Pane Season & Episode Mouse Hitbox Scrolling Offsets**:
-  - Factored `ListState::offset()` into row hitbox calculations in `src/tui/app/mouse.rs`, ensuring mouse clicks accurately select the intended season or episode row in scrolled lists.
-- **Dynamic Application User-Agent Header**:
-  - Configured `APP_HTTP_USER_AGENT` in `src/net.rs` to compile-time reference `CARGO_PKG_VERSION` dynamically rather than hardcoding a static version string.
-- **Poster Fetch Memory Size Ceiling**:
-  - Added a 5 MiB ceiling to `fetch_poster_bytes` in `src/service.rs` validating `Content-Length` and buffer length to protect against unbounded image memory consumption.
-- **Streams Table Column Alignment Under Modal Backdrops**:
-  - Unified `pane_styles` highlight symbol to `""` during modal active states in `src/tui/screens/details.rs`, preventing Ratatui `Table` from reserving a 2-character highlight prefix column that shifted table headers and columns to the right whenever a popup (subtitles, player picker, help) opened.
-- **In-App Updater Streaming Timeout & Chunk Retry Recovery**:
-  - Removed the static 30-second total request deadline from the release binary download client in `src/updater/check.rs`, preventing mid-transfer decode aborts (`download chunk stream error: error decoding response body`) on slow or high-latency network connections.
-  - Added mid-stream chunk failure recovery in `src/updater/download.rs` with automatic temporary file cleanup, exponential backoff, and retry loop up to 3 attempts.
-- **Download Engine Streaming Timeout & Segment Range Resilience**:
-  - Removed the global 60-second total request deadline from the media download HTTP client in `src/net.rs` and `src/tui/app/download.rs` via `streaming_client_builder()`, preventing transfer aborts on long video downloads while maintaining a 15-second connect timeout and 30-second chunk stall detection.
-  - Relaxed range segmentation validation in `src/download.rs` to allow parallel segmented downloads on servers and CDNs that support `Range` requests without explicitly advertising `Accept-Ranges: bytes`.
-  - Added fast-fail handling in `src/download.rs` when segment workers receive `200 OK`, avoiding wasteful retries and falling back immediately to single-stream downloading.
-  - Buffered single-connection file writes in `src/download.rs` with a 256KB `tokio::io::BufWriter`, reducing syscall overhead during single-stream downloads.
-  - Sanitized download failure notices via `DownloadError::user_message()` in `src/download.rs` and `src/tui/app/download.rs`, replacing raw error dumps and URL tokens with clean, actionable status messages.
+- **Streaming Proxy & Sidecar Lifecycle**:
+  - Enforced fail-closed target host verification in `src/proxy.rs`, rejecting requests with `403 Forbidden` if `target_host` is missing or unverified.
+  - Detached proxy sidecar child handles via `std::mem::forget`, preventing defunct zombie process leaks on Unix.
+  - Removed 60s request deadline on upstream proxy client and added 128KB `tokio::io::BufWriter` for sustained chunk throughput.
+  - Deferred status line emission until manifest sizing is verified, returning `502 Bad Gateway` on oversized payloads.
+- **Download Engine & Subprocess Safety**:
+  - Re-canonicalized created download directories within background tasks in `src/tui/app/download.rs`, verifying real paths against download roots to prevent symlink traversal.
+  - Sanitized provider HTTP header keys and values passed to yt-dlp, stripping CRLF and control bytes to prevent header splitting.
+  - Removed global 60s transfer timeout and buffered single-connection file writes with 256KB `tokio::io::BufWriter`.
+  - Added fast-fail fallback to single-stream downloads when segment workers receive `200 OK` responses.
+  - Sanitized download failure notices via `DownloadError::user_message()`, replacing raw error dumps with clean user guidance.
+- **Media Playback & Progress Tracking**:
+  - Configured high-throughput stream buffering in `src/player.rs` for `mpv` and `IINA` (8s cushion, 120s readahead, 256MB demuxer cache) to eliminate rebuffering loops.
+  - Set 10s network cache floor and `nearoptimal` adaptive logic for `VLC`, preventing playback stalls on DASH jitter.
+  - Recorded elapsed watch progress for VLC code 1 exits and routed IINA through wall-clock progress tracking.
+- **TUI Layout & Modal Ergonomics**:
+  - Isolated TV mode search dispatch in `src/tui/app/requests.rs` and balanced landing search input width to 48 columns.
+  - Auto-sized `/settings` modal height dynamically to category row counts and balanced modal width to 60 columns.
+  - Dimmed background deck items, suggestions, and provider pills when modal popups are active in `src/tui/screens/home.rs`.
+  - Reorganized Details screen footer action hierarchy, lowered split threshold to 80 columns, and synchronized mouse hitboxes.
+  - Factored `ListState::offset()` into Details pane row hitboxes for scrolled season and episode lists.
+  - Unified streams table highlight symbol under modals in `src/tui/screens/details.rs`, preventing table header and column horizontal shifts.
+  - Reset `show_overview_modal` on mode transitions in `src/tui/app/tv.rs` and top-aligned metadata paragraphs in `src/tui/screens/details.rs`.
+  - Streamlined TV playlist management popup to match Addons mode design with dynamic sizing and clean status indicators.
+  - Replaced `Action::ToggleTvMode` with idempotent `Action::SwitchToTvMode` and protected `Ctrl+T`/`Ctrl+S` against unintended flips.
+- **Network, Upstream & Concurrency**:
+  - Bound parallel sibling provider queries in `get_ext_captions` (`src/service.rs`) with individual 8s timeouts to prevent stalls.
+  - Tracked in-pool cached stream tasks in `request_tasks.streams` in `src/tui/app/requests.rs`, ensuring active tasks cancel on navigation.
+  - Removed 30s deadline and added 3-attempt exponential backoff chunk retry for release binary downloads in `src/updater/download.rs`.
+  - Added 5 MiB ceiling to `fetch_poster_bytes` in `src/service.rs` and referenced dynamic `CARGO_PKG_VERSION` in `APP_HTTP_USER_AGENT`.
+
 ### Changed
-- **Documentation Overhaul & Clarity Streamlining**:
-  - Overhauled all user and technical guides in `docs/` (`players.md`, `controls.md`, `tv-mode.md`, `config.md`, `addons-mode.md`, `providers.md`, `cross-platform.md`, `cache.md`, `downloads.md`), cutting redundant tables, eliminating dense run-on text walls, and standardizing on direct, beginner-accessible explanations.
-  - Added complete environment variable documentation for `MOVIEBOX_LOG`, `MOVIEBOX_IMAGE_PROTOCOL`, `MOVIEBOX_CELL_SIZE`, and `NO_COLOR` in `docs/config.md`.
-  - Documented missing Details screen pane navigation, stream download triggers, synopsis overlay controls, `/settings` interactive modal keybindings, in-app update prompt shortcuts, and `Ctrl+P` provider cycling in `docs/controls.md`.
-  - Corrected theme catalog count to 9 themes and clarified `/settings` invocation without invalid single-key shortcuts in `docs/config.md`.
-  - Clarified non-toggle mode switching semantics (`Ctrl+T` to TV mode, `Ctrl+S` to Streaming mode) in `docs/tv-mode.md`.
-- **Instant Stream and Season Download Triggering**:
-  - Streamlined download initiation by starting stream and season downloads immediately upon pressing `d` (or clicking `[d] Download`) on the details screen, bypassing the intermediate confirmation popup.
-- **Automated Test Architecture Hardening**:
-  - Replaced thread-shared `cargo test` execution with process-isolated `cargo nextest run` across testing rules in `.omp/AGENTS.md`.
-  - Added hermetic local loopback server download tests in `src/download.rs` verifying custom authentication headers (`X-Auth-Token`, `User-Agent`, `Referer`), byte streaming, and progress callbacks.
-  - Added deterministic CLI argument and header verification tests in `src/player.rs` for `mpv` and `VLC`.
-  - Pruned tautological assertions and dead code (`step_header_aware_list`).
-### Removed
-- **Download Confirmation Modal & Transient Dialog States**:
-  - Removed `PromptDownloadEpisode`, `ConfirmDownloadEpisode`, `PromptDownloadSeason`, and `ConfirmDownloadSeason` in favor of direct `DownloadEpisode` and `DownloadSeason` actions.
-  - Pruned transient modal state flags (`show_episode_download_confirm`, `show_season_download_confirm`, `episode_download_confirm_yes_selected`, `season_download_confirm_yes_selected`) and confirmation render helpers (`confirmation`, `download_confirm_layout`, `download_confirm_action_row`).
+- **Direct Download Triggering**:
+  - Streamlined download initiation by starting stream and season downloads immediately upon pressing `d` on the details screen.
+  - Pruned intermediate confirmation dialogs, transient state flags (`show_episode_download_confirm`), and confirmation render helpers.
+- **Deep Module Architecture & Task Encapsulation**:
+  - Encapsulated async task lifecycle in `RequestTaskHandles` (`src/tui/app/mod.rs`), consolidating cancellation, task spawning, and abort handle tracking behind dedicated dispatch methods.
+  - Encapsulated download destination directory creation, UNC normalization, and sandbox boundary checks into `prepare_target_dir` in `src/tui/app/download.rs`.
+  - Added `render_modal_frame` in `src/tui/overlay.rs` combining area clearing with `Clear`, inner rectangle calculation, and modal frame border rendering.
+- **Terminal Image Picker & Opener Caching**:
+  - Consolidated fallback and custom cell size image picker creation in `src/tui/app/run.rs` through `create_picker_with_font_size`.
+  - Cached Android opener detection via `std::sync::LazyLock` in `src/player.rs`.
+- **CI/CD Quality Gates & Tooling**:
+  - Added Linux musl target compilation verification in `.github/workflows/ci.yml`.
+  - Migrated CI test matrix to parallel, process-isolated `cargo-nextest` execution.
+- **Documentation Overhaul**:
+  - Streamlined all user and technical guides in `docs/` (`players.md`, `controls.md`, `tv-mode.md`, `config.md`, `addons-mode.md`, `providers.md`, `cross-platform.md`, `cache.md`, `downloads.md`), cutting redundant tables and dense text walls.
+  - Documented environment variables (`MOVIEBOX_LOG`, `MOVIEBOX_IMAGE_PROTOCOL`, `MOVIEBOX_CELL_SIZE`, `NO_COLOR`).
 ## [0.1.23] - 2026-09-21
 
 ### Fixed
