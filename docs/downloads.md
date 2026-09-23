@@ -11,7 +11,8 @@ and optional segmentation. Orchestration lives in `app/download.rs`.
   continues from there using `Range` requests.
 - **Segmentation**: files above a size threshold can be downloaded in parallel
   segments (up to a capped count), then stitched.
-- **I/O Aggregation**: Download segment writers are buffered with a 256KB `tokio::io::BufWriter`, aggregating incoming 8KB–16KB HTTP response chunks into sequential disk writes and reducing filesystem syscalls by up to 96.8%.
+- **I/O Aggregation**: Download workers (both multi-segment workers and single-connection fallback) are buffered with a 256KB `tokio::io::BufWriter`, aggregating incoming HTTP response chunks into sequential disk writes and minimizing filesystem syscall overhead.
+- **Client Deadlines**: The media download client uses `streaming_client_builder()` without a global request timeout, allowing multi-gigabyte files to transfer continuously while enforcing a 15-second connect timeout and 30-second per-chunk stall detection.
 - **Retries**: a failed attempt is retried a limited number of times; 30s idle
 - **Cancel**: an `AtomicBool` cancel flag pauses/resumes cleanly, preserving the
   partial file for a later resume.

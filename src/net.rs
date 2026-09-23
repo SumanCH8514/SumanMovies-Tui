@@ -72,7 +72,7 @@ impl Resolve for FallbackResolver {
     }
 }
 
-pub fn http_client_builder() -> reqwest::ClientBuilder {
+pub fn http_client_builder_base() -> reqwest::ClientBuilder {
     reqwest::Client::builder()
         .dns_resolver(Arc::new(FallbackResolver::new()))
         .tcp_nodelay(true)
@@ -80,7 +80,14 @@ pub fn http_client_builder() -> reqwest::ClientBuilder {
         .pool_idle_timeout(Some(std::time::Duration::from_secs(90)))
         .pool_max_idle_per_host(8)
         .connect_timeout(std::time::Duration::from_secs(15))
-        .timeout(std::time::Duration::from_secs(60))
+}
+
+pub fn http_client_builder() -> reqwest::ClientBuilder {
+    http_client_builder_base().timeout(std::time::Duration::from_secs(60))
+}
+
+pub fn streaming_client_builder() -> reqwest::ClientBuilder {
+    http_client_builder_base()
 }
 
 pub async fn probe_url(url: &str, timeout: std::time::Duration) -> bool {

@@ -137,7 +137,7 @@ impl App {
         let sender = self.action_sender.clone();
         let user_agent = self.service.client.user_agent().to_string();
 
-        let mut client_builder = crate::net::http_client_builder()
+        let mut client_builder = crate::net::streaming_client_builder()
             .connect_timeout(std::time::Duration::from_secs(15))
             .tcp_keepalive(std::time::Duration::from_secs(30));
 
@@ -476,7 +476,13 @@ impl App {
                             .ok();
                     }
                     Err(error) => {
-                        sender.send(Action::DownloadFailed(error.to_string())).ok();
+                        log::error!(
+                            "download of {} failed: {error}",
+                            crate::logging::sanitize_url(&link)
+                        );
+                        sender
+                            .send(Action::DownloadFailed(error.user_message()))
+                            .ok();
                     }
                 }
             }

@@ -21,6 +21,12 @@
 - **In-App Updater Streaming Timeout & Chunk Retry Recovery**:
   - Removed the static 30-second total request deadline from the release binary download client in `src/updater/check.rs`, preventing mid-transfer decode aborts (`download chunk stream error: error decoding response body`) on slow or high-latency network connections.
   - Added mid-stream chunk failure recovery in `src/updater/download.rs` with automatic temporary file cleanup, exponential backoff, and retry loop up to 3 attempts.
+- **Download Engine Streaming Timeout & Segment Range Resilience**:
+  - Removed the global 60-second total request deadline from the media download HTTP client in `src/net.rs` and `src/tui/app/download.rs` via `streaming_client_builder()`, preventing transfer aborts on long video downloads while maintaining a 15-second connect timeout and 30-second chunk stall detection.
+  - Relaxed range segmentation validation in `src/download.rs` to allow parallel segmented downloads on servers and CDNs that support `Range` requests without explicitly advertising `Accept-Ranges: bytes`.
+  - Added fast-fail handling in `src/download.rs` when segment workers receive `200 OK`, avoiding wasteful retries and falling back immediately to single-stream downloading.
+  - Buffered single-connection file writes in `src/download.rs` with a 256KB `tokio::io::BufWriter`, reducing syscall overhead during single-stream downloads.
+  - Sanitized download failure notices via `DownloadError::user_message()` in `src/download.rs` and `src/tui/app/download.rs`, replacing raw error dumps and URL tokens with clean, actionable status messages.
 ## [0.1.23] - 2026-09-21
 
 ### Fixed
