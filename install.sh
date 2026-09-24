@@ -2,7 +2,7 @@
 set -euo pipefail
 
 APP_NAME="SumanMovies-Tui"
-BIN_NAME="moviebox-tui"
+BIN_NAME="sumanmovies-tui"
 REPO="SumanCH8514/SumanMovies-Tui"
 DEFAULT_INSTALL_DIR="$HOME/.local/bin"
 
@@ -209,23 +209,29 @@ print_header() {
     if [ "$cols" -ge 76 ]; then
         banner_width=72
         lines=(
-            "███╗   ███╗  ██████╗  ██╗   ██╗ ██╗ ███████╗ ██████╗   ██████╗  ██╗  ██╗"
-            "████╗ ████║ ██╔═══██╗ ██║   ██║ ██║ ██╔════╝ ██╔══██╗ ██╔═══██╗ ╚██╗██╔╝"
-            "██╔████╔██║ ██║   ██║ ██║   ██║ ██║ █████╗   ██████╔╝ ██║   ██║  ╚███╔╝ "
-            "██║╚██╔╝██║ ██║   ██║ ╚██╗ ██╔╝ ██║ ██╔══╝   ██╔══██╗ ██║   ██║  ██╔██╗ "
-            "██║ ╚═╝ ██║ ╚██████╔╝  ╚████╔╝  ██║ ███████╗ ██████╔╝ ╚██████╔╝ ██╔╝ ██╗"
-            "╚═╝     ╚═╝  ╚═════╝    ╚═══╝   ╚═╝ ╚══════╝ ╚═════╝   ╚═════╝  ╚═╝  ╚═╝"
+            "███████╗██╗   ██╗███╗   ███╗ █████╗ ███╗   ██╗"
+            "██╔════╝██║   ██║████╗ ████║██╔══██╗████╗  ██║"
+            "███████╗██║   ██║██╔████╔██║███████║██╔██╗ ██║"
+            "╚════██║██║   ██║██║╚██╔╝██║██╔══██║██║╚██╗██║"
+            "███████║╚██████╔╝██║ ╚═╝ ██║██║  ██║██║ ╚████║"
+            "╚══════╝ ╚═════╝ ╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝"
+            "        ███╗   ███╗ ██████╗ ██╗   ██╗██╗███████╗███████╗"
+            "        ████╗ ████║██╔═══██╗██║   ██║██║██╔════╝██╔════╝"
+            "        ██╔████╔██║██║   ██║██║   ██║██║█████╗  ███████╗"
+            "        ██║╚██╔╝██║██║   ██║╚██╗ ██╔╝██║██╔══╝  ╚════██║"
+            "        ██║ ╚═╝ ██║╚██████╔╝ ╚████╔╝ ██║███████╗███████║"
+            "        ╚═╝     ╚═╝ ╚═════╝   ╚═══╝  ╚═╝╚══════╝╚══════╝"
         )
     elif [ "$cols" -ge 36 ]; then
-        banner_width=31
+        banner_width=34
         lines=(
-            "█▀▄▀█ █▀█ █ █ █ █▀▀ █▀▄ █▀█ ▀▄▀"
-            "█ ▀ █ █▄█ ▀▄▀ █ ██▄ █▄▀ █▄█ █ █"
+            "█▀ █ █ █▀▄▀█ ▄▀█ █▄ █ █▀▄▀█ █▀█ █ █ █ █▀▀ █▀"
+            "▄█ █▄█ █ ▀ █ █▀█ █ ▀█ █ ▀ █ █▄█ ▀▄▀ █ ██▄ ▄█"
         )
     else
-        banner_width=12
+        banner_width=15
         lines=(
-            "MovieBox-TUI"
+            "SumanMovies-TUI"
         )
     fi
 
@@ -385,7 +391,7 @@ if [ "$IS_TERMUX" -eq 1 ]; then
         FILE="SumanMovies_Android_arm64.tar.gz"
         PLATFORM_NAME="Android Termux (arm64)"
     else
-        log_error "Unsupported Termux architecture ($ARCH). Only arm64/aarch64 is hosted. Use 'cargo install moviebox-tui'."
+        log_error "Unsupported Termux architecture ($ARCH). Only arm64/aarch64 is hosted. Use 'cargo install sumanmovies-tui'."
         exit 1
     fi
 elif [ "$OS" = "Darwin" ]; then
@@ -460,7 +466,7 @@ if [ -n "$EXISTING_BIN" ] && [ -x "$EXISTING_BIN" ]; then
 
     if [ "v$CURRENT_VERSION" = "$TARGET_VERSION" ] && [ "$FORCE" -eq 0 ]; then
         if [ "$IS_TTY" -eq 1 ] && [ "$DRY_RUN" -eq 0 ]; then
-            printf "\n  %b%s%b %b%s%b\n" "$C_YELLOW" "ℹ" "$C_RESET" "$C_TEXT" "MovieBox-TUI $TARGET_VERSION is already installed at $EXISTING_BIN." "$C_RESET"
+            printf "\n  %b%s%b %b%s%b\n" "$C_YELLOW" "ℹ" "$C_RESET" "$C_TEXT" "SumanMovies-TUI $TARGET_VERSION is already installed at $EXISTING_BIN." "$C_RESET"
             printf "  Choose an action: [1] Reinstall  [2] Uninstall  [3] Exit: "
             if [ -e /dev/tty ]; then
                 read -r user_choice </dev/tty 2>/dev/null || user_choice="3"
@@ -480,7 +486,7 @@ if [ -n "$EXISTING_BIN" ] && [ -x "$EXISTING_BIN" ]; then
                     ;;
             esac
         else
-            log_success "MovieBox-TUI $TARGET_VERSION is already installed. Use --force to reinstall."
+            log_success "SumanMovies-TUI $TARGET_VERSION is already installed. Use --force to reinstall."
             exit 0
         fi
     fi
@@ -505,7 +511,7 @@ download_files() {
             log_error "Failed to download $FILE."
             printf "  %bℹ%b Precompiled native Android binaries are hosted starting from v0.1.17+.\n" "$C_SAPPHIRE" "$C_RESET" >&2
             printf "  To install from source on Termux:\n" >&2
-            printf "    %bpkg install -y rust clang && cargo install moviebox-tui --locked%b\n\n" "$C_BOLD" "$C_RESET" >&2
+            printf "    %bpkg install -y rust clang && cargo install sumanmovies-tui --locked%b\n\n" "$C_BOLD" "$C_RESET" >&2
         fi
         return 1
     fi
@@ -566,7 +572,7 @@ if [ "$DRY_RUN" -eq 0 ]; then
         printf "  %s\n" "$smoke_output" >&2
         if [ "$IS_TERMUX" -eq 1 ]; then
             printf "\n  %bℹ%b If Termux rejects the binary, install via cargo:\n" "$C_SAPPHIRE" "$C_RESET" >&2
-            printf "    %bpkg install -y rust clang && cargo install moviebox-tui --locked%b\n\n" "$C_BOLD" "$C_RESET" >&2
+            printf "    %bpkg install -y rust clang && cargo install sumanmovies-tui --locked%b\n\n" "$C_BOLD" "$C_RESET" >&2
         fi
         exit 1
     fi
@@ -629,7 +635,7 @@ else
     fi
 fi
 printf "\n"
-printf "  %b✔ MovieBox-Tui %s successfully installed!%b\n\n" "$C_GREEN" "$TARGET_VERSION" "$C_RESET"
+printf "  %b✔ SumanMovies-Tui %s successfully installed!%b\n\n" "$C_GREEN" "$TARGET_VERSION" "$C_RESET"
 printf "  %b•%b %bBinary:%b  %b%s%b\n" "$C_MUTED" "$C_RESET" "$C_MUTED" "$C_RESET" "$C_TEXT" "$APP_PATH" "$C_RESET"
 
 if [ -n "$PLAYER_DETECTED" ]; then
@@ -646,7 +652,7 @@ fi
 
 printf "\n"
 printf "  %bTo start streaming:%b\n" "$C_TEXT" "$C_RESET"
-printf "    %b$ moviebox-tui%b\n\n" "$C_GREEN" "$C_RESET"
+printf "    %b$ sumanmovies%b\n\n" "$C_GREEN" "$C_RESET"
 
 if [ -z "$PLAYER_DETECTED" ]; then
     if [ "$IS_TERMUX" -eq 1 ]; then

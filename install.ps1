@@ -21,7 +21,7 @@ Set-StrictMode -Version Latest
 $AppName = "SumanMovies-Tui"
 $BinName = "sumanmovies.exe"
 $Repo = "SumanCH8514/SumanMovies-Tui"
-$DefaultInstallDir = Join-Path $env:LOCALAPPDATA "Programs\MovieBox-Tui\bin"
+$DefaultInstallDir = Join-Path $env:LOCALAPPDATA "Programs\SumanMovies-Tui\bin"
 
 if ($Help) {
     Write-Host @"
@@ -114,24 +114,24 @@ function Print-Header {
     $Cols = Get-TerminalCols
 
     if ($Cols -ge 65) {
-        $BannerWidth = 60
+        $BannerWidth = 61
         $Lines = @(
-            " __  __            _      ____              _____ _   _ ___ ",
-            "|  \/  | _____   _(_) ___| __ )  _____  __ |_   _| | | |_ _|",
-            "| |\/| |/ _ \ \ / / |/ _ \  _ \ / _ \ \/ /   | | | | | || | ",
-            "| |  | | (_) \ V /| |  __/ |_) | (_) >  <    | | | |_| || | ",
-            "|_|  |_|\___/ \_/ |_|\___|____/ \___/_/\_\   |_|  \___/|___|"
+            " ____                              __  __            _           ",
+            "|  _ \ _   _ _ __ ___   __ _ _ __ |  \/  | _____   _(_) ___  ___ ",
+            "| |_) | | | | '_ `` _ \ / _`` | '_ \| |\/| |/ _ \ \ / / |/ _ \/ __|",
+            "|  __/| |_| | | | | | | (_| | | | | |  | | (_) \ V /| |  __/\__ \",
+            "|_|    \__,_|_| |_| |_|\__,_|_| |_|_|  |_|\___/ \_/ |_|\___||___/"
         )
     } elseif ($Cols -ge 36) {
-        $BannerWidth = 31
+        $BannerWidth = 34
         $Lines = @(
-            "█▀▄▀█ █▀█ █ █ █ █▀▀ █▀▄ █▀█ ▀▄▀",
-            "█ ▀ █ █▄█ ▀▄▀ █ ██▄ █▄▀ █▄█ █ █"
+            "█▀ █ █ █▀▄▀█ ▄▀█ █▄ █ █▀▄▀█ █▀█ █ █ █ █▀▀ █▀",
+            "▄█ █▄█ █ ▀ █ █▀█ █ ▀█ █ ▀ █ █▄█ ▀▄▀ █ ██▄ ▄█"
         )
     } else {
-        $BannerWidth = 12
+        $BannerWidth = 15
         $Lines = @(
-            "MovieBox-TUI"
+            "SumanMovies-TUI"
         )
     }
 
@@ -161,14 +161,14 @@ function Do-Uninstall {
     $Found = $false
     $TargetDirs = @(
         $DefaultInstallDir,
-        "$env:LOCALAPPDATA\MovieBox-Tui"
+        "$env:LOCALAPPDATA\SumanMovies-Tui"
     )
 
     foreach ($Dir in $TargetDirs) {
         $Exe = Join-Path $Dir $BinName
         if (Test-Path $Exe) {
             try {
-                $RunningProcesses = Get-Process -Name "moviebox-tui" -ErrorAction SilentlyContinue
+                $RunningProcesses = Get-Process -Name "sumanmovies-tui","sumanmovies" -ErrorAction SilentlyContinue
                 if ($RunningProcesses) {
                     $RunningProcesses | Stop-Process -Force
                     Start-Sleep -Seconds 1
@@ -183,7 +183,7 @@ function Do-Uninstall {
     }
 
     if ($Found) {
-        $Removed = Remove-FromUserPath -Directories @($DefaultInstallDir, "$env:LOCALAPPDATA\MovieBox-Tui\bin")
+        $Removed = Remove-FromUserPath -Directories @($DefaultInstallDir, "$env:LOCALAPPDATA\SumanMovies-Tui\bin")
         Write-Success "$AppName was successfully uninstalled."
         if ($Removed) {
             Write-Success "Removed stale entry from User PATH."
@@ -226,7 +226,7 @@ if (-not $TargetVersion) {
         $Response.Close()
     } catch {
         try {
-            $ReleaseJson = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest" -Headers @{ "User-Agent" = "MovieBox-Installer" } -UseBasicParsing
+            $ReleaseJson = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest" -Headers @{ "User-Agent" = "SumanMovies-Installer" } -UseBasicParsing
             $TargetVersion = $ReleaseJson.tag_name.Trim()
         } catch {
             Write-Err "Failed to contact GitHub for latest release. Please check your internet connection."
@@ -246,10 +246,10 @@ $ExePath = Join-Path $EffectiveInstallDir $BinName
 if (Test-Path $ExePath) {
     try {
         $CurrentVerOutput = (& $ExePath --version 2>&1 | Out-String)
-        if ($CurrentVerOutput -match "moviebox-tui\s+([\d\.]+)") {
+        if ($CurrentVerOutput -match "sumanmovies-tui\s+([\d\.]+)") {
             $CurrentVer = "v" + $matches[1]
             if ($CurrentVer -eq $TargetVersion -and (-not $Force)) {
-                Write-Success "MovieBox-TUI $TargetVersion is already installed at $ExePath. Use -Force to reinstall."
+                Write-Success "SumanMovies-TUI $TargetVersion is already installed at $ExePath. Use -Force to reinstall."
                 exit 0
             }
         }
@@ -263,7 +263,7 @@ if ($DryRun) {
     exit 0
 }
 
-$TempDir = Join-Path ([System.IO.Path]::GetTempPath()) ("moviebox-tui-" + [guid]::NewGuid())
+$TempDir = Join-Path ([System.IO.Path]::GetTempPath()) ("sumanmovies-tui-" + [guid]::NewGuid())
 New-Item -ItemType Directory -Force -Path $TempDir | Out-Null
 
 $ZipFile = Join-Path $TempDir $ArchiveName
@@ -295,7 +295,7 @@ try {
         New-Item -ItemType Directory -Force -Path $EffectiveInstallDir | Out-Null
     }
 
-    $RunningProcesses = Get-Process -Name "moviebox-tui" -ErrorAction SilentlyContinue
+    $RunningProcesses = Get-Process -Name "sumanmovies-tui","sumanmovies" -ErrorAction SilentlyContinue
     if ($RunningProcesses) {
         $RunningProcesses | Stop-Process -Force
         Start-Sleep -Seconds 1
@@ -344,7 +344,7 @@ if ((Get-Command "mpv" -ErrorAction SilentlyContinue) -or (Test-Path "C:\Program
 }
 
 Write-Host ""
-Write-Host "  + MovieBox-Tui $TargetVersion successfully installed!" -ForegroundColor Green
+Write-Host "  + SumanMovies-Tui $TargetVersion successfully installed!" -ForegroundColor Green
 Write-Host ""
 Write-Host "  - Binary:  " -ForegroundColor DarkGray -NoNewline
 Write-Host $ExePath -ForegroundColor White
@@ -364,7 +364,7 @@ if ($PathModified) {
 
 Write-Host ""
 Write-Host "  To start streaming:" -ForegroundColor White
-Write-Host "    $ moviebox-tui" -ForegroundColor Green
+Write-Host "    $ sumanmovies" -ForegroundColor Green
 Write-Host ""
 
 if (-not $PlayerDetected) {
