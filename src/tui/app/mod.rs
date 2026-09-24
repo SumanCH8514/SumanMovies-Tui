@@ -1,3 +1,5 @@
+use std::future::Future;
+
 use tokio::sync::mpsc;
 
 use crate::providers::models::RequestContext;
@@ -24,6 +26,9 @@ pub struct RequestTaskHandles {
     pub streams: Option<tokio::task::JoinHandle<()>>,
     pub suggest: Option<tokio::task::JoinHandle<()>>,
     pub homepage: Option<tokio::task::JoinHandle<()>>,
+    pub download: Option<tokio::task::JoinHandle<()>>,
+    pub stream_pool_init: Option<tokio::task::JoinHandle<()>>,
+    pub episode_prefetch: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl RequestTaskHandles {
@@ -56,6 +61,87 @@ impl RequestTaskHandles {
             h.abort();
         }
     }
+    pub fn cancel_download(&mut self) {
+        if let Some(h) = self.download.take() {
+            h.abort();
+        }
+    }
+
+    pub fn cancel_stream_pool_init(&mut self) {
+        if let Some(h) = self.stream_pool_init.take() {
+            h.abort();
+        }
+    }
+
+    pub fn cancel_episode_prefetch(&mut self) {
+        if let Some(h) = self.episode_prefetch.take() {
+            h.abort();
+        }
+    }
+
+    pub fn spawn_search<F>(&mut self, future: F)
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
+        self.cancel_search();
+        self.search = Some(tokio::spawn(future));
+    }
+
+    pub fn spawn_details<F>(&mut self, future: F)
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
+        self.cancel_details();
+        self.details = Some(tokio::spawn(future));
+    }
+
+    pub fn spawn_streams<F>(&mut self, future: F)
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
+        self.cancel_streams();
+        self.streams = Some(tokio::spawn(future));
+    }
+
+    pub fn spawn_suggest<F>(&mut self, future: F)
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
+        self.cancel_suggest();
+        self.suggest = Some(tokio::spawn(future));
+    }
+
+    pub fn spawn_homepage<F>(&mut self, future: F)
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
+        self.cancel_homepage();
+        self.homepage = Some(tokio::spawn(future));
+    }
+
+    pub fn spawn_download<F>(&mut self, future: F)
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
+        self.cancel_download();
+        self.download = Some(tokio::spawn(future));
+    }
+
+    pub fn spawn_stream_pool_init<F>(&mut self, future: F)
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
+        self.cancel_stream_pool_init();
+        self.stream_pool_init = Some(tokio::spawn(future));
+    }
+
+    pub fn spawn_episode_prefetch<F>(&mut self, future: F)
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
+        self.cancel_episode_prefetch();
+        self.episode_prefetch = Some(tokio::spawn(future));
+    }
 
     pub fn cancel_all(&mut self) {
         self.cancel_search();
@@ -63,6 +149,9 @@ impl RequestTaskHandles {
         self.cancel_streams();
         self.cancel_suggest();
         self.cancel_homepage();
+        self.cancel_download();
+        self.cancel_stream_pool_init();
+        self.cancel_episode_prefetch();
     }
 }
 
@@ -89,16 +178,27 @@ impl App {
         let config = crate::tui::config::load();
         state.auto_update = config.auto_update;
         state.last_update_check = config.last_update_check;
-        state.bdix_enabled = config.bdix_enabled;
+        state.moviebox_enabled = config.moviebox_enabled;
+        state.fourkhdhub_enabled = config.fourkhdhub_enabled;
+        state.youtube_enabled = config.youtube_enabled;
+        state.dramachi_enabled = config.dramachi_enabled;
+        state.bdix_circleftp_enabled = config.bdix_circleftp_enabled;
+        state.bdix_dhakaflix_enabled = config.bdix_dhakaflix_enabled;
+        state.bdix_probed = config.bdix_probed;
         state.streaming_enabled = config.streaming_enabled;
         state.tv_enabled = config.tv_enabled;
         state.addons_enabled = config.addons_enabled;
-        if !state.streaming_enabled && !state.tv_enabled && !state.addons_enabled {
+        if !state.streaming_enabled && !state.tv_enabled {
             state.streaming_enabled = true;
         }
-        let provider_was_sanitized = !state.bdix_enabled && config.active_provider.is_bdix();
+        let provider_was_sanitized = !state.provider_enabled(config.active_provider)
+            && config.active_provider != crate::providers::models::ProviderKind::Addons;
         state.active_provider = if provider_was_sanitized {
-            crate::providers::models::ProviderKind::MovieBox
+            state
+                .available_providers()
+                .into_iter()
+                .next()
+                .unwrap_or(crate::providers::models::ProviderKind::MovieBox)
         } else {
             config.active_provider
         };
@@ -107,28 +207,27 @@ impl App {
             "tv" if state.tv_enabled => {
                 state.set_mode(crate::tui::state::AppMode::Tv);
             }
-            "addon" if state.addons_enabled => {
-                state.set_mode(crate::tui::state::AppMode::Addon);
-                state.active_provider = crate::providers::models::ProviderKind::Addons;
-            }
             _ => {
                 if state.streaming_enabled {
                     state.set_mode(crate::tui::state::AppMode::Streaming);
                 } else if state.tv_enabled {
                     state.set_mode(crate::tui::state::AppMode::Tv);
-                } else if state.addons_enabled {
-                    state.set_mode(crate::tui::state::AppMode::Addon);
-                    state.active_provider = crate::providers::models::ProviderKind::Addons;
                 } else {
                     state.set_mode(crate::tui::state::AppMode::Streaming);
                 }
             }
         }
+        if !state.addons_enabled
+            && state.active_provider == crate::providers::models::ProviderKind::Addons
+        {
+            state.active_provider = crate::providers::models::ProviderKind::MovieBox;
+        }
         state.active_theme_kind = config.active_theme;
         state.default_player = config.default_player;
-        state.download_dir = config
-            .download_dir
-            .map(|d| crate::service::ensure_moviebox_subdir(&std::path::PathBuf::from(d)));
+        state.vlc_path = config.vlc_path;
+        state.mpv_path = config.mpv_path;
+        state.iina_path = config.iina_path;
+        state.download_dir = config.download_dir.map(std::path::PathBuf::from);
         state.installed_addons = crate::config::load_addons();
 
         let env_theme = std::env::var("MOVIEBOX_THEME")
@@ -170,9 +269,8 @@ impl App {
         if app.state.is_tv_mode {
             app.load_tv_playlists_from_config();
             app.reload_tv_playlists();
-        } else if app.state.is_addon_mode {
-            app.load_installed_addons_from_config();
         }
+        app.load_installed_addons_from_config();
         if provider_was_sanitized {
             app.persist_config();
         }
@@ -202,7 +300,6 @@ impl App {
     fn persist_config(&self) {
         let active_mode = match self.state.mode() {
             crate::tui::state::AppMode::Tv => "tv",
-            crate::tui::state::AppMode::Addon => "addon",
             crate::tui::state::AppMode::Streaming => "streaming",
         };
         let config = crate::tui::config::Config {
@@ -211,7 +308,13 @@ impl App {
             active_mode: active_mode.to_string(),
             active_provider: self.state.active_provider,
             active_theme: self.state.active_theme_kind.clone(),
-            bdix_enabled: self.state.bdix_enabled,
+            moviebox_enabled: self.state.moviebox_enabled,
+            fourkhdhub_enabled: self.state.fourkhdhub_enabled,
+            youtube_enabled: self.state.youtube_enabled,
+            dramachi_enabled: self.state.dramachi_enabled,
+            bdix_circleftp_enabled: self.state.bdix_circleftp_enabled,
+            bdix_dhakaflix_enabled: self.state.bdix_dhakaflix_enabled,
+            bdix_probed: self.state.bdix_probed,
             streaming_enabled: self.state.streaming_enabled,
             tv_enabled: self.state.tv_enabled,
             addons_enabled: self.state.addons_enabled,
@@ -221,6 +324,9 @@ impl App {
                 .download_dir
                 .as_ref()
                 .map(|p| p.to_string_lossy().to_string()),
+            vlc_path: self.state.vlc_path.clone(),
+            mpv_path: self.state.mpv_path.clone(),
+            iina_path: self.state.iina_path.clone(),
         };
         crate::tui::config::save(&config);
     }
@@ -237,17 +343,19 @@ impl App {
         let Some(path) = crate::config::tv_path() else {
             return;
         };
-        if let Some(app_dir) = path.parent()
-            && std::fs::create_dir_all(app_dir).is_err()
-        {
-            return;
-        }
         let Ok(json) = serde_json::to_string_pretty(&self.state.tv_playlists) else {
             return;
         };
-        if let Err(error) = crate::cache::atomic_write_file(&path, json.as_bytes()) {
-            log::warn!("failed to save tv playlists: {error}");
-        }
+        tokio::task::spawn_blocking(move || {
+            if let Some(app_dir) = path.parent()
+                && std::fs::create_dir_all(app_dir).is_err()
+            {
+                return;
+            }
+            if let Err(error) = crate::cache::atomic_write_file(&path, json.as_bytes()) {
+                log::warn!("failed to save tv playlists: {error}");
+            }
+        });
     }
 
     fn load_tv_playlists_from_config(&mut self) {
@@ -291,9 +399,12 @@ impl App {
     }
 
     fn reload_tv_playlists(&self) {
+        let Ok(handle) = tokio::runtime::Handle::try_current() else {
+            return;
+        };
         let playlists = self.state.tv_playlists.clone();
         let sender = self.action_sender.clone();
-        tokio::spawn(async move {
+        handle.spawn(async move {
             let parser = crate::providers::tv::M3UParser::new();
             let mut all_channels = Vec::new();
             let mut failed = 0usize;
@@ -302,7 +413,8 @@ impl App {
                     Ok(channels) => all_channels.extend(channels),
                     Err(error) => {
                         failed += 1;
-                        log::warn!("tv playlist failed ({source}): {error}");
+                        let safe_source = crate::logging::sanitize_url(source);
+                        log::warn!("tv playlist failed ({safe_source}): {error}");
                     }
                 }
             }
@@ -328,20 +440,9 @@ impl App {
                     .send(Action::TvPlaylistRemove(index))
                     .ok();
             }
-            TvManagerRow::AddUrl => {
+            TvManagerRow::AddPlaylist => {
                 self.action_sender.send(Action::TvInputToggle(false)).ok();
             }
-            TvManagerRow::AddFile => {
-                self.action_sender.send(Action::TvInputToggle(true)).ok();
-            }
-            TvManagerRow::Reload => {
-                self.action_sender.send(Action::TvReloadPlaylists).ok();
-            }
-            TvManagerRow::Done => {
-                self.reset_transient_overlays();
-                self.state.tv_config_popup = false;
-            }
-            TvManagerRow::Header(_) => {}
         }
     }
 
@@ -364,7 +465,6 @@ impl App {
             AddonManagerRow::AddUrl => {
                 self.action_sender.send(Action::AddonInputToggle(true)).ok();
             }
-            AddonManagerRow::Header(_) => {}
         }
     }
 }

@@ -12,6 +12,7 @@ impl Default for M3UParser {
         Self::new()
     }
 }
+const MAX_PLAYLIST_BYTES: usize = 15 * 1024 * 1024;
 
 impl M3UParser {
     pub fn new() -> Self {
@@ -29,13 +30,13 @@ impl M3UParser {
         &self,
         url: &str,
     ) -> Result<Vec<Channel>, Box<dyn std::error::Error>> {
-        let trimmed = url.trim();
+        let trimmed = url.trim().trim_matches(|c| c == '"' || c == '\'').trim();
         let is_remote = crate::net::is_http_url(trimmed);
         let content = if is_remote {
             let file_path = self.cache_dir.join(cache_filename(trimmed));
             let mut needs_download = true;
 
-            if file_path.exists() {
+            if tokio::fs::try_exists(&file_path).await.unwrap_or(false) {
                 if let Ok(metadata) = tokio::fs::metadata(&file_path).await {
                     if let Ok(modified) = metadata.modified() {
                         if let Ok(duration) = SystemTime::now().duration_since(modified) {
@@ -48,14 +49,16 @@ impl M3UParser {
             }
 
             if needs_download {
-                let res = self
-                    .client
-                    .get(trimmed)
-                    .send()
-                    .await?
-                    .error_for_status()?
-                    .text()
-                    .await?;
+                let resp = self.client.get(trimmed).send().await?.error_for_status()?;
+                if let Some(cl) = resp.content_length() {
+                    if cl as usize > MAX_PLAYLIST_BYTES {
+                        return Err("remote playlist exceeds maximum 15MB size limit".into());
+                    }
+                }
+                let res = resp.text().await?;
+                if res.len() > MAX_PLAYLIST_BYTES {
+                    return Err("remote playlist exceeds maximum 15MB size limit".into());
+                }
                 let _ = crate::cache::atomic_write_file_async(&file_path, res.as_bytes()).await;
                 res
             } else {
@@ -74,7 +77,24 @@ impl M3UParser {
                 }
             }
         } else {
-            let path = std::path::PathBuf::from(trimmed);
+            let path = if let Some(stripped) = trimmed
+                .strip_prefix("~/")
+                .or_else(|| trimmed.strip_prefix("~\\"))
+            {
+                dirs::home_dir()
+                    .map(|h| h.join(stripped))
+                    .unwrap_or_else(|| std::path::PathBuf::from(trimmed))
+            } else if trimmed == "~" {
+                dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from(trimmed))
+            } else {
+                std::path::PathBuf::from(trimmed)
+            };
+            let metadata = tokio::fs::metadata(&path)
+                .await
+                .map_err(|error| format!("failed to read playlist file {}: {error}", trimmed))?;
+            if metadata.len() as usize > MAX_PLAYLIST_BYTES {
+                return Err("local playlist exceeds maximum 15MB size limit".into());
+            }
             tokio::fs::read_to_string(&path)
                 .await
                 .map_err(|error| format!("failed to read playlist file {}: {error}", trimmed))?
@@ -84,14 +104,16 @@ impl M3UParser {
         if is_remote && channels.is_empty() {
             let file_path = self.cache_dir.join(cache_filename(trimmed));
             let _ = tokio::fs::remove_file(&file_path).await;
-            let fresh = self
-                .client
-                .get(trimmed)
-                .send()
-                .await?
-                .error_for_status()?
-                .text()
-                .await?;
+            let resp = self.client.get(trimmed).send().await?.error_for_status()?;
+            if let Some(cl) = resp.content_length() {
+                if cl as usize > MAX_PLAYLIST_BYTES {
+                    return Err("remote playlist exceeds maximum 15MB size limit".into());
+                }
+            }
+            let fresh = resp.text().await?;
+            if fresh.len() > MAX_PLAYLIST_BYTES {
+                return Err("remote playlist exceeds maximum 15MB size limit".into());
+            }
             let fresh_channels = self.parse_m3u(&fresh);
             if fresh_channels.is_empty() {
                 return Ok(fresh_channels);
@@ -231,5 +253,25 @@ http://example.com/movie.m3u8
         assert_eq!(channels[0].name, "CNN, The Worldwide News Leader");
         assert_eq!(channels[0].group, "News, International");
         assert_eq!(channels[1].name, "Movie Channel, HD (US), 24/7");
+    }
+    #[tokio::test]
+    async fn test_load_channels_local_file_size_limit() {
+        let temp_dir = std::env::temp_dir().join(format!("mb_test_m3u_{}", std::process::id()));
+        std::fs::create_dir_all(&temp_dir).unwrap();
+        let file_path = temp_dir.join("oversized.m3u");
+        let file = std::fs::File::create(&file_path).unwrap();
+        file.set_len((MAX_PLAYLIST_BYTES + 1) as u64).unwrap();
+
+        let parser = M3UParser::new();
+        let result = parser.fetch_playlist(file_path.to_str().unwrap()).await;
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("maximum 15MB size limit")
+        );
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
     }
 }

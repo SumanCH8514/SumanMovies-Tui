@@ -1,6 +1,6 @@
 [package]
 name = "sumanmovies-tui"
-version = "1.0.3"
+version = "1.0.4"
 edition = "2024"
 authors = ["Suman <https://github.com/SumanCH8514>"]
 description = "SumanMovies - Terminal interface to find, download, and stream movies, TV shows, and 4K releases using local media players."
@@ -14,6 +14,7 @@ rust-version = "1.90.0"
 exclude = [
     "docs/",
     "Formula/",
+    "bucket/",
     ".github/",
     ".githooks/",
     ".cargo/",
@@ -37,15 +38,16 @@ image = { version = "0.25.10", default-features = false, features = ["jpeg", "pn
 lru = "0.18.1"
 md-5 = "0.11.0"
 rand = "0.10.2"
-ratatui = "0.30.2"
-ratatui-image = { version = "11.0.6", default-features = false, features = ["crossterm"] }
+ratatui = { version = "0.30.2", default-features = false, features = ["std", "layout-cache"] }
+ratatui-crossterm = { version = "0.1.2", default-features = false, features = ["crossterm_0_29"] }
+ratatui-image = { version = "11.0.6", default-features = false }
 rustls = { version = "0.23.42", default-features = false, features = ["ring", "std"] }
 scraper = "0.27.0"
 semver = "1.0.28"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
 thiserror = "2.0.18"
-tokio = { version = "1.52.3", features = ["rt-multi-thread", "macros", "sync", "time", "fs", "io-util", "signal", "process"] }
+tokio = { version = "1.52.3", features = ["rt-multi-thread", "macros", "sync", "time", "fs", "io-util", "signal", "process", "net"] }
 url = "2.5.8"
 unicode-segmentation = "1.12.0"
 unicode-width = "0.2.0"
@@ -54,7 +56,7 @@ percent-encoding = "2.3.2"
 log = "0.4.33"
 flexi_logger = "0.31.10"
 hickory-resolver = { version = "0.25.2", default-features = false, features = ["system-config", "tokio"] }
-reqwest = { version = "0.12.12", default-features = false, features = ["json", "rustls-tls-webpki-roots"] }
+reqwest = { version = "0.12.12", default-features = false, features = ["json", "rustls-tls-webpki-roots", "stream"] }
 sha2 = "0.10.8"
 flate2 = "1.0.35"
 tar = "0.4.44"
@@ -87,3 +89,6 @@ strip = true
 
 [target.'cfg(not(target_os = "android"))'.dependencies]
 mimalloc = "0.1.52"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

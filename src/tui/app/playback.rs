@@ -25,7 +25,7 @@ impl App {
             return PlaybackResolution::NoPlayersInstalled;
         }
 
-        let preferred = std::env::var("MOVIEBOX_PLAYER")
+        let preferred = std::env::var(crate::player::ENV_MOVIEBOX_PLAYER)
             .ok()
             .and_then(|value| crate::tui::state::PlayerKind::parse(&value))
             .or_else(|| {
@@ -88,7 +88,6 @@ impl App {
             } => {
                 self.state.is_resolving_playback = false;
                 self.state.pending_playback_source = None;
-                let provider_name = source.provider.label();
                 let chosen_name = chosen.label();
                 let body = if !compatible_alternatives.is_empty() {
                     let alternatives_str = compatible_alternatives
@@ -96,29 +95,16 @@ impl App {
                         .map(|k| k.label())
                         .collect::<Vec<_>>()
                         .join(" or ");
-                    if source.provider == ProviderKind::FourKHdHub {
-                        format!(
-                            "{} cannot play this {} stream due to required authentication headers. Set {} as default in /settings.",
-                            chosen_name, provider_name, alternatives_str
-                        )
-                    } else {
-                        format!(
-                            "{} cannot play this {} stream due to required authentication headers. Set {} as default in /settings, or press Ctrl+P for 4KHDHub.",
-                            chosen_name, provider_name, alternatives_str
-                        )
-                    }
+                    format!(
+                        "{chosen_name} lacks header support. Switch to {alternatives_str} in /settings."
+                    )
                 } else {
-                    if source.provider == ProviderKind::FourKHdHub {
-                        format!(
-                            "{} cannot play this {} stream due to required authentication headers. Install a compatible player (mpv).",
-                            chosen_name, provider_name
-                        )
-                    } else {
-                        format!(
-                            "{} cannot play this {} stream due to required authentication headers. Install a compatible player (mpv) or press Ctrl+P for 4KHDHub.",
-                            chosen_name, provider_name
-                        )
-                    }
+                    let supported_str = crate::player::header_capable_players()
+                        .iter()
+                        .map(|k| k.label())
+                        .collect::<Vec<_>>()
+                        .join(" or ");
+                    format!("{chosen_name} lacks header support. Install {supported_str}.")
                 };
                 self.state.notify(
                     NotificationKind::Warning,
@@ -126,38 +112,47 @@ impl App {
                     body,
                 );
             }
-            PlaybackResolution::NoCompatiblePlayer { available } => {
+            PlaybackResolution::NoCompatiblePlayer { available: _ } => {
                 self.state.is_resolving_playback = false;
                 self.state.pending_playback_source = None;
-                let players_str = available
+                let supported_str = crate::player::header_capable_players()
                     .iter()
                     .map(|k| k.label())
                     .collect::<Vec<_>>()
-                    .join(", ");
-                let provider_name = source.provider.label();
-                let action_hint = if source.provider == ProviderKind::FourKHdHub {
-                    "Install mpv."
-                } else {
-                    "Install mpv or press Ctrl+P for 4KHDHub."
-                };
+                    .join(" or ");
                 self.state.notify(
                     NotificationKind::Error,
                     "Incompatible Media Player",
-                    format!(
-                        "None of your detected players ({players_str}) support authentication headers required by {provider_name} streams. {action_hint}"
-                    ),
+                    format!("Headers unsupported. Install {supported_str}."),
                 );
             }
             PlaybackResolution::NoPlayersInstalled => {
                 self.state.is_resolving_playback = false;
                 self.state.pending_playback_source = None;
-                let message = if crate::updater::artifact::is_termux_environment() {
-                    "Install player intent tools: 'pkg install -y termux-tools termux-am' and ensure an Android player (VLC, MX Player, or Just Player) is installed."
-                } else {
-                    "Install mpv, IINA, or VLC to enable video playback."
+                let custom_path = match self.state.default_player.as_deref() {
+                    Some("vlc") => self.state.vlc_path.as_deref(),
+                    Some("mpv") => self.state.mpv_path.as_deref(),
+                    Some("iina") => self.state.iina_path.as_deref(),
+                    _ => None,
                 };
-                self.state
-                    .notify(NotificationKind::Error, "No Media Player Found", message);
+                let (title, message) = if let Some(bad_path) = custom_path {
+                    (
+                        "Invalid Player Path",
+                        format!("Player path not found: {bad_path}"),
+                    )
+                } else if crate::updater::artifact::is_termux_environment() {
+                    (
+                        "No Media Player Found",
+                        "Run 'pkg install termux-tools' and install an Android video player."
+                            .to_string(),
+                    )
+                } else {
+                    (
+                        "No Media Player Found",
+                        "Install mpv, IINA, or VLC to enable video playback.".to_string(),
+                    )
+                };
+                self.state.notify(NotificationKind::Error, title, message);
             }
         }
     }
@@ -237,6 +232,7 @@ impl App {
         link: String,
         subtitle: Option<String>,
         headers: Vec<(String, String)>,
+        max_height: Option<u64>,
     ) {
         if !crate::tui::text::is_http_url(&link) {
             self.state.is_playing = false;
@@ -244,7 +240,7 @@ impl App {
             self.state.notify(
                 NotificationKind::Error,
                 "Unsupported stream",
-                "Only HTTP and HTTPS stream protocols are supported for playback.",
+                "Only HTTP/HTTPS streams supported.",
             );
             return;
         }
@@ -292,18 +288,19 @@ impl App {
                     false,
                 );
                 if let Ok(serialized) = serde_json::to_string(&initial_state) {
-                    if let Err(e) = std::fs::write(&state_path, serialized) {
-                        log::warn!(
-                            "failed to write initial playback state to {}: {e}",
-                            crate::logging::sanitize_path(&state_path)
-                        );
-                    }
+                    tokio::task::spawn_blocking(move || {
+                        if let Err(e) = std::fs::write(&state_path, serialized) {
+                            log::warn!(
+                                "failed to write initial playback state to {}: {e}",
+                                crate::logging::sanitize_path(&state_path)
+                            );
+                        }
+                    });
                 }
             }
         }
 
         let sender = self.action_sender.clone();
-        let media_title = history_item.as_ref().map(|item| item.display_playback_title());
         let cell_size = self
             .state
             .image_picker
@@ -319,28 +316,45 @@ impl App {
                 (rows as u32 * cell_height).clamp(180, 1080),
             )
         });
+        let preferred_sub_name = history_item.as_ref().map(|item| {
+            if item.season > 0 || item.episode > 0 {
+                format!(
+                    "{} - S{:02}E{:02}",
+                    item.title,
+                    item.season.max(1),
+                    item.episode.max(1)
+                )
+            } else {
+                item.title.clone()
+            }
+        });
+
         tokio::spawn(async move {
             let mut local_subtitle = subtitle.clone();
             let mut temporary_subtitle = None;
             if matches!(
                 kind,
-                crate::tui::state::PlayerKind::Vlc | crate::tui::state::PlayerKind::Iina
-            ) && let Some(url) = subtitle
+                crate::tui::state::PlayerKind::Vlc
+                    | crate::tui::state::PlayerKind::Iina
+                    | crate::tui::state::PlayerKind::AndroidIntent
+            ) && let Some(ref url) = subtitle
             {
                 let download_res = crate::service::MovieBoxService::new()
-                    .download_subtitle_file(&url, &headers)
+                    .download_subtitle_file(url, &headers, preferred_sub_name.as_deref())
                     .await;
                 match download_res {
                     Ok(path) => {
                         local_subtitle = Some(path.to_string_lossy().into_owned());
-                        temporary_subtitle = Some(path);
+                        if !matches!(kind, crate::tui::state::PlayerKind::AndroidIntent) {
+                            temporary_subtitle = Some(path);
+                        }
                     }
                     Err(_) => {
                         local_subtitle = None;
                         log::warn!(
                             "subtitle download failed for {:?} player, playing without subtitles (url was {})",
                             kind,
-                            crate::logging::sanitize_url(&url)
+                            crate::logging::sanitize_url(url)
                         );
                         let _ = sender.send(Action::SetStatus(
                             "External subtitle unavailable; playing stream directly.".to_string(),
@@ -353,48 +367,176 @@ impl App {
                 .as_ref()
                 .map(|(p, s, se, ep)| (p.as_str(), s.as_str(), *se, *ep));
 
-            let mut command = crate::tui::player::command(
+            let needs_proxy = matches!(
                 kind,
-                &link,
-                local_subtitle.as_deref(),
+                crate::tui::state::PlayerKind::Vlc | crate::tui::state::PlayerKind::AndroidIntent
+            ) && headers.iter().any(|(name, _)| {
+                !name.eq_ignore_ascii_case("referer") && !name.eq_ignore_ascii_case("user-agent")
+            });
+
+            let (effective_link, effective_subtitle) = if needs_proxy {
+                match crate::proxy::spawn_sidecar(&link, &headers, subtitle.as_deref()) {
+                    Ok(local_url) => {
+                        let sub_url =
+                            if matches!(kind, crate::tui::state::PlayerKind::AndroidIntent) {
+                                if local_subtitle.is_some() {
+                                    local_subtitle.clone()
+                                } else if let Some(remote_sub) = &subtitle {
+                                    if let Some(authority) = local_url
+                                        .strip_prefix("http://")
+                                        .and_then(|s| s.split('/').next())
+                                    {
+                                        let encoded = percent_encoding::utf8_percent_encode(
+                                            remote_sub,
+                                            percent_encoding::NON_ALPHANUMERIC,
+                                        );
+                                        Some(format!("http://{authority}/sub/{encoded}"))
+                                    } else {
+                                        None
+                                    }
+                                } else {
+                                    None
+                                }
+                            } else {
+                                local_subtitle.clone()
+                            };
+                        (local_url, sub_url)
+                    }
+                    Err(err) => {
+                        log::error!("Failed to spawn stream proxy sidecar: {err}");
+                        let _ = sender.send(Action::PlayerExited);
+                        let _ = sender.send(Action::SetStatus(format!(
+                            "Stream proxy initialization failed: {err}"
+                        )));
+                        return;
+                    }
+                }
+            } else {
+                (link.clone(), local_subtitle.clone())
+            };
+
+            let spawn_configured_command =
+                |mut cmd: std::process::Command, capture_stdout: bool| {
+                    cmd.stdin(std::process::Stdio::null());
+                    if capture_stdout {
+                        cmd.stdout(std::process::Stdio::piped());
+                    } else {
+                        cmd.stdout(std::process::Stdio::null());
+                    }
+                    cmd.stderr(std::process::Stdio::piped());
+                    #[cfg(unix)]
+                    {
+                        use std::os::unix::process::CommandExt;
+                        cmd.process_group(0);
+                    }
+                    #[cfg(windows)]
+                    {
+                        use std::os::windows::process::CommandExt;
+                        cmd.creation_flags(0x0000_0200);
+                    }
+                    cmd.spawn()
+                };
+            let is_android = matches!(kind, crate::tui::state::PlayerKind::AndroidIntent);
+            let command = crate::tui::player::command(
+                kind,
+                &effective_link,
+                effective_subtitle.as_deref(),
                 &headers,
                 window,
                 resume_seconds,
                 tracker_ref,
-                media_title.as_deref(),
+                max_height,
             );
-            command.stdin(std::process::Stdio::null());
-            command.stdout(std::process::Stdio::null());
-            command.stderr(std::process::Stdio::piped());
-
-            #[cfg(unix)]
+            if kind == crate::tui::state::PlayerKind::Iina
+                && crate::player::iina_is_app_fallback()
+                && (!headers.is_empty() || subtitle.is_some())
             {
-                use std::os::unix::process::CommandExt;
-                command.process_group(0);
+                let _ = sender.send(Action::SetStatus(
+                    "IINA opened without iina-cli: headers and subtitles unavailable.".to_string(),
+                ));
             }
 
-            match command.spawn() {
+            let spawn_result = if is_android {
+                let candidates = crate::player::android_intent_commands(
+                    &effective_link,
+                    effective_subtitle.as_deref(),
+                    &headers,
+                );
+                let mut spawned = None;
+                let mut last_err = None;
+                for (opener, cmd) in candidates {
+                    match spawn_configured_command(cmd, true) {
+                        Ok(child) => {
+                            log::info!("spawned android opener: {opener:?}");
+                            spawned = Some(child);
+                            break;
+                        }
+                        Err(err) => {
+                            log::warn!("failed to spawn opener {opener:?}: {err}");
+                            last_err = Some(err);
+                        }
+                    }
+                }
+                match spawned {
+                    Some(child) => Ok(child),
+                    None => Err(last_err.unwrap_or_else(|| {
+                        std::io::Error::new(
+                            std::io::ErrorKind::NotFound,
+                            "No Android intent tools found",
+                        )
+                    })),
+                }
+            } else {
+                log::info!("launching player: {kind:?}");
+                spawn_configured_command(command, false)
+            };
+
+            match spawn_result {
                 Ok(mut child) => {
                     let start_time = std::time::Instant::now();
                     let stderr_stream = child.stderr.take();
-
+                    let stdout_stream = child.stdout.take();
+                    let fallback_link = effective_link.clone();
+                    let fallback_sub = effective_subtitle.clone();
+                    let fallback_headers = headers.clone();
                     tokio::task::spawn_blocking(move || {
                         let mut error_output = String::new();
+                        let (stderr_tx, stderr_rx) = std::sync::mpsc::channel::<String>();
                         if let Some(mut stderr) = stderr_stream {
+                            std::thread::spawn(move || {
+                                let mut buf = String::new();
+                                use std::io::Read;
+                                let _ = stderr.read_to_string(&mut buf);
+                                let _ = stderr_tx.send(buf);
+                            });
+                        } else {
+                            drop(stderr_tx);
+                        }
+
+                        if let Some(mut stdout) = stdout_stream {
                             use std::io::Read;
-                            let _ = stderr.read_to_string(&mut error_output);
+                            let _ = stdout.read_to_string(&mut error_output);
                         }
 
                         let result = child.wait();
+                        let stderr_str = stderr_rx
+                            .recv_timeout(std::time::Duration::from_secs(2))
+                            .unwrap_or_default();
+                        if !stderr_str.is_empty() {
+                            if !error_output.is_empty() {
+                                error_output.push('\n');
+                            }
+                            error_output.push_str(&stderr_str);
+                        }
 
                         match result {
                             Ok(status) if status.success() => {
+                                log::info!(
+                                    "player {kind:?} finished cleanly (duration: {}s)",
+                                    start_time.elapsed().as_secs()
+                                );
                                 let has_tracker = tracker_opts.is_some()
-                                    && matches!(
-                                        kind,
-                                        crate::tui::state::PlayerKind::Mpv
-                                            | crate::tui::state::PlayerKind::Iina
-                                    );
+                                    && matches!(kind, crate::tui::state::PlayerKind::Mpv);
 
                                 if has_tracker {
                                     sender.send(Action::ReconcileHistory).ok();
@@ -414,7 +556,41 @@ impl App {
                                         });
                                         sender
                                             .send(Action::UpdateProgress {
-                                                item,
+                                                item: Box::new(item),
+                                                progress,
+                                                duration,
+                                                completed,
+                                            })
+                                            .ok();
+                                    }
+                                }
+                            }
+                            Ok(status)
+                                if is_vlc_normal_exit(kind, status.code(), error_output.trim())
+                                    || is_user_quit(&status) =>
+                            {
+                                log::info!(
+                                    "player {:?} exited cleanly (code: {:?})",
+                                    kind,
+                                    status.code()
+                                );
+                                if let Some(item) = history_item {
+                                    let elapsed = start_time.elapsed().as_secs();
+                                    if elapsed >= 30 {
+                                        let duration = item.duration_seconds;
+                                        let start_pos = resume_seconds.unwrap_or(0);
+                                        let total_pos = start_pos.saturating_add(elapsed);
+                                        let progress = if let Some(d) = duration {
+                                            total_pos.min(d)
+                                        } else {
+                                            total_pos
+                                        };
+                                        let completed = duration.is_some_and(|d| {
+                                            d > 0 && progress >= (d as f64 * 0.90) as u64
+                                        });
+                                        sender
+                                            .send(Action::UpdateProgress {
+                                                item: Box::new(item),
                                                 progress,
                                                 duration,
                                                 completed,
@@ -424,8 +600,68 @@ impl App {
                                 }
                             }
                             Ok(status) => {
+                                let is_termux_socket_err = is_android
+                                    && (error_output.contains("am.sock")
+                                        || error_output.contains("Could not connect to socket")
+                                        || error_output.contains("termux-am"));
+
+                                if is_termux_socket_err {
+                                    let secondary =
+                                        crate::player::android_openers()
+                                            .iter()
+                                            .find(|op| {
+                                                matches!(
+                                                op,
+                                                crate::player::AndroidOpener::TermuxOpen(_)
+                                                    | crate::player::AndroidOpener::TermuxOpenUrl(_)
+                                            )
+                                            })
+                                            .cloned();
+                                    if let Some(op) = secondary {
+                                        log::warn!(
+                                            "primary opener failed socket connection, retrying with fallback opener {op:?}"
+                                        );
+                                        let mut fallback_cmd =
+                                            crate::player::android_intent_command_for_opener(
+                                                &op,
+                                                &fallback_link,
+                                                fallback_sub.as_deref(),
+                                                &fallback_headers,
+                                            );
+                                        fallback_cmd.stdin(std::process::Stdio::null());
+                                        fallback_cmd.stdout(std::process::Stdio::piped());
+                                        fallback_cmd.stderr(std::process::Stdio::piped());
+                                        #[cfg(unix)]
+                                        {
+                                            use std::os::unix::process::CommandExt;
+                                            fallback_cmd.process_group(0);
+                                        }
+                                        if let Ok(mut retry_child) = fallback_cmd.spawn() {
+                                            if let Ok(retry_status) = retry_child.wait() {
+                                                if retry_status.success() {
+                                                    log::info!(
+                                                        "fallback android opener {op:?} succeeded"
+                                                    );
+                                                    if let Some(path) = temporary_subtitle {
+                                                        let _ = std::fs::remove_file(path);
+                                                    }
+                                                    sender.send(Action::PlayerExited).ok();
+                                                    return;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                #[cfg(unix)]
+                                let signal = {
+                                    use std::os::unix::process::ExitStatusExt;
+                                    status.signal()
+                                };
+                                #[cfg(not(unix))]
+                                let signal = None;
                                 let clean_error =
-                                    clean_player_error(status.code(), error_output.trim());
+                                    clean_player_error(status.code(), signal, error_output.trim());
                                 sender
                                     .send(Action::PlayerCrashed(status.code(), clean_error))
                                     .ok();
@@ -467,14 +703,47 @@ impl App {
         });
     }
 }
+fn is_vlc_normal_exit(
+    kind: crate::tui::state::PlayerKind,
+    code: Option<i32>,
+    stderr: &str,
+) -> bool {
+    matches!(kind, crate::tui::state::PlayerKind::Vlc)
+        && (code == Some(1) || code == Some(0))
+        && stderr.is_empty()
+}
 
-fn clean_player_error(code: Option<i32>, stderr: &str) -> String {
-    if !stderr.is_empty() {
-        return stderr.to_string();
+fn is_user_quit(status: &std::process::ExitStatus) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::ExitStatusExt;
+        status.signal() == Some(15)
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = status;
+        false
+    }
+}
+
+fn clean_player_error(code: Option<i32>, signal: Option<i32>, stderr: &str) -> String {
+    let trimmed = stderr.trim();
+    if !trimmed.is_empty() {
+        let bounded = if trimmed.len() > 512 {
+            &trimmed[..512]
+        } else {
+            trimmed
+        };
+        return bounded.to_string();
     }
 
-    code.map(|value| format!("Player exited with status code {value}."))
-        .unwrap_or_else(|| "Player exited unsuccessfully without error output.".to_string())
+    if let Some(value) = code {
+        format!("Player exited with status code {value}.")
+    } else if let Some(sig) = signal {
+        format!("Player terminated by signal {sig}.")
+    } else {
+        "Player exited unsuccessfully without error output.".to_string()
+    }
 }
 
 impl App {
@@ -484,8 +753,8 @@ impl App {
                 if self.state.is_playing {
                     self.state.notify(
                         NotificationKind::Warning,
-                        "Playback already active",
-                        "Stop the current player before starting another.",
+                        "Playback active",
+                        "Player is already running.",
                     );
                     return None;
                 }
@@ -498,7 +767,9 @@ impl App {
                 self.state.is_resolving_playback = true;
                 if self.current_subject_provider() == ProviderKind::FourKHdHub
                     || self.current_subject_provider() == ProviderKind::Addons
+                    || self.current_subject_provider() == ProviderKind::Dramachi
                     || self.current_subject_provider().is_bdix()
+                    || self.current_subject_provider() == ProviderKind::YouTube
                 {
                     if let Some(release) = self.get_selected_release() {
                         let Some(first_mirror) = release.mirrors.first().cloned() else {
@@ -513,23 +784,22 @@ impl App {
                         self.state.notify(
                             NotificationKind::Info,
                             "Preparing playback",
-                            format!(
-                                "Resolving {} from {}...",
-                                first_mirror.label,
-                                release.provider.label()
-                            ),
+                            format!("Resolving {}...", first_mirror.label),
                         );
+                        let max_height = Some(release.resolution_u64()).filter(|&h| h > 0);
                         let direct_source = crate::providers::models::PlaybackSource {
                             provider: release.provider,
                             url: first_mirror.resolver_url.clone(),
                             headers: first_mirror.headers.clone(),
                             subtitle: None,
                             source_label: first_mirror.label.clone(),
+                            max_height,
                         };
-
                         let client = if release.provider == ProviderKind::Addons
+                            || release.provider == ProviderKind::Dramachi
                             || release.provider == ProviderKind::BdixCircleFtp
                             || release.provider == ProviderKind::BdixDhakaFlix
+                            || release.provider == ProviderKind::YouTube
                         {
                             self.dispatch_playback_or_notify(direct_source);
                             return None;
@@ -551,7 +821,10 @@ impl App {
                         tokio::spawn(async move {
                             let result = tokio::time::timeout(
                                 std::time::Duration::from_secs(18),
-                                client.resolve_release(&release),
+                                client.resolve_release(
+                                    &release,
+                                    crate::providers::ResolutionIntent::Playback,
+                                ),
                             )
                             .await;
                             match result {
@@ -560,15 +833,20 @@ impl App {
                                 }
                                 Ok(Err(error)) => {
                                     log::error!("4KHDHub resolve failed: {error}");
+                                    sender.send(Action::PlayerExited).ok();
                                     sender
-                                        .send(Action::SetStatus(format!("Error: 4KHDHub: {error}")))
+                                        .send(Action::SetStatus(format!(
+                                            "Error: 4KHDHub: {}",
+                                            error.user_message()
+                                        )))
                                         .ok();
                                 }
                                 Err(_) => {
                                     log::error!("4KHDHub resolve timed out");
+                                    sender.send(Action::PlayerExited).ok();
                                     sender
                                         .send(Action::SetStatus(
-                                            "Error: 4KHDHub stream resolution timed out. Select another release (e.g. 1080p) or press Ctrl+P for MovieBox.".to_string(),
+                                            "Error: 4KHDHub: Timed out.".to_string(),
                                         ))
                                         .ok();
                                 }
@@ -591,19 +869,16 @@ impl App {
                         );
                         return None;
                     };
+                    let max_height = Some(release.resolution_u64()).filter(|&h| h > 0);
                     let direct_source = crate::providers::models::PlaybackSource {
                         provider: release.provider,
                         url: first_mirror.resolver_url.clone(),
                         headers: first_mirror.headers.clone(),
                         subtitle: None,
                         source_label: first_mirror.label.clone(),
+                        max_height,
                     };
-                    let subject_id = self
-                        .state
-                        .selected_details
-                        .as_ref()
-                        .map(|d| d.id.value.clone())
-                        .unwrap_or_default();
+                    let subject_id = self.state.active_subject_id.clone().unwrap_or_default();
                     let resource_id = self.get_selected_resource_id();
 
                     if let Some(rid) = resource_id {
@@ -629,6 +904,8 @@ impl App {
                                 ids
                             })
                             .unwrap_or_default();
+                        let season = self.state.selected_season;
+                        let episode = self.state.selected_episode;
                         tokio::spawn(async move {
                             let cached = tokio::task::spawn_blocking({
                                 let subject_id = subject_id.clone();
@@ -646,7 +923,13 @@ impl App {
                             }
                             let result = tokio::time::timeout(
                                 std::time::Duration::from_secs(15),
-                                service.get_ext_captions(&subject_id, &rid, &sibling_ids),
+                                service.get_ext_captions(
+                                    &subject_id,
+                                    &rid,
+                                    &sibling_ids,
+                                    season,
+                                    episode,
+                                ),
                             )
                             .await;
                             match result {
@@ -703,7 +986,18 @@ impl App {
                     if let Some(source) = self.state.pending_playback_source.take() {
                         self.dispatch_playback_or_notify(source);
                     } else {
-                        self.action_sender.send(Action::LaunchMpv(link, None)).ok();
+                        let source = crate::providers::models::PlaybackSource {
+                            provider: self.state.active_provider,
+                            url: link,
+                            headers: vec![(
+                                "User-Agent".to_string(),
+                                self.service.client.user_agent().to_string(),
+                            )],
+                            subtitle: None,
+                            source_label: "Direct".to_string(),
+                            max_height: None,
+                        };
+                        self.dispatch_playback_or_notify(source);
                     }
                 }
             }
@@ -723,59 +1017,7 @@ impl App {
                     self.action_sender.send(Action::DownloadStream(None)).ok();
                 }
             }
-            Action::LaunchMpv(link, subtitle_url) => {
-                if self.state.is_playing {
-                    self.state.notify(
-                        NotificationKind::Warning,
-                        "Playback already active",
-                        "Stop the current player before starting another.",
-                    );
-                    return None;
-                }
-                if self.state.last_playback_launch.elapsed().as_millis() < 500 {
-                    return None;
-                }
-                self.state.last_playback_launch = std::time::Instant::now();
-                self.state.is_resolving_playback = false;
-                let player = self.state.available_players.first().cloned();
-                match player {
-                    None => {
-                        let message = if crate::updater::artifact::is_termux_environment() {
-                            "Install player intent tools: 'pkg install -y termux-tools termux-am' and ensure an Android player (VLC, MX Player, or Just Player) is installed."
-                        } else {
-                            "Install mpv, IINA, or VLC to enable playback."
-                        };
-                        self.state
-                            .notify(NotificationKind::Error, "Player Unavailable", message);
-                    }
-                    Some(kind) => {
-                        self.state.notify(
-                            NotificationKind::Info,
-                            "Opening Player",
-                            format!("Launching {}.", kind.label()),
-                        );
-                        self.action_sender
-                            .send(Action::LaunchPlayer(kind, link, subtitle_url))
-                            .ok();
-                    }
-                }
-            }
 
-            Action::LaunchPlayer(kind, link, sub) => {
-                self.state.is_resolving_playback = false;
-                self.state.player_picker_popup = false;
-                self.state.last_playback_launch = std::time::Instant::now();
-                if let Some(mut source) = self.state.pending_playback_source.take() {
-                    source.subtitle = sub;
-                    self.launch_player(kind, source.url, source.subtitle, source.headers);
-                } else {
-                    let headers = vec![(
-                        "User-Agent".to_string(),
-                        self.service.client.user_agent().to_string(),
-                    )];
-                    self.launch_player(kind, link, sub, headers);
-                }
-            }
             Action::LaunchPlayback(kind, source) => {
                 self.state.is_resolving_playback = false;
                 self.state.player_picker_popup = false;
@@ -784,21 +1026,23 @@ impl App {
                     self.state.notify(
                         NotificationKind::Error,
                         format!("{} Incompatible", kind.label()),
-                        format!(
-                            "{} cannot play this {} stream because it requires authentication headers.",
-                            kind.label(),
-                            source.provider.label(),
-                        ),
+                        format!("{} lacks stream header support.", kind.label()),
                     );
                     return None;
                 }
-                self.launch_player(kind, source.url, source.subtitle, source.headers);
+                self.launch_player(
+                    kind,
+                    source.url,
+                    source.subtitle,
+                    source.headers,
+                    source.max_height,
+                );
             }
             Action::DispatchPlayback(source) => {
                 self.dispatch_playback_or_notify(source);
             }
             Action::MarkWatched(item) => {
-                self.state.history.mark_watched(item);
+                self.state.history.mark_watched(*item);
                 let history = self.state.history.clone();
                 tokio::task::spawn_blocking(move || history.save());
             }
@@ -810,7 +1054,7 @@ impl App {
             } => {
                 self.state
                     .history
-                    .update_progress(item, progress, duration, completed);
+                    .update_progress(*item, progress, duration, completed);
             }
             Action::ReconcileHistory => {
                 self.state.history.reconcile_pending_playback_states();
@@ -829,27 +1073,76 @@ impl App {
                     .unwrap_or_else(|| "unknown".into());
                 log::error!("player crashed (code {code_str}): {error_msg}");
 
-                let is_termux_perm_crash = crate::updater::artifact::is_termux_environment()
+                let is_termux = crate::updater::artifact::is_termux_environment();
+                let error_lower = error_msg.to_ascii_lowercase();
+                let is_missing_activity = is_termux
+                    && (error_lower.contains("no activity found")
+                        || error_lower.contains("activitynotfoundexception"));
+                let is_termux_tool_crash = is_termux
                     && (code == Some(126)
                         || error_msg.contains("Permission denied")
                         || error_msg.contains("/system/bin/am")
-                        || error_msg.contains("termux-open"));
+                        || error_msg.contains("termux-open")
+                        || error_msg.contains("termux-am")
+                        || error_msg.contains("am.sock")
+                        || error_msg.contains("Could not connect to socket")
+                        || (code == Some(1)
+                            && (error_msg.is_empty()
+                                || error_msg.contains("status code 1")
+                                || error_msg.contains("broadcast"))));
 
-                let (title, message) = if is_termux_perm_crash {
+                let is_headless_mpv = is_termux
+                    && (error_lower.contains("failed to open display")
+                        || error_lower.contains("video_out")
+                        || error_lower.contains("vo/gpu")
+                        || error_lower.contains("vo=gpu"));
+                let (title, message) = if is_missing_activity {
+                    ("No Player", "Install a video player.".to_string())
+                } else if is_headless_mpv {
                     (
-                        "Termux Player Setup Required",
-                        "Install player intent tools: 'pkg install -y termux-tools termux-am' and ensure an Android player (VLC, MX Player, or Just Player) is installed.".to_string(),
+                        "CLI mpv",
+                        "Switch to Android Player in /settings.".to_string(),
+                    )
+                } else if is_termux_tool_crash {
+                    (
+                        "Termux Setup",
+                        "Run 'pkg install termux-tools'.".to_string(),
                     )
                 } else {
-                    let display_err = if error_msg.is_empty() {
-                        "No error output provided by player.".to_string()
-                    } else {
-                        error_msg.lines().last().unwrap_or(&error_msg).to_string()
-                    };
-                    (
-                        "Player Error",
-                        format!("Crash code: {code_str}\n{display_err}"),
-                    )
+                    match code {
+                        Some(2) => (
+                            "Stream Dead",
+                            if !error_msg.is_empty() && !error_msg.starts_with("Player exited") {
+                                error_msg
+                            } else {
+                                "Link expired or unreachable.".to_string()
+                            },
+                        ),
+                        Some(1) => (
+                            "Player Error",
+                            if error_msg.is_empty() || error_msg.starts_with("Player exited") {
+                                "Check player configuration.".to_string()
+                            } else {
+                                error_msg
+                            },
+                        ),
+                        Some(c) => (
+                            "Playback Failed",
+                            if !error_msg.is_empty() && !error_msg.starts_with("Player exited") {
+                                error_msg
+                            } else {
+                                format!("Player exited ({c}).")
+                            },
+                        ),
+                        None => (
+                            "Playback Failed",
+                            if !error_msg.is_empty() && !error_msg.starts_with("Player exited") {
+                                error_msg
+                            } else {
+                                "Player terminated.".to_string()
+                            },
+                        ),
+                    }
                 };
 
                 self.state.set_status(format!("{title}: {message}"), 300);
@@ -869,7 +1162,7 @@ mod tests {
     #[test]
     fn failed_player_with_stderr_keeps_diagnostic() {
         assert_eq!(
-            clean_player_error(Some(1), "VLC failed to open the stream"),
+            clean_player_error(Some(1), None, "VLC failed to open the stream"),
             "VLC failed to open the stream"
         );
     }
@@ -877,13 +1170,42 @@ mod tests {
     #[test]
     fn failed_player_without_stderr_still_reports_failure() {
         assert_eq!(
-            clean_player_error(Some(1), ""),
+            clean_player_error(Some(1), None, ""),
             "Player exited with status code 1."
         );
         assert_eq!(
-            clean_player_error(None, ""),
+            clean_player_error(None, Some(9), ""),
+            "Player terminated by signal 9."
+        );
+        assert_eq!(
+            clean_player_error(None, None, ""),
             "Player exited unsuccessfully without error output."
         );
+    }
+    #[test]
+    fn player_exit_code_interpretation() {
+        let code = Some(2);
+        let msg = match code {
+            Some(2) => ("Stream Dead", "Link expired or unreachable."),
+            Some(1) => ("Player Error", "Check player configuration."),
+            _ => ("Playback Failed", "Player exited."),
+        };
+        assert_eq!(msg.0, "Stream Dead");
+        assert_eq!(msg.1, "Link expired or unreachable.");
+    }
+
+    #[test]
+    fn vlc_exit_code_1_empty_stderr_is_normal_exit() {
+        use crate::tui::state::PlayerKind;
+        assert!(super::is_vlc_normal_exit(PlayerKind::Vlc, Some(1), ""));
+        assert!(super::is_vlc_normal_exit(PlayerKind::Vlc, Some(0), ""));
+        assert!(!super::is_vlc_normal_exit(
+            PlayerKind::Vlc,
+            Some(1),
+            "Error opening stream"
+        ));
+        assert!(!super::is_vlc_normal_exit(PlayerKind::Mpv, Some(1), ""));
+        assert!(!super::is_vlc_normal_exit(PlayerKind::Vlc, Some(2), ""));
     }
 
     #[tokio::test]
@@ -1013,23 +1335,22 @@ mod tests {
         assert!(content.contains("Subtitles"));
         assert!(content.contains("No subtitles"));
         assert!(content.contains("English"));
-        assert!(content.contains("Use"));
-
         let items = vec!["No subtitles".to_string(), "English".to_string()];
         let popup_layout = crate::tui::overlay::picker_layout(
             ratatui::layout::Rect::new(0, 0, 80, 24),
             &items,
             "Use",
-            32,
+            20,
         );
-        assert_eq!(popup_layout.height, 6);
+        assert_eq!(popup_layout.height, 4);
+        assert_eq!(popup_layout.width, 20);
     }
 
     #[tokio::test]
     async fn test_playback_resolving_lock_resets_on_incompatible_player() {
         let mut app = crate::tui::app::App::new();
         app.state.is_resolving_playback = true;
-        app.state.available_players = vec![crate::tui::state::PlayerKind::Vlc];
+        app.state.available_players = vec![crate::tui::state::PlayerKind::AndroidIntent];
 
         let source = crate::providers::models::PlaybackSource {
             provider: crate::providers::models::ProviderKind::MovieBox,
@@ -1037,17 +1358,69 @@ mod tests {
             headers: vec![("Cookie".to_string(), "CloudFront-Policy=test".to_string())],
             subtitle: None,
             source_label: "Multi-Res".to_string(),
+            max_height: None,
+        };
+
+        assert_eq!(
+            app.resolve_playback_player(&source),
+            super::PlaybackResolution::Available(crate::tui::state::PlayerKind::AndroidIntent)
+        );
+    }
+    #[tokio::test]
+    async fn test_dispatch_playback_notifies_bad_player_path() {
+        let mut app = crate::tui::app::App::new();
+        app.state.available_players.clear();
+        app.state.default_player = Some("vlc".to_string());
+        app.state.vlc_path = Some("D:\\PortableApps\\VLC\\vlc.exe".to_string());
+        let source = crate::providers::models::PlaybackSource {
+            provider: crate::providers::models::ProviderKind::MovieBox,
+            url: "https://example.com/video.mp4".to_string(),
+            headers: vec![],
+            subtitle: None,
+            source_label: "Direct".to_string(),
+            max_height: None,
         };
 
         app.dispatch_playback_or_notify(source);
 
-        assert!(!app.state.is_resolving_playback);
-        assert!(app.state.pending_playback_source.is_none());
-        assert!(!app.state.player_picker_popup);
-        assert!(!app.state.notifications.is_empty());
+        let notif = app.state.notifications.back().expect("notification pushed");
+        assert_eq!(notif.title, "Invalid Player Path");
+        assert_eq!(
+            notif.message,
+            "Player path not found: D:\\PortableApps\\VLC\\vlc.exe"
+        );
     }
     #[tokio::test]
     async fn test_explicit_player_incompatible_does_not_launch_alternative() {
+        let mut app = crate::tui::app::App::new();
+        app.state.available_players = vec![
+            crate::tui::state::PlayerKind::Mpv,
+            crate::tui::state::PlayerKind::AndroidIntent,
+        ];
+        app.state.default_player = Some("android".to_string());
+
+        let source = crate::providers::models::PlaybackSource {
+            provider: crate::providers::models::ProviderKind::MovieBox,
+            url: "https://example.com/index.mpd".to_string(),
+            headers: vec![("Cookie".to_string(), "CloudFront-Policy=test".to_string())],
+            subtitle: None,
+            source_label: "Multi-Res".to_string(),
+            max_height: None,
+        };
+
+        let resolution = app.resolve_playback_player(&source);
+        assert_eq!(
+            resolution,
+            super::PlaybackResolution::Available(crate::tui::state::PlayerKind::AndroidIntent)
+        );
+
+        app.state.is_resolving_playback = true;
+        app.dispatch_playback_or_notify(source);
+        assert!(app.state.pending_playback_source.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_vlc_resolves_as_available_for_cookie_source() {
         let mut app = crate::tui::app::App::new();
         app.state.available_players = vec![
             crate::tui::state::PlayerKind::Mpv,
@@ -1061,32 +1434,14 @@ mod tests {
             headers: vec![("Cookie".to_string(), "CloudFront-Policy=test".to_string())],
             subtitle: None,
             source_label: "Multi-Res".to_string(),
+            max_height: None,
         };
 
         let resolution = app.resolve_playback_player(&source);
         assert_eq!(
             resolution,
-            super::PlaybackResolution::ExplicitPlayerIncompatible {
-                chosen: crate::tui::state::PlayerKind::Vlc,
-                compatible_alternatives: vec![crate::tui::state::PlayerKind::Mpv],
-            }
+            super::PlaybackResolution::Available(crate::tui::state::PlayerKind::Vlc)
         );
-
-        app.state.is_resolving_playback = true;
-        app.dispatch_playback_or_notify(source);
-
-        assert!(!app.state.is_resolving_playback);
-        assert!(app.state.pending_playback_source.is_none());
-        assert!(!app.state.player_picker_popup);
-
-        let notification = app.state.notifications.back().expect("notification posted");
-        assert_eq!(notification.title, "VLC Incompatible");
-        assert!(
-            notification
-                .message
-                .contains("VLC cannot play this MovieBox stream")
-        );
-        assert!(notification.message.contains("mpv"));
     }
     #[tokio::test]
     async fn test_playback_resolving_lock_resets_on_player_crash() {
@@ -1115,6 +1470,7 @@ mod tests {
             headers: vec![],
             subtitle: None,
             source_label: "CircleFTP".to_string(),
+            max_height: None,
         };
         assert_eq!(
             app.resolve_playback_player(&bdix_source),
@@ -1130,6 +1486,7 @@ mod tests {
             ],
             subtitle: None,
             source_label: "1080p".to_string(),
+            max_height: None,
         };
         assert_eq!(
             app.resolve_playback_player(&fourk_source),
@@ -1142,19 +1499,20 @@ mod tests {
             headers: vec![("Cookie".to_string(), "CloudFront-Policy=test".to_string())],
             subtitle: None,
             source_label: "Multi-Res".to_string(),
+            max_height: None,
         };
         assert_eq!(
             app.resolve_playback_player(&auth_source),
-            super::PlaybackResolution::ExplicitPlayerIncompatible {
-                chosen: crate::tui::state::PlayerKind::AndroidIntent,
-                compatible_alternatives: vec![],
-            }
+            super::PlaybackResolution::Available(crate::tui::state::PlayerKind::AndroidIntent)
         );
     }
+
+    static ENV_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
     #[tokio::test]
     async fn test_player_crashed_termux_actionable_notification() {
         let mut app = crate::tui::app::App::new();
+        let _guard = ENV_LOCK.lock().await;
         unsafe {
             std::env::set_var("TERMUX_VERSION", "0.118.0");
         }
@@ -1172,11 +1530,138 @@ mod tests {
             .notifications
             .back()
             .expect("expected notification");
-        assert_eq!(last_notification.title, "Termux Player Setup Required");
-        assert!(
-            last_notification
-                .message
-                .contains("pkg install -y termux-tools termux-am")
+        assert_eq!(last_notification.title, "Termux Setup");
+        assert_eq!(last_notification.message, "Run 'pkg install termux-tools'.");
+    }
+
+    #[tokio::test]
+    async fn test_player_crashed_termux_missing_activity() {
+        let mut app = crate::tui::app::App::new();
+        let _guard = ENV_LOCK.lock().await;
+        unsafe {
+            std::env::set_var("TERMUX_VERSION", "0.118.0");
+        }
+        app.handle_playback(super::Action::PlayerCrashed(
+            Some(1),
+            "Error: Activity not started, no activity found to handle Intent".to_string(),
+        ))
+        .await;
+        unsafe {
+            std::env::remove_var("TERMUX_VERSION");
+        }
+        let last_notification = app
+            .state
+            .notifications
+            .back()
+            .expect("expected notification");
+        assert_eq!(last_notification.title, "No Player");
+        assert_eq!(last_notification.message, "Install a video player.");
+    }
+
+    #[tokio::test]
+    async fn test_player_crashed_termux_headless_mpv() {
+        let mut app = crate::tui::app::App::new();
+        let _guard = ENV_LOCK.lock().await;
+        unsafe {
+            std::env::set_var("TERMUX_VERSION", "0.118.0");
+        }
+        app.handle_playback(super::Action::PlayerCrashed(
+            Some(1),
+            "Error opening/initializing the selected video_out (--vo) device.".to_string(),
+        ))
+        .await;
+        unsafe {
+            std::env::remove_var("TERMUX_VERSION");
+        }
+        let last_notification = app
+            .state
+            .notifications
+            .back()
+            .expect("expected notification");
+        assert_eq!(last_notification.title, "CLI mpv");
+        assert_eq!(
+            last_notification.message,
+            "Switch to Android Player in /settings."
         );
+    }
+
+    #[tokio::test]
+    async fn test_player_crashed_termux_exit_code_1_generic() {
+        let mut app = crate::tui::app::App::new();
+        let _guard = ENV_LOCK.lock().await;
+        unsafe {
+            std::env::set_var("TERMUX_VERSION", "0.118.0");
+        }
+        app.handle_playback(super::Action::PlayerCrashed(
+            Some(1),
+            "Player exited with status code 1.".to_string(),
+        ))
+        .await;
+        unsafe {
+            std::env::remove_var("TERMUX_VERSION");
+        }
+        let last_notification = app
+            .state
+            .notifications
+            .back()
+            .expect("expected notification");
+        assert_eq!(last_notification.title, "Termux Setup");
+        assert_eq!(last_notification.message, "Run 'pkg install termux-tools'.");
+    }
+
+    #[tokio::test]
+    async fn test_playback_captures_active_subject_and_episode() {
+        let mut app = crate::tui::app::App::new();
+        app.state.active_screen = crate::tui::state::Screen::Details;
+        app.state.selected_season = 2;
+        app.state.selected_episode = 5;
+        app.state.active_subject_id = Some("dub_subject_42".to_string());
+        app.state.selected_details = Some(crate::providers::models::MediaDetails {
+            id: crate::providers::models::ProviderMediaId {
+                provider: crate::providers::models::ProviderKind::MovieBox,
+                value: "root_subject_100".to_string(),
+            },
+            title: "Test Series".to_string(),
+            media_type: crate::models::MediaType::Series,
+            year: None,
+            description: None,
+            tagline: None,
+            imdb_rating: None,
+            director: None,
+            stars: None,
+            prints: None,
+            audios: None,
+            poster_url: None,
+            duration: None,
+            genres: Vec::new(),
+            seasons: Vec::new(),
+            dubs: Vec::new(),
+        });
+        let mirror = crate::providers::models::SourceMirror {
+            label: "1080p".to_string(),
+            resolver_url: "https://example.com/video.mp4".to_string(),
+            headers: Vec::new(),
+            direct_file: true,
+        };
+        app.state.selected_resources = vec![crate::providers::models::Release {
+            provider: crate::providers::models::ProviderKind::MovieBox,
+            filename: "Test S02E05 1080p".to_string(),
+            quality: Some("1080p".to_string()),
+            codec: None,
+            language: None,
+            size_bytes: None,
+            season: Some(2),
+            episode: Some(5),
+            mirrors: vec![mirror],
+            resource_id: Some("res_s2e5".to_string()),
+        }];
+        app.state.resource_list_state.select(Some(0));
+        assert_eq!(
+            app.state.active_subject_id.as_deref(),
+            Some("dub_subject_42")
+        );
+        assert_eq!(app.get_selected_resource_id().as_deref(), Some("res_s2e5"));
+        assert_eq!(app.state.selected_season, 2);
+        assert_eq!(app.state.selected_episode, 5);
     }
 }

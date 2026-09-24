@@ -28,11 +28,16 @@ impl Default for CircleFtpClient {
     }
 }
 
+pub const BASE_URL: &str = "http://new.circleftp.net:5000";
+pub const API_URL: &str = "http://new.circleftp.net:5000/api";
+pub const POSTS_URL: &str = "http://new.circleftp.net:5000/api/posts";
+pub const UPLOADS_URL: &str = "http://new.circleftp.net:5000/uploads/";
+
 impl CircleFtpClient {
     pub fn new() -> Self {
         Self {
             client: build_client(),
-            base_url: "http://new.circleftp.net:5000/api".to_string(),
+            base_url: API_URL.to_string(),
         }
     }
 
@@ -43,7 +48,7 @@ impl CircleFtpClient {
             .append_pair("searchTerm", query)
             .append_pair("order", "desc");
 
-        let resp = self.client.get(url).send().await?;
+        let resp = self.client.get(url).send().await?.error_for_status()?;
 
         let search_resp: CircleFtpSearchResponse = resp.json().await?;
         Ok(circleftp_search_to_catalog(&search_resp))
@@ -51,7 +56,7 @@ impl CircleFtpClient {
 
     pub async fn details(&self, id: &str) -> Result<MediaDetails, CircleFtpError> {
         let url = format!("{}/posts/{}", self.base_url, id);
-        let resp = self.client.get(&url).send().await?;
+        let resp = self.client.get(&url).send().await?.error_for_status()?;
         let json: serde_json::Value = resp.json().await?;
 
         let title = json
@@ -78,7 +83,7 @@ impl CircleFtpClient {
             .get("image")
             .or(json.get("imageSm"))
             .and_then(|v| v.as_str())
-            .map(|s| format!("http://new.circleftp.net:5000/uploads/{}", s));
+            .map(|s| format!("{UPLOADS_URL}{}", s));
 
         let mut seasons = Vec::new();
         if media_type == MediaType::Series {
@@ -95,6 +100,7 @@ impl CircleFtpClient {
                                 season: s_idx + 1,
                                 number: e_idx + 1,
                                 title: ep_title,
+                                overview: None,
                             });
                         }
                     }
@@ -213,45 +219,12 @@ impl CircleFtpClient {
         let r#type = json.get("type").and_then(|v| v.as_str()).unwrap_or("");
 
         let quality_str = json.get("quality").and_then(|v| v.as_str()).unwrap_or("HD");
-        let quality = if quality_str.to_lowercase().contains("1080p") {
-            Some("1080p".to_string())
-        } else if quality_str.to_lowercase().contains("720p") {
-            Some("720p".to_string())
-        } else if quality_str.to_lowercase().contains("4k")
-            || quality_str.to_lowercase().contains("2160p")
-        {
-            Some("4k".to_string())
-        } else {
-            Some(quality_str.to_string())
-        };
+        let quality = crate::providers::bdix::common::detect_resolution(quality_str)
+            .or_else(|| Some(quality_str.to_string()));
 
         let title_str = json.get("title").and_then(|v| v.as_str()).unwrap_or("");
-
-        let t_lower = title_str.to_lowercase();
-
-        let codec = [
-            ("x264", "x264"),
-            ("h264", "x264"),
-            ("x265", "HEVC"),
-            ("hevc", "HEVC"),
-            ("av1", "AV1"),
-        ]
-        .iter()
-        .find(|(k, _)| t_lower.contains(k))
-        .map(|(_, v)| v.to_string());
-
-        let language = [
-            ("hindi", "Hindi"),
-            ("bengali", "Bengali"),
-            ("bangla", "Bengali"),
-            ("english", "English"),
-            ("tamil", "Tamil"),
-            ("telugu", "Telugu"),
-            ("malayalam", "Malayalam"),
-        ]
-        .iter()
-        .find(|(k, _)| t_lower.contains(k))
-        .map(|(_, v)| v.to_string());
+        let codec = crate::providers::bdix::common::detect_codec(title_str);
+        let language = crate::providers::bdix::common::detect_audio_language(title_str);
 
         if r#type == "series" {
             if let (Some(target_s), Some(target_e)) = (season, episode) {
@@ -329,15 +302,11 @@ impl CircleFtpClient {
 
         Ok(releases)
     }
-
-    pub async fn resolve_release(&self, resolver_url: &str) -> Result<String, CircleFtpError> {
-        Ok(resolver_url.to_string())
-    }
 }
 
 fn build_client() -> reqwest::Client {
     crate::net::http_client_builder()
         .timeout(Duration::from_secs(5))
         .build()
-        .unwrap_or_else(|_| reqwest::Client::new())
+        .expect("circleftp http client")
 }

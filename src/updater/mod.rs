@@ -7,7 +7,7 @@ pub mod verify;
 
 pub use apply::{
     InstallationEnvironment, SelfUpdateOutcome, apply_staged_binary, detect_environment,
-    is_homebrew_managed, is_writable, restart_process,
+    is_homebrew_managed, is_scoop_managed, is_writable, restart_process,
 };
 pub use artifact::{Release, ReleaseAsset, TargetPlatform, is_termux_environment};
 pub use check::{check, check_release, is_newer};
@@ -27,14 +27,30 @@ pub async fn perform_self_update(
                     .to_string(),
             ));
         }
+        InstallationEnvironment::Scoop => {
+            return Ok(SelfUpdateOutcome::RequiresManualUpgrade(
+                "This installation is managed by Scoop. Run: scoop update sumanmovies".to_string(),
+            ));
+        }
         InstallationEnvironment::Termux => {
             return Ok(SelfUpdateOutcome::RequiresManualUpgrade(
                 "Android / Termux update: run 'curl -fsSL https://raw.githubusercontent.com/SumanCH8514/SumanMovies-Tui/main/install.sh | bash'".to_string(),
             ));
         }
+        InstallationEnvironment::Flatpak => {
+            return Ok(SelfUpdateOutcome::RequiresManualUpgrade(
+                "Running inside Flatpak. Please update via: flatpak update".to_string(),
+            ));
+        }
+        InstallationEnvironment::Snap => {
+            return Ok(SelfUpdateOutcome::RequiresManualUpgrade(
+                "Running inside Snap. Please update via: sudo snap refresh sumanmovies"
+                    .to_string(),
+            ));
+        }
         InstallationEnvironment::ReadOnly => {
             return Ok(SelfUpdateOutcome::RequiresManualUpgrade(
-                "SumanMovies binary is not user-writable. Please update via your system package manager.".to_string(),
+                "SumanMovies-Tui binary is not user-writable. Please update via your system package manager.".to_string(),
             ));
         }
         InstallationEnvironment::DirectReplace | InstallationEnvironment::WindowsHelper => {}
@@ -56,16 +72,12 @@ pub async fn perform_self_update(
         .find_checksum_asset()
         .ok_or_else(|| "no SHA256SUMS checksum file found in GitHub release".to_string())?;
     let temp_dir = tempfile::Builder::new()
-        .prefix("moviebox_update_")
+        .prefix("sumanmovies_update_")
         .tempdir()
         .map_err(|e| format!("failed to create temporary update directory: {e}"))?;
 
     let archive_path = temp_dir.path().join(&asset.name);
-    let staged_binary_path = if env == InstallationEnvironment::WindowsHelper {
-        apply::persistent_staging_path(&current_exe)
-    } else {
-        temp_dir.path().join(platform.expected_binary_name())
-    };
+    let staged_binary_path = apply::persistent_staging_path(&current_exe);
 
     if let Some(tx) = progress_sender {
         let _ = tx.send(format!("Downloading {}...", asset.name));

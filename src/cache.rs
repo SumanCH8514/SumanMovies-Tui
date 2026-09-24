@@ -76,7 +76,17 @@ pub fn set_typed_cache<T: Serialize + ?Sized>(path: &Path, expiry_secs: u64, dat
         let mut file_bytes = Vec::with_capacity(4 + msgpack_bytes.len());
         file_bytes.extend_from_slice(&CACHE_MAGIC);
         file_bytes.extend_from_slice(&msgpack_bytes);
-        let _ = atomic_write_file(path, &file_bytes);
+        if let Err(error) = atomic_write_file(path, &file_bytes) {
+            log::warn!(
+                "failed to write cache file {}: {error}",
+                crate::logging::sanitize_path(path)
+            );
+        }
+    } else {
+        log::warn!(
+            "failed to serialize cache envelope for {}",
+            crate::logging::sanitize_path(path)
+        );
     }
 }
 
@@ -249,7 +259,7 @@ pub fn get_provider_stream_path(
 ) -> PathBuf {
     let mut path = get_provider_cache_dir(provider, "streams");
     let schema = if provider == ProviderKind::FourKHdHub {
-        "v3_"
+        "v4_"
     } else {
         ""
     };
@@ -280,7 +290,59 @@ pub fn set_provider_stream_cache_typed(
         return;
     }
     let path = get_provider_stream_path(provider, subject_id, season, episode);
-    set_typed_cache(&path, STREAM_CACHE_EXPIRY_SECS, releases);
+    let ttl = stream_cache_ttl_secs(releases);
+    set_typed_cache(&path, ttl, releases);
+}
+
+fn stream_cache_ttl_secs(releases: &[Release]) -> u64 {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let min_cf_expiry = releases
+        .iter()
+        .flat_map(|r| &r.mirrors)
+        .flat_map(|mirror| &mirror.headers)
+        .filter(|(name, _)| name.eq_ignore_ascii_case("cookie"))
+        .flat_map(|(_, val)| val.split(';'))
+        .filter_map(|part| {
+            let policy_raw = part.trim().strip_prefix("CloudFront-Policy=")?;
+            cf_policy_date_less_than(policy_raw)
+        })
+        .min();
+    let cf_remaining = min_cf_expiry
+        .and_then(|exp| exp.checked_sub(now))
+        .unwrap_or(STREAM_CACHE_EXPIRY_SECS);
+    cf_remaining.clamp(60, STREAM_CACHE_EXPIRY_SECS)
+}
+
+fn cf_policy_date_less_than(policy_raw: &str) -> Option<u64> {
+    use base64::Engine as _;
+    let mut normalized: String = policy_raw
+        .trim()
+        .chars()
+        .map(|c| match c {
+            '-' => '+',
+            '_' => '=',
+            '~' => '/',
+            other => other,
+        })
+        .collect();
+    let padding = (4 - normalized.len() % 4) % 4;
+    if padding > 0 {
+        normalized.push_str(&"=".repeat(padding));
+    }
+    let decoded = base64::engine::general_purpose::STANDARD
+        .decode(normalized.as_bytes())
+        .ok()?;
+    let json: serde_json::Value = serde_json::from_slice(&decoded).ok()?;
+    json.get("Statement")?
+        .as_array()?
+        .first()?
+        .get("Condition")?
+        .get("DateLessThan")?
+        .get("AWS:EpochTime")?
+        .as_u64()
 }
 
 pub fn invalidate_provider_stream_cache(
@@ -499,7 +561,6 @@ fn resilient_remove_file(path: &Path) -> std::io::Result<()> {
             if let Ok(metadata) = fs::metadata(path) {
                 let mut permissions = metadata.permissions();
                 if permissions.readonly() {
-                    #[allow(clippy::permissions_set_readonly_false)]
                     permissions.set_readonly(false);
                     if fs::set_permissions(path, permissions).is_ok() {
                         return fs::remove_file(path);
@@ -617,7 +678,9 @@ pub fn clear_all_cache() -> Result<(), String> {
             let _ = fs::remove_dir(&legacy);
         }
     }
-    if let Some(home) = dirs::home_dir() {
+    if crate::updater::artifact::is_termux_environment()
+        && let Some(home) = dirs::home_dir()
+    {
         let storage = home.join("storage/downloads/moviebox_subs");
         if storage.exists() {
             purge_subtitle_cache_files(&storage, &mut errors);

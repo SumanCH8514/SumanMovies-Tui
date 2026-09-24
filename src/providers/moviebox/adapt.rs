@@ -1031,10 +1031,11 @@ mod tests {
         });
 
         let releases = moviebox_play_info_json_to_releases(&payload, 0, 0, "TestAgent/1.0");
-        assert_eq!(releases.len(), 1);
-        assert_eq!(releases[0].quality.as_deref(), Some("multi"));
-        assert!(releases[0].is_multi_resolution());
-        assert_eq!(releases[0].resolution_i64(), -1);
+        assert_eq!(releases.len(), 3);
+        assert_eq!(releases[0].quality.as_deref(), Some("1080p"));
+        assert_eq!(releases[0].resolution_i64(), 1080);
+        assert_eq!(releases[1].quality.as_deref(), Some("720p"));
+        assert_eq!(releases[2].quality.as_deref(), Some("480p"));
         assert_eq!(releases[0].codec.as_deref(), Some("hevc"));
         assert_eq!(
             releases[0].direct_url(),

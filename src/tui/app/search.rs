@@ -48,6 +48,7 @@ impl App {
             })
             .collect();
         self.state.is_loading = false;
+        self.state.has_search_settled = true;
         self.state
             .search_list_state
             .select(if self.state.search_results.is_empty() {
@@ -87,7 +88,7 @@ impl App {
                 self.state.notify(
                     NotificationKind::Warning,
                     "Unknown Command",
-                    format!("Command '{cmd_name}' is not recognized. Type '/' to view available commands."),
+                    format!("Unknown command '{cmd_name}'. Type '/' for list."),
                 );
                 return Some(true);
             }
@@ -96,7 +97,6 @@ impl App {
         let current_mode = self.state.mode();
         let ctrl_s = crate::tui::text::CTRL_S_STR;
         let ctrl_t = crate::tui::text::CTRL_T_STR;
-        let ctrl_a = crate::tui::text::CTRL_A_STR;
 
         let will_handle = !matches!(
             &parsed,
@@ -120,16 +120,23 @@ impl App {
                 Some(true)
             }
             crate::tui::commands::SlashCommand::Settings => {
-                if trimmed.eq_ignore_ascii_case("/config") {
-                    if self.state.is_tv_mode {
-                        self.action_sender.send(Action::ShowTvConfig).ok();
-                        return Some(true);
-                    } else if self.state.is_addon_mode {
-                        self.action_sender.send(Action::ShowAddonManager).ok();
-                        return Some(true);
-                    }
-                }
                 self.action_sender.send(Action::ToggleSettingsPopup).ok();
+                Some(true)
+            }
+            crate::tui::commands::SlashCommand::Config => {
+                if self.state.is_tv_mode {
+                    self.action_sender.send(Action::ShowTvConfig).ok();
+                } else if self.state.active_provider
+                    == crate::providers::models::ProviderKind::Addons
+                {
+                    self.action_sender.send(Action::ShowAddonManager).ok();
+                } else {
+                    self.state.notify(
+                        NotificationKind::Info,
+                        "Config",
+                        "Use /settings for preferences, or switch provider.",
+                    );
+                }
                 Some(true)
             }
             crate::tui::commands::SlashCommand::Clear => {
@@ -146,7 +153,7 @@ impl App {
                     self.state.notify(
                         NotificationKind::Info,
                         "TV Mode",
-                        format!("Command /browse is available in Streaming Mode ({ctrl_s}) or Addon Mode ({ctrl_a})."),
+                        format!("Available in Streaming Mode ({ctrl_s})."),
                     );
                 } else {
                     self.action_sender.send(Action::ShowBrowseMenu).ok();
@@ -158,7 +165,7 @@ impl App {
                     self.state.notify(
                         NotificationKind::Info,
                         "TV Mode",
-                        format!("Command /history is available in Streaming Mode ({ctrl_s}) or Addon Mode ({ctrl_a})."),
+                        format!("Available in Streaming Mode ({ctrl_s})."),
                     );
                     Some(true)
                 } else {
@@ -170,7 +177,7 @@ impl App {
                     self.state.notify(
                         NotificationKind::Info,
                         "TV Mode",
-                        format!("Command /favorites is available in Streaming Mode ({ctrl_s}) or Addon Mode ({ctrl_a})."),
+                        format!("Available in Streaming Mode ({ctrl_s})."),
                     );
                     Some(true)
                 } else {
@@ -184,9 +191,7 @@ impl App {
                     self.state.notify(
                         NotificationKind::Info,
                         "TV Mode",
-                        format!(
-                            "Command /list is only available in TV Mode. Switch with {ctrl_t}."
-                        ),
+                        format!("Available in TV Mode ({ctrl_t})."),
                     );
                 }
                 Some(true)
@@ -375,7 +380,12 @@ impl App {
         if !force_refresh {
             if let Some(cached) = self.state.preview_cache.get(&id).cloned() {
                 self.action_sender
-                    .send(Action::DetailsSuccess(context, request_id, id, cached))
+                    .send(Action::DetailsSuccess(
+                        context,
+                        request_id,
+                        id,
+                        Box::new(cached),
+                    ))
                     .ok();
                 return;
             }
@@ -395,7 +405,7 @@ impl App {
                             context,
                             request_id,
                             id.clone(),
-                            cached,
+                            Box::new(cached),
                         ))
                         .ok();
                     return;
@@ -416,7 +426,12 @@ impl App {
                     })
                     .await;
                     sender
-                        .send(Action::DetailsSuccess(context, request_id, id, details))
+                        .send(Action::DetailsSuccess(
+                            context,
+                            request_id,
+                            id,
+                            Box::new(details),
+                        ))
                         .ok();
                 }
                 Err(error) => {
@@ -528,7 +543,7 @@ impl App {
                     stored_metrics.recent_rating.or(metrics.recent_rating);
                 stored_metrics.popularity = stored_metrics.popularity.or(metrics.popularity);
                 if existing.title.is_empty() {
-                    existing.title = clean_title;
+                    existing.title = clean_title.to_string();
                     existing.stype = stype;
                     existing.release_year = release_year;
                     existing.cover_url = cover_url;
@@ -562,7 +577,7 @@ impl App {
                 self.state.browse_metrics.insert(id.clone(), metrics);
                 self.state.search_results.push(SearchResult {
                     id,
-                    title: clean_title,
+                    title: clean_title.to_string(),
                     stype,
                     release_year,
                     cover_url,
@@ -580,10 +595,11 @@ impl App {
         let Some(preset) = self.state.active_browse_preset else {
             return;
         };
-        let metrics = self.state.browse_metrics.clone();
         let metric = preset.metric();
         let descending = preset.descending();
-        self.state.search_results.sort_by(|left, right| {
+        let state = &mut self.state;
+        let metrics = &state.browse_metrics;
+        state.search_results.sort_by(|left, right| {
             let left_value = metrics
                 .get(&left.id)
                 .and_then(|values| values.value(metric));
@@ -607,27 +623,20 @@ impl App {
         let total = self.state.search_results.len();
         let selected = self.state.search_list_state.selected().unwrap_or(0);
         let offset = self.state.result_scroll;
-        let visible = self.state.effective_visible_items().max(12);
+        let visible = self.state.effective_visible_items().max(6);
 
-        let mut prioritized_indices = Vec::new();
         let base_start = offset.min(selected);
         let start = base_start.saturating_sub(2);
         let end = (offset + visible + 4).min(total);
-        for i in start..end {
-            prioritized_indices.push(i);
-        }
-        for i in 0..total.min(48) {
-            if !prioritized_indices.contains(&i) {
-                prioritized_indices.push(i);
-            }
-        }
 
-        let slice: Vec<(String, Option<String>, ProviderKind)> = prioritized_indices
-            .into_iter()
-            .filter_map(|i| self.state.search_results.get(i))
-            .map(|r| (r.id.clone(), r.cover_url.clone(), r.provider))
-            .collect();
-        self.spawn_search_posters(slice);
+        if start < end {
+            let slice: Vec<(String, Option<String>, ProviderKind)> = self.state.search_results
+                [start..end]
+                .iter()
+                .map(|r| (r.id.clone(), r.cover_url.clone(), r.provider))
+                .collect();
+            self.spawn_search_posters(slice);
+        }
     }
 
     pub(super) fn spawn_search_posters(
@@ -640,7 +649,7 @@ impl App {
 
         let mut to_fetch = Vec::new();
         for (id, cover_url, provider) in results {
-            if self.state.search_posters.contains(&id) {
+            if self.state.search_posters.contains(&id) || self.state.failed_poster_recently(&id) {
                 continue;
             }
             if !self.state.in_flight_posters.insert(id.clone()) {
@@ -656,16 +665,21 @@ impl App {
         let sender = self.action_sender.clone();
         let service = self.service.clone();
         let semaphore = self.state.poster_fetch_semaphore.clone();
+        let cancel_token = self.state.fetch_cancel.clone();
 
         tokio::spawn(async move {
             let sem = semaphore;
             for (id, cover_url, provider) in to_fetch {
-                let sem_clone = sem.clone();
+                let permit = sem.clone().acquire_owned().await.ok();
                 let tx = sender.clone();
                 let service = service.clone();
+                let cancel = cancel_token.clone();
 
                 tokio::spawn(async move {
-                    let _permit = sem_clone.acquire_owned().await.ok();
+                    let _permit = permit;
+                    if cancel.load(std::sync::atomic::Ordering::Relaxed) {
+                        return;
+                    }
                     let id_clone = id.clone();
                     if let Ok(Some(bytes)) = tokio::task::spawn_blocking({
                         let id_c = id_clone.clone();
@@ -690,6 +704,9 @@ impl App {
                     if let Some(url) = resolved_url {
                         if !url.is_empty() {
                             if let Some(bytes) = service.fetch_poster_bytes(&url).await {
+                                if cancel.load(std::sync::atomic::Ordering::Relaxed) {
+                                    return;
+                                }
                                 let bytes_clone = bytes.clone();
                                 let id_c = id.clone();
                                 let _ = tokio::task::spawn_blocking(move || {
@@ -700,6 +717,10 @@ impl App {
                                     );
                                 })
                                 .await;
+
+                                if cancel.load(std::sync::atomic::Ordering::Relaxed) {
+                                    return;
+                                }
 
                                 if let Some(img) = network::decode_poster(bytes).await {
                                     tx.send(Action::SearchPosterLoaded(id, Some(img))).ok();
@@ -713,5 +734,49 @@ impl App {
                 });
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_handle_search_command_config_in_streaming_mode_shows_guidance() {
+        let mut app = App::new();
+        app.state.active_provider = ProviderKind::MovieBox;
+        app.state.is_tv_mode = false;
+
+        let handled = app.handle_search_command("/config", "/config");
+        assert_eq!(handled, Some(true));
+        assert!(!app.state.show_settings_popup);
+        assert!(!app.state.addon_manager_popup);
+        assert!(!app.state.tv_config_popup);
+        assert_eq!(app.state.notifications.len(), 1);
+        assert_eq!(app.state.notifications[0].title, "Config");
+        assert!(app.state.notifications[0].message.contains("/settings"));
+    }
+
+    #[tokio::test]
+    async fn test_handle_search_command_config_in_addons_mode_opens_addon_manager() {
+        let mut app = App::new();
+        app.state.active_provider = ProviderKind::Addons;
+        app.state.is_tv_mode = false;
+
+        let handled = app.handle_search_command("/config", "/config");
+        assert_eq!(handled, Some(true));
+        assert!(!app.state.show_settings_popup);
+        assert!(app.state.notifications.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_handle_search_command_config_in_tv_mode_opens_tv_config() {
+        let mut app = App::new();
+        app.state.is_tv_mode = true;
+
+        let handled = app.handle_search_command("/config", "/config");
+        assert_eq!(handled, Some(true));
+        assert!(!app.state.show_settings_popup);
+        assert!(app.state.notifications.is_empty());
     }
 }

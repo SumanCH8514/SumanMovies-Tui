@@ -1,5 +1,4 @@
 use super::App;
-use crate::models::BrowsePreset;
 use crate::providers::models::{MediaDetails, ProviderKind, Release};
 use crate::tui::{
     action::Action,
@@ -35,6 +34,11 @@ impl App {
         };
         self.prepare_image_soft_refresh();
         self.reset_mode_state();
+        self.reset_transient_overlays();
+        self.state.subtitle_popup = false;
+        self.state.is_download_subtitle_popup = false;
+        self.state.player_picker_popup = false;
+        self.state.show_overview_modal = false;
         self.state.active_provider = provider;
         self.state.active_screen = Screen::Home;
         self.state.details_pane = crate::tui::state::DetailsPane::default();
@@ -140,7 +144,10 @@ impl App {
                 let context = self.request_context();
                 let request_id = self.state.active_search_request;
                 self.state.is_loading = true;
-                tokio::spawn(async move {
+                if let Some(h) = self.request_tasks.search.take() {
+                    h.abort();
+                }
+                self.request_tasks.search = Some(tokio::spawn(async move {
                     let q = query.clone();
                     let provider = context.provider;
                     if let Ok(Some(cached)) = tokio::task::spawn_blocking(move || {
@@ -194,7 +201,7 @@ impl App {
                                 .ok();
                         }
                     }
-                });
+                }));
             }
         }
     }
@@ -292,14 +299,15 @@ impl App {
                 let sender = self.action_sender.clone();
                 let context = self.request_context();
                 let request_id = self.state.active_resource_request;
-                tokio::spawn(async move {
+                self.request_tasks.cancel_episode_prefetch();
+                self.request_tasks.episode_prefetch = Some(tokio::spawn(async move {
                     tokio::time::sleep(std::time::Duration::from_millis(120)).await;
                     sender
                         .send(Action::EpisodeStreamsReady(
                             context, request_id, id, se, ep, streams,
                         ))
                         .ok();
-                });
+                }));
             } else {
                 self.state.selected_resources.clear();
                 self.state.is_loading = true;
@@ -373,6 +381,10 @@ impl App {
                     self.state.provider_list_state.select(None);
                     return None;
                 }
+                if !self.state.notifications.is_empty() {
+                    self.state.notifications.clear();
+                    return None;
+                }
                 if self.state.favorites_focus {
                     self.state.favorites_focus = false;
                     self.state.favorites_landing_state.select(None);
@@ -415,27 +427,23 @@ impl App {
                     Screen::Details => {
                         self.state
                             .fetch_cancel
-                            .store(true, std::sync::atomic::Ordering::Relaxed);
+                            .store(true, std::sync::atomic::Ordering::SeqCst);
+                        self.state.fetch_cancel =
+                            std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+                        self.request_tasks.cancel_details();
+                        self.request_tasks.cancel_streams();
+                        self.request_tasks.cancel_stream_pool_init();
+                        self.request_tasks.cancel_episode_prefetch();
+                        self.state.in_flight_posters.clear();
                         self.state.active_preview_request =
                             self.state.active_preview_request.wrapping_add(1);
                         self.state.active_details_request =
                             self.state.active_details_request.wrapping_add(1);
                         self.state.active_resource_request =
                             self.state.active_resource_request.wrapping_add(1);
-                        self.state.stream_pool.clear();
-                        self.state.pending_episode_fetch = None;
-                        self.state.selected_details = None;
-                        self.state.selected_resources.clear();
-                        self.state.active_subject_id = None;
-                        self.state.available_seasons.clear();
-                        self.state.available_episode_numbers.clear();
-                        self.state.is_fetching_streams = false;
-                        self.state.stream_error = None;
-                        self.state.poster_image = None;
-                        self.state.poster_protocol = None;
+                        self.state.reset_details_view();
                         self.state.active_screen = Screen::Home;
                         self.state.is_loading = false;
-                        self.state.language_chosen = false;
                         self.state
                             .set_status_default("Select a movie/series and press Enter");
                     }
@@ -476,10 +484,13 @@ impl App {
 
             Action::MoveUp => {
                 if self.state.player_picker_popup {
+                    if self.state.available_players.is_empty() {
+                        return None;
+                    }
                     let i = match self.state.player_picker_state.selected() {
                         Some(i) => {
                             if i == 0 {
-                                self.state.available_players.len() - 1
+                                self.state.available_players.len().saturating_sub(1)
                             } else {
                                 i - 1
                             }
@@ -563,9 +574,13 @@ impl App {
 
             Action::MoveDown => {
                 if self.state.player_picker_popup {
+                    if self.state.available_players.is_empty() {
+                        return None;
+                    }
+                    let max_idx = self.state.available_players.len().saturating_sub(1);
                     let i = match self.state.player_picker_state.selected() {
                         Some(i) => {
-                            if i >= self.state.available_players.len() - 1 {
+                            if i >= max_idx {
                                 0
                             } else {
                                 i + 1
@@ -601,10 +616,14 @@ impl App {
                             self.state.favorites_landing_state.select(Some(0));
                             return None;
                         }
+                        if self.state.search_results.is_empty() {
+                            return None;
+                        }
                         let current = self.state.search_list_state.selected().unwrap_or(0);
                         let down_step = self.result_grid_columns();
-                        let next = (current + down_step).min(self.state.search_results.len() - 1);
-                        if next != current && !self.state.search_results.is_empty() {
+                        let max_idx = self.state.search_results.len().saturating_sub(1);
+                        let next = (current + down_step).min(max_idx);
+                        if next != current {
                             self.state.search_list_state.select(Some(next));
                             if let Some(res) = self.state.search_results.get(next) {
                                 self.action_sender
@@ -735,9 +754,18 @@ impl App {
                         source.subtitle = sub_url;
                         self.dispatch_playback_or_notify(source);
                     } else if let Some(link) = self.state.pending_play_link.take() {
-                        self.action_sender
-                            .send(Action::LaunchMpv(link, sub_url))
-                            .ok();
+                        let source = crate::providers::models::PlaybackSource {
+                            provider: self.state.active_provider,
+                            url: link,
+                            headers: vec![(
+                                "User-Agent".to_string(),
+                                self.service.client.user_agent().to_string(),
+                            )],
+                            subtitle: sub_url,
+                            source_label: "Direct".to_string(),
+                            max_height: None,
+                        };
+                        self.dispatch_playback_or_notify(source);
                     }
                     return None;
                 } else if self.state.is_download_subtitle_popup {
@@ -761,28 +789,13 @@ impl App {
                 if self.state.favorites_focus {
                     if let Some(idx) = self.state.favorites_landing_state.selected() {
                         match self.state.effective_home_deck_tab() {
-                            crate::tui::state::HomeDeckTab::Discover => {
-                                let preset = match idx {
-                                    0 => Some(BrowsePreset::Trending),
-                                    1 => Some(BrowsePreset::TopRatedAllTime),
-                                    2 => Some(BrowsePreset::TopRatedRecent),
-                                    3 => Some(BrowsePreset::MostWatched),
-                                    _ => None,
-                                };
-                                if let Some(preset) = preset {
-                                    if self.state.is_addon_mode {
-                                        self.action_sender.send(Action::ShowBrowseMenu).ok();
-                                    } else {
-                                        self.action_sender.send(Action::SelectBrowse(preset)).ok();
-                                    }
-                                }
-                            }
                             crate::tui::state::HomeDeckTab::ContinueWatching => {
                                 self.open_continue_watching(idx);
                             }
                             crate::tui::state::HomeDeckTab::Favorites => {
                                 self.open_favorite(idx);
                             }
+                            crate::tui::state::HomeDeckTab::Discover => {}
                         }
                     }
                     return None;
@@ -796,9 +809,15 @@ impl App {
                         idx_opt.and_then(|idx| self.state.search_results.get(idx).cloned());
                     if let Some(item) = item_opt {
                         if self.state.is_tv_mode || item.stype == 3 {
-                            self.action_sender
-                                .send(Action::LaunchMpv(item.id.clone(), None))
-                                .ok();
+                            let source = crate::providers::models::PlaybackSource {
+                                provider: item.provider,
+                                url: item.id.clone(),
+                                headers: Vec::new(),
+                                subtitle: None,
+                                source_label: "Live TV".to_string(),
+                                max_height: None,
+                            };
+                            self.dispatch_playback_or_notify(source);
                             return None;
                         }
                         self.state.active_screen = Screen::Details;
@@ -876,9 +895,15 @@ impl App {
         let item_opt = idx_opt.and_then(|idx| self.state.search_results.get(idx).cloned());
         if let Some(item) = item_opt {
             if self.state.is_tv_mode || item.stype == 3 {
-                self.action_sender
-                    .send(Action::LaunchMpv(item.id.clone(), None))
-                    .ok();
+                let source = crate::providers::models::PlaybackSource {
+                    provider: item.provider,
+                    url: item.id.clone(),
+                    headers: Vec::new(),
+                    subtitle: None,
+                    source_label: "Live TV".to_string(),
+                    max_height: None,
+                };
+                self.dispatch_playback_or_notify(source);
                 return;
             }
             self.state.active_screen = Screen::Details;
@@ -985,5 +1010,16 @@ mod tests {
             .expect("notification emitted");
         assert_eq!(notif.kind, NotificationKind::Info);
         assert_eq!(notif.title, "Playback Cancelled");
+    }
+
+    #[tokio::test]
+    async fn test_escape_dismisses_active_notifications() {
+        let mut app = App::new();
+        app.state
+            .notify(NotificationKind::Info, "Test Notification", "Some message");
+        assert_eq!(app.state.notifications.len(), 1);
+
+        app.handle_action(Action::GoBack).await;
+        assert!(app.state.notifications.is_empty());
     }
 }

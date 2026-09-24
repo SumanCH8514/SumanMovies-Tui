@@ -62,40 +62,26 @@ impl TargetPlatform {
         }
     }
 
-    pub fn legacy_asset_name(self) -> &'static str {
-        match self {
-            Self::MacosUniversal => "MovieBox_macOS_Universal.tar.gz",
-            Self::LinuxX64 => "MovieBox_Linux_x64.tar.gz",
-            Self::LinuxArm64 => "MovieBox_Linux_arm64.tar.gz",
-            Self::WindowsX64 => "MovieBox_Windows_x64.zip",
-            Self::WindowsArm64 => "MovieBox_Windows_arm64.zip",
-        }
-    }
-
     pub fn expected_binary_name(self) -> &'static str {
         match self {
-            Self::WindowsX64 | Self::WindowsArm64 => "sumanmovies-tui.exe",
-            _ => "sumanmovies-tui",
+            Self::WindowsX64 | Self::WindowsArm64 => "sumanmovies.exe",
+            _ => "sumanmovies",
         }
     }
 }
+pub const TERMUX_PREFIX_USR: &str = "/data/data/com.termux/files/usr";
 
 pub fn is_termux_environment() -> bool {
     cfg!(target_os = "android")
         || std::env::var("TERMUX_VERSION").is_ok()
         || std::env::var("PREFIX").is_ok_and(|p| p.contains("com.termux"))
-        || std::path::Path::new("/data/data/com.termux/files/usr").exists()
+        || std::path::Path::new(TERMUX_PREFIX_USR).exists()
 }
 
 impl Release {
     pub fn find_compatible_asset(&self, platform: TargetPlatform) -> Option<ReleaseAsset> {
         let expected = platform.expected_asset_name();
-        let legacy = platform.legacy_asset_name();
-        if let Some(asset) = self
-            .assets
-            .iter()
-            .find(|a| a.name == expected || a.name == legacy)
-        {
+        if let Some(asset) = self.assets.iter().find(|a| a.name == expected) {
             return Some(asset.clone());
         }
         if self.assets.is_empty() && !self.tag_name.is_empty() {

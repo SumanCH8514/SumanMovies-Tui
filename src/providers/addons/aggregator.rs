@@ -20,11 +20,12 @@ pub async fn aggregate_streams(
         return (Vec::new(), Vec::new());
     }
 
+    let clean_id = subject_id.split(':').next_back().unwrap_or(subject_id);
     let media_type = if is_series { "series" } else { "movie" };
-    let stream_id = if is_series && season > 0 && episode > 0 {
-        format!("{subject_id}:{season}:{episode}")
+    let stream_id = if is_series && episode > 0 {
+        format!("{clean_id}:{season}:{episode}")
     } else {
-        subject_id.to_string()
+        clean_id.to_string()
     };
 
     let mut tasks = Vec::new();
@@ -35,7 +36,7 @@ pub async fn aggregate_streams(
         let id_clone = stream_id.clone();
         let m_type = media_type.to_string();
 
-        tasks.push(tokio::spawn(async move {
+        tasks.push(async move {
             let streams_res = client_clone
                 .fetch_streams(&base_url, &m_type, &id_clone)
                 .await;
@@ -55,16 +56,19 @@ pub async fn aggregate_streams(
                         (releases, None)
                     }
                 }
-                Err(_) => (Vec::new(), None),
+                Err(err) => {
+                    log::warn!("addon {addon_name} failed to fetch streams: {err}");
+                    (Vec::new(), None)
+                }
             }
-        }));
+        });
     }
 
     let results = futures::future::join_all(tasks).await;
     let mut all_releases = Vec::new();
     let mut blocked_addons = Vec::new();
 
-    for res in results.into_iter().flatten() {
+    for res in results {
         all_releases.extend(res.0);
         if let Some(blocked) = res.1 {
             blocked_addons.push(blocked);

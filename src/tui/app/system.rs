@@ -35,33 +35,37 @@ impl App {
                     self.state.dirty = true;
                 }
 
-                let query_trimmed = self.state.search_query.as_str().trim();
-                if query_trimmed != self.state.last_suggest_query.as_str()
-                    && self.state.last_search_edit.elapsed()
-                        >= std::time::Duration::from_millis(350)
+                if self.state.input_mode == crate::tui::state::InputMode::Editing
+                    && self.state.active_screen == crate::tui::state::Screen::Home
                 {
-                    self.state.last_suggest_query.clear();
-                    self.state.last_suggest_query.push_str(query_trimmed);
-                    if !query_trimmed.is_empty() {
-                        if self.state.is_tv_mode && !query_trimmed.starts_with('/') {
-                            let q = query_trimmed.to_lowercase();
-                            self.state.search_suggestions = self
-                                .state
-                                .tv_channels
-                                .iter()
-                                .filter(|c| c.name.to_lowercase().contains(&q))
-                                .take(10)
-                                .map(|c| c.name.clone())
-                                .collect();
-                            self.state.dirty = true;
+                    let query_trimmed = self.state.search_query.as_str().trim();
+                    if query_trimmed != self.state.last_suggest_query.as_str()
+                        && self.state.last_search_edit.elapsed()
+                            >= std::time::Duration::from_millis(350)
+                    {
+                        self.state.last_suggest_query.clear();
+                        self.state.last_suggest_query.push_str(query_trimmed);
+                        if !query_trimmed.is_empty() {
+                            if self.state.is_tv_mode && !query_trimmed.starts_with('/') {
+                                let q = query_trimmed.to_lowercase();
+                                self.state.search_suggestions = self
+                                    .state
+                                    .tv_channels
+                                    .iter()
+                                    .filter(|c| c.name.to_lowercase().contains(&q))
+                                    .take(10)
+                                    .map(|c| c.name.clone())
+                                    .collect();
+                                self.state.dirty = true;
+                            } else {
+                                self.action_sender
+                                    .send(Action::Suggest(query_trimmed.to_string()))
+                                    .ok();
+                            }
                         } else {
-                            self.action_sender
-                                .send(Action::Suggest(query_trimmed.to_string()))
-                                .ok();
+                            self.state.search_suggestions.clear();
+                            self.state.dirty = true;
                         }
-                    } else {
-                        self.state.search_suggestions.clear();
-                        self.state.dirty = true;
                     }
                 }
 
@@ -128,8 +132,6 @@ impl App {
                         self.state.player_picker_popup = false;
                         self.state.subtitle_popup = false;
                         self.state.is_download_subtitle_popup = false;
-                        self.state.show_season_download_confirm = false;
-                        self.state.show_episode_download_confirm = false;
                     }
                 }
             }
@@ -253,14 +255,14 @@ impl App {
                         self.state.notify(
                             NotificationKind::Success,
                             "Cache Cleared",
-                            "Temporary cache cleared. Reloading TV playlists...",
+                            "Cache cleared. Reloading playlists...",
                         );
                         self.reload_tv_playlists();
                     } else {
                         self.state.notify(
                             NotificationKind::Success,
                             "Cache Cleared",
-                            "All temporary cache files cleared completely.",
+                            "Temporary cache files cleared.",
                         );
                     }
                 }
@@ -285,35 +287,15 @@ impl App {
                     self.state.settings_selected_row = 0;
                     self.state.settings_download_dir_input = None;
                     self.state.settings_player_picker = false;
+                    self.state.show_sources_popup = false;
                     self.state.input_mode = crate::tui::state::InputMode::Normal;
                 } else {
                     self.state.show_settings_popup = false;
                     self.state.settings_download_dir_input = None;
                     self.state.settings_player_picker = false;
+                    self.state.show_sources_popup = false;
                     self.persist_config();
                 }
-            }
-
-            Action::ShowSettingsPopup => {
-                for player in crate::tui::player::detect() {
-                    if !self.state.available_players.contains(&player) {
-                        self.state.available_players.push(player);
-                    }
-                }
-                self.state.ensure_default_player();
-                self.state.show_settings_popup = true;
-                self.state.settings_category = crate::tui::state::SettingsCategory::General;
-                self.state.settings_selected_row = 0;
-                self.state.settings_download_dir_input = None;
-                self.state.settings_player_picker = false;
-                self.state.input_mode = crate::tui::state::InputMode::Normal;
-            }
-
-            Action::CloseSettingsPopup => {
-                self.state.show_settings_popup = false;
-                self.state.settings_download_dir_input = None;
-                self.state.settings_player_picker = false;
-                self.persist_config();
             }
 
             Action::SelectSettingsCategory(cat) => {
@@ -354,26 +336,23 @@ impl App {
                                 self.state.notify(
                                     NotificationKind::Warning,
                                     "Streaming Mode",
-                                    "Cannot disable: at least one mode must remain active.",
+                                    "At least one mode must remain active.",
                                 );
                             } else {
                                 self.state.streaming_enabled = enable_req;
                                 self.persist_config();
-                                if !self.state.streaming_enabled
-                                    && !self.state.is_tv_mode
-                                    && !self.state.is_addon_mode
-                                {
+                                if !self.state.streaming_enabled && !self.state.is_tv_mode {
                                     if self.state.tv_enabled {
                                         self.state.set_mode(crate::tui::state::AppMode::Tv);
-                                    } else if self.state.addons_enabled {
-                                        self.state.set_mode(crate::tui::state::AppMode::Addon);
                                     }
                                 }
                             }
                         }
                         1 => {
-                            self.state.bdix_enabled = !self.state.bdix_enabled;
-                            self.persist_config();
+                            self.state.show_sources_popup = true;
+                            if self.state.sources_list_state.selected().is_none() {
+                                self.state.sources_list_state.select(Some(0));
+                            }
                         }
                         2 => {
                             let enable_req = !self.state.tv_enabled;
@@ -381,7 +360,7 @@ impl App {
                                 self.state.notify(
                                     NotificationKind::Warning,
                                     "Live TV Mode",
-                                    "Cannot disable: at least one mode must remain active.",
+                                    "At least one mode must remain active.",
                                 );
                             } else {
                                 self.state.tv_enabled = enable_req;
@@ -389,28 +368,6 @@ impl App {
                                 if !self.state.tv_enabled && self.state.is_tv_mode {
                                     if self.state.streaming_enabled {
                                         self.state.set_mode(crate::tui::state::AppMode::Streaming);
-                                    } else if self.state.addons_enabled {
-                                        self.state.set_mode(crate::tui::state::AppMode::Addon);
-                                    }
-                                }
-                            }
-                        }
-                        3 => {
-                            let enable_req = !self.state.addons_enabled;
-                            if !enable_req && !self.state.can_disable_addons_mode() {
-                                self.state.notify(
-                                    NotificationKind::Warning,
-                                    "Addon Mode",
-                                    "Cannot disable: at least one mode must remain active.",
-                                );
-                            } else {
-                                self.state.addons_enabled = enable_req;
-                                self.persist_config();
-                                if !self.state.addons_enabled && self.state.is_addon_mode {
-                                    if self.state.streaming_enabled {
-                                        self.state.set_mode(crate::tui::state::AppMode::Streaming);
-                                    } else if self.state.tv_enabled {
-                                        self.state.set_mode(crate::tui::state::AppMode::Tv);
                                     }
                                 }
                             }
@@ -467,7 +424,6 @@ impl App {
                                 if let Some(pb) =
                                     crate::tui::state::AppState::expand_download_path(new_path)
                                 {
-                                    let pb = crate::service::ensure_moviebox_subdir(&pb);
                                     self.state.download_dir = Some(pb.clone());
                                     self.persist_config();
                                     self.state.notify(
@@ -488,11 +444,12 @@ impl App {
                                     );
                                 }
                             } else {
-                                let current = crate::service::resolve_download_dir(
-                                    self.state.download_dir.as_deref(),
-                                )
-                                .to_string_lossy()
-                                .to_string();
+                                let current = self
+                                    .state
+                                    .download_dir
+                                    .as_ref()
+                                    .map(|p| p.to_string_lossy().to_string())
+                                    .unwrap_or_default();
                                 self.state.settings_download_dir_input =
                                     Some(crate::tui::text::TextInputBuffer::from_str(&current));
                             }
@@ -508,26 +465,23 @@ impl App {
                                 self.state.notify(
                                     NotificationKind::Warning,
                                     "Streaming Mode",
-                                    "Cannot disable: at least one mode must remain active.",
+                                    "At least one mode must remain active.",
                                 );
                             } else {
                                 self.state.streaming_enabled = enable_req;
                                 self.persist_config();
-                                if !self.state.streaming_enabled
-                                    && !self.state.is_tv_mode
-                                    && !self.state.is_addon_mode
-                                {
+                                if !self.state.streaming_enabled && !self.state.is_tv_mode {
                                     if self.state.tv_enabled {
                                         self.state.set_mode(crate::tui::state::AppMode::Tv);
-                                    } else if self.state.addons_enabled {
-                                        self.state.set_mode(crate::tui::state::AppMode::Addon);
                                     }
                                 }
                             }
                         }
                         1 => {
-                            self.state.bdix_enabled = !self.state.bdix_enabled;
-                            self.persist_config();
+                            self.state.show_sources_popup = true;
+                            if self.state.sources_list_state.selected().is_none() {
+                                self.state.sources_list_state.select(Some(0));
+                            }
                         }
                         2 => {
                             let enable_req = !self.state.tv_enabled;
@@ -535,7 +489,7 @@ impl App {
                                 self.state.notify(
                                     NotificationKind::Warning,
                                     "Live TV Mode",
-                                    "Cannot disable: at least one mode must remain active.",
+                                    "At least one mode must remain active.",
                                 );
                             } else {
                                 self.state.tv_enabled = enable_req;
@@ -543,28 +497,6 @@ impl App {
                                 if !self.state.tv_enabled && self.state.is_tv_mode {
                                     if self.state.streaming_enabled {
                                         self.state.set_mode(crate::tui::state::AppMode::Streaming);
-                                    } else if self.state.addons_enabled {
-                                        self.state.set_mode(crate::tui::state::AppMode::Addon);
-                                    }
-                                }
-                            }
-                        }
-                        3 => {
-                            let enable_req = !self.state.addons_enabled;
-                            if !enable_req && !self.state.can_disable_addons_mode() {
-                                self.state.notify(
-                                    NotificationKind::Warning,
-                                    "Addon Mode",
-                                    "Cannot disable: at least one mode must remain active.",
-                                );
-                            } else {
-                                self.state.addons_enabled = enable_req;
-                                self.persist_config();
-                                if !self.state.addons_enabled && self.state.is_addon_mode {
-                                    if self.state.streaming_enabled {
-                                        self.state.set_mode(crate::tui::state::AppMode::Streaming);
-                                    } else if self.state.tv_enabled {
-                                        self.state.set_mode(crate::tui::state::AppMode::Tv);
                                     }
                                 }
                             }
@@ -589,30 +521,57 @@ impl App {
                 crate::tui::state::SettingsCategory::StorageInfo => {
                     match self.state.settings_selected_row {
                         0 => {
-                            self.state.notify(
-                                NotificationKind::Info,
-                                "Clearing Cache",
-                                "Clearing temporary disk cache files...",
-                            );
-                            self.action_sender.send(Action::ClearCache).ok();
-                        }
-                        1 => {
                             self.state.manual_update_check = true;
                             self.state.notify(
                                 NotificationKind::Info,
                                 "Checking for updates",
-                                "Querying GitHub for latest releases...",
+                                "Checking GitHub releases...",
                             );
                             self.action_sender.send(Action::CheckForUpdates).ok();
                         }
+                        1 => {
+                            self.state.bdix_probed = false;
+                            self.action_sender.send(Action::CheckBdixNetwork).ok();
+                            self.state.notify(
+                                NotificationKind::Info,
+                                "BDIX Check",
+                                "Probing local network mirrors...",
+                            );
+                        }
                         2 => {
-                            const REPO_URL: &str = "https://github.com/SumanCH8514/SumanMovies-Tui";
+                            self.state.notify(
+                                NotificationKind::Info,
+                                "Clearing Cache",
+                                "Clearing temporary disk cache...",
+                            );
+                            self.action_sender.send(Action::ClearCache).ok();
+                        }
+                        3 => {
+                            self.state.history.clear();
+                            self.state.homepage_cache.clear();
+                            if self
+                                .state
+                                .search_query
+                                .trim()
+                                .eq_ignore_ascii_case("/history")
+                            {
+                                self.state.search_results.clear();
+                                self.state.search_list_state.select(None);
+                            }
+                            self.state.notify(
+                                NotificationKind::Success,
+                                "History",
+                                "Watch history cleared",
+                            );
+                        }
+                        4 => {
+                            const REPO_URL: &str = "https://github.com/mesamirh/MovieBox-Tui";
                             match open::that(REPO_URL) {
                                 Ok(()) => {
                                     self.state.notify(
                                         NotificationKind::Info,
                                         "GitHub",
-                                        "Opening repository in default web browser...",
+                                        "Opening repository in browser...",
                                     );
                                 }
                                 Err(error) => {
@@ -620,7 +579,7 @@ impl App {
                                     self.state.notify(
                                         NotificationKind::Warning,
                                         "Browser Launch Failed",
-                                        format!("Could not open browser: {error}\n{REPO_URL}"),
+                                        format!("Could not open browser: {error}"),
                                     );
                                 }
                             }
@@ -654,11 +613,10 @@ impl App {
                 let current_mode = self.state.mode();
                 if current_mode == crate::tui::state::AppMode::Tv {
                     let ctrl_s = crate::tui::text::CTRL_S_STR;
-                    let ctrl_a = crate::tui::text::CTRL_A_STR;
                     self.state.notify(
                         NotificationKind::Info,
                         "TV Mode",
-                        format!("Command /browse is available in Streaming Mode ({ctrl_s}) or Addon Mode ({ctrl_a})."),
+                        format!("Command /browse is available in Streaming Mode ({ctrl_s})."),
                     );
                 } else if current_mode == crate::tui::state::AppMode::Streaming
                     && self.state.active_provider
@@ -694,12 +652,17 @@ impl App {
                 if msg.starts_with("Error:") {
                     log::error!("{msg}");
                     let body = msg.trim_start_matches("Error:").trim();
-                    let title = if body.starts_with("4KHDHub") {
-                        "4KHDHub Stream Unavailable"
+                    let (title, clean_body) = if let Some(rest) = body
+                        .strip_prefix("4KHDHub:")
+                        .or_else(|| body.strip_prefix("4KHDHub"))
+                    {
+                        let trimmed = rest.trim_start_matches(':').trim();
+                        ("4KHDHub Stream Unavailable", trimmed)
                     } else {
-                        "Operation failed"
+                        ("Operation failed", body)
                     };
-                    self.state.notify(NotificationKind::Error, title, body);
+                    self.state
+                        .notify(NotificationKind::Error, title, clean_body);
                 } else {
                     self.state.set_status_default(msg);
                 }
@@ -712,11 +675,15 @@ impl App {
                 self.state.is_checking_updates = true;
                 let update_sender = self.action_sender.clone();
                 tokio::spawn(async move {
-                    let task =
-                        tokio::spawn(crate::updater::check_release(env!("CARGO_PKG_VERSION")));
-                    let result = match task.await {
+                    let check_future = crate::updater::check_release(env!("CARGO_PKG_VERSION"));
+                    let result = match tokio::time::timeout(
+                        std::time::Duration::from_secs(15),
+                        check_future,
+                    )
+                    .await
+                    {
                         Ok(res) => res,
-                        Err(join_err) => Err(format!("update check task error: {join_err}")),
+                        Err(_) => Err("update check timed out after 15 seconds".to_string()),
                     };
                     update_sender.send(Action::UpdateAvailable(result)).ok();
                 });
@@ -730,18 +697,22 @@ impl App {
                     .as_secs();
                 self.persist_config();
 
+                self.state
+                    .notifications
+                    .retain(|n| !n.title.eq_ignore_ascii_case("Checking for updates"));
+
                 match result {
                     Ok(None) => {
                         if self.state.manual_update_check {
                             self.state.set_status_long(format!(
-                                "SumanMovies-TUI is up to date (v{}).",
+                                "MovieBox-Tui is up to date (v{}).",
                                 env!("CARGO_PKG_VERSION")
                             ));
                             self.state.notify(
                                 NotificationKind::Success,
                                 "Up to date",
                                 format!(
-                                    "SumanMovies-TUI v{} is the latest version.",
+                                    "MovieBox-Tui v{} is the latest version.",
                                     env!("CARGO_PKG_VERSION")
                                 ),
                             );
@@ -768,7 +739,7 @@ impl App {
                                 NotificationKind::Info,
                                 "Update Available",
                                 format!(
-                                    "SumanMovies-TUI v{version} is available. Exit search to view."
+                                    "MovieBox-Tui v{version} is available. Exit search to view."
                                 ),
                             );
                         } else if self.state.is_playing || self.state.download_progress.is_some() {
@@ -868,7 +839,7 @@ impl App {
                         self.state.notify(
                             NotificationKind::Success,
                             "Update Installed",
-                            "SumanMovies-TUI was updated successfully. Restarting process...",
+                            "MovieBox-Tui was updated successfully. Restarting process...",
                         );
 
                         crossterm::terminal::disable_raw_mode().ok();
@@ -880,6 +851,7 @@ impl App {
                         )
                         .ok();
 
+                        #[cfg(unix)]
                         if let Ok(exe_path) = std::env::current_exe() {
                             if let Err(e) = crate::updater::restart_process(&exe_path) {
                                 log::error!("failed to restart process after update: {e}");
@@ -899,8 +871,107 @@ impl App {
                     }
                 }
             }
+
+            Action::ToggleProvider(provider) => {
+                self.toggle_provider(provider);
+            }
+
+            Action::CheckBdixNetwork => {
+                let sender = self.action_sender.clone();
+                tokio::spawn(async move {
+                    let timeout = std::time::Duration::from_secs(3);
+                    let (circleftp, dhakaflix) = tokio::join!(
+                        crate::net::probe_url(
+                            crate::providers::bdix::circleftp::client::POSTS_URL,
+                            timeout,
+                        ),
+                        async {
+                            for (server, _) in crate::providers::bdix::dhakaflix::client::SERVERS {
+                                if crate::net::probe_url(server, timeout).await {
+                                    return true;
+                                }
+                            }
+                            false
+                        }
+                    );
+                    sender
+                        .send(Action::BdixProbeResult {
+                            circleftp,
+                            dhakaflix,
+                        })
+                        .ok();
+                });
+            }
+
+            Action::BdixProbeResult {
+                circleftp,
+                dhakaflix,
+            } => {
+                let prev_c = self.state.bdix_circleftp_enabled;
+                let prev_d = self.state.bdix_dhakaflix_enabled;
+                self.state.bdix_circleftp_enabled = circleftp || prev_c;
+                self.state.bdix_dhakaflix_enabled = dhakaflix || prev_d;
+                self.state.bdix_probed = true;
+                if !self.state.provider_enabled(self.state.active_provider) {
+                    let next = self
+                        .state
+                        .available_providers()
+                        .into_iter()
+                        .next()
+                        .unwrap_or(crate::providers::models::ProviderKind::MovieBox);
+                    self.switch_provider(next);
+                }
+                self.persist_config();
+                let newly_c = circleftp && !prev_c;
+                let newly_d = dhakaflix && !prev_d;
+                if newly_c || newly_d {
+                    let mut found = Vec::new();
+                    if newly_c {
+                        found.push("CircleFTP");
+                    }
+                    if newly_d {
+                        found.push("DhakaFlix");
+                    }
+                    self.state.notify(
+                        NotificationKind::Info,
+                        "BDIX Network Detected",
+                        format!("Automatically enabled: {}", found.join(", ")),
+                    );
+                }
+            }
             _ => return None,
         }
         None
+    }
+
+    fn toggle_provider(&mut self, provider: crate::providers::models::ProviderKind) {
+        let currently_enabled = self.state.provider_enabled(provider);
+        if currently_enabled {
+            let would_remain: Vec<crate::providers::models::ProviderKind> =
+                crate::providers::models::ProviderKind::ENABLED
+                    .into_iter()
+                    .filter(|p| *p != provider && self.state.provider_enabled(*p))
+                    .collect();
+            if would_remain.is_empty() {
+                self.state.notify(
+                    NotificationKind::Warning,
+                    provider.label(),
+                    "Cannot disable: at least one streaming provider must remain active.",
+                );
+                return;
+            }
+        }
+        self.state
+            .set_provider_enabled(provider, !currently_enabled);
+        if currently_enabled && self.state.active_provider == provider {
+            let next = self
+                .state
+                .available_providers()
+                .into_iter()
+                .next()
+                .unwrap_or(crate::providers::models::ProviderKind::MovieBox);
+            self.switch_provider(next);
+        }
+        self.persist_config();
     }
 }

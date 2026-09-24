@@ -17,7 +17,7 @@ use tokio::io::AsyncWriteExt;
 const MAX_ATTEMPTS: usize = 4;
 const SEGMENT_THRESHOLD: u64 = 32 * 1024 * 1024;
 const MAX_SEGMENTS: usize = 8;
-pub const DEFAULT_STREAM_NAME: &str = "SumanMovies-TUI_Stream";
+pub const DEFAULT_STREAM_NAME: &str = "MovieBox-Tui_Stream";
 
 pub fn safe_file_stem(value: &str) -> String {
     let mut stem = value
@@ -83,6 +83,48 @@ pub enum DownloadError {
     Incomplete { downloaded: u64, expected: u64 },
     #[error("download paused")]
     Paused,
+}
+
+impl DownloadError {
+    pub fn user_message(&self) -> String {
+        match self {
+            Self::Http(status) => match *status {
+                StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => {
+                    format!("Server refused download (HTTP {}).", status.as_u16())
+                }
+                StatusCode::NOT_FOUND | StatusCode::GONE => {
+                    "File is no longer available on server.".to_string()
+                }
+                StatusCode::TOO_MANY_REQUESTS => {
+                    "Server rate limit exceeded. Try again later.".to_string()
+                }
+                other if other.is_server_error() => {
+                    format!("Server error (HTTP {}). Try again later.", other.as_u16())
+                }
+                other => format!("Server returned HTTP {}.", other.as_u16()),
+            },
+            Self::Network(error) => {
+                if error.is_timeout() {
+                    "Connection timed out.".to_string()
+                } else if error.is_connect() {
+                    "Cannot reach download server.".to_string()
+                } else {
+                    "Connection to server was lost.".to_string()
+                }
+            }
+            Self::File(error) => format!("File write error: {}.", error.kind()),
+            Self::InvalidRange(_) => "Server returned invalid partial response.".to_string(),
+            Self::Incomplete {
+                downloaded,
+                expected,
+            } => format!(
+                "Download stopped at {:.1} of {:.1} MB.",
+                *downloaded as f64 / 1_048_576.0,
+                *expected as f64 / 1_048_576.0
+            ),
+            Self::Paused => "Download paused.".to_string(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -154,7 +196,7 @@ where
                 .headers()
                 .get(ACCEPT_RANGES)
                 .and_then(|value| value.to_str().ok())
-                .is_some_and(|value| value.eq_ignore_ascii_case("bytes"))
+                .is_none_or(|value| !value.eq_ignore_ascii_case("none"))
             && response
                 .content_length()
                 .is_some_and(|total| total >= SEGMENT_THRESHOLD)
@@ -235,11 +277,12 @@ where
         metadata.segments = None;
         write_metadata(&metadata_path, &metadata).await?;
 
-        let mut file = tokio::fs::OpenOptions::new()
+        let raw_file = tokio::fs::OpenOptions::new()
             .create(true)
             .append(true)
             .open(&partial)
             .await?;
+        let mut file = tokio::io::BufWriter::with_capacity(256 * 1024, raw_file);
         let mut response = response;
         let mut downloaded = offset;
         let transfer_started = Instant::now();
@@ -272,7 +315,7 @@ where
                 }
                 Ok(Ok(None)) => {
                     file.flush().await?;
-                    file.sync_data().await?;
+                    file.get_mut().sync_data().await?;
                     if let Some(expected) = metadata.total
                         && downloaded != expected
                     {
@@ -526,10 +569,14 @@ async fn download_segment(
             }
         };
         if response.status() != StatusCode::PARTIAL_CONTENT {
-            last_error = Some(DownloadError::InvalidRange(format!(
+            let error = DownloadError::InvalidRange(format!(
                 "worker expected HTTP 206, received {}",
                 response.status()
-            )));
+            ));
+            if response.status() == StatusCode::OK {
+                return Err(error);
+            }
+            last_error = Some(error);
             retry_delay(attempt).await;
             continue;
         }
@@ -861,5 +908,111 @@ mod tests {
             "new version"
         );
         let _ = tokio::fs::remove_dir_all(&dir).await;
+    }
+    #[test]
+    fn test_download_error_user_message() {
+        let err_403 = DownloadError::Http(StatusCode::FORBIDDEN);
+        assert_eq!(
+            err_403.user_message(),
+            "Server refused download (HTTP 403)."
+        );
+
+        let err_404 = DownloadError::Http(StatusCode::NOT_FOUND);
+        assert_eq!(
+            err_404.user_message(),
+            "File is no longer available on server."
+        );
+
+        let err_429 = DownloadError::Http(StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(
+            err_429.user_message(),
+            "Server rate limit exceeded. Try again later."
+        );
+
+        let err_503 = DownloadError::Http(StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(
+            err_503.user_message(),
+            "Server error (HTTP 503). Try again later."
+        );
+
+        let err_incomplete = DownloadError::Incomplete {
+            downloaded: 10 * 1024 * 1024,
+            expected: 20 * 1024 * 1024,
+        };
+        assert_eq!(
+            err_incomplete.user_message(),
+            "Download stopped at 10.0 of 20.0 MB."
+        );
+
+        let err_paused = DownloadError::Paused;
+        assert_eq!(err_paused.user_message(), "Download paused.");
+    }
+
+    #[tokio::test]
+    async fn test_download_forwards_custom_headers_and_content_to_local_server() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let url = format!("http://127.0.0.1:{port}/video.mp4");
+
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut buf = [0u8; 1024];
+            let n = socket.read(&mut buf).await.unwrap();
+            let req = String::from_utf8_lossy(&buf[..n]);
+            let lower = req.to_lowercase();
+            assert!(lower.contains("user-agent: moviebox-custom-ua"));
+            assert!(lower.contains("referer: https://custom.referer.test/"));
+            assert!(lower.contains("x-auth-token: secret-token-123"));
+            let body = b"test video binary chunk stream";
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nContent-Type: video/mp4\r\nConnection: close\r\n\r\n",
+                body.len()
+            );
+            socket.write_all(response.as_bytes()).await.unwrap();
+            socket.write_all(body).await.unwrap();
+        });
+
+        let temp_dir = std::env::temp_dir().join(format!("mbx_dl_test_{}", std::process::id()));
+        tokio::fs::create_dir_all(&temp_dir).await.unwrap();
+        let dest_file = temp_dir.join("test_video.mp4");
+
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(
+            reqwest::header::USER_AGENT,
+            "MovieBox-Custom-UA".parse().unwrap(),
+        );
+        headers.insert(
+            reqwest::header::REFERER,
+            "https://custom.referer.test/".parse().unwrap(),
+        );
+        headers.insert(
+            reqwest::header::HeaderName::from_static("x-auth-token"),
+            "secret-token-123".parse().unwrap(),
+        );
+
+        let client = crate::net::streaming_client_builder()
+            .default_headers(headers)
+            .build()
+            .unwrap();
+
+        let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let mut progress_count = 0usize;
+
+        let res = download(&client, &url, &dest_file, cancel, |_prog| {
+            progress_count += 1;
+        })
+        .await;
+
+        server.await.unwrap();
+        assert!(matches!(res, Ok(DownloadOutcome::Completed { .. })));
+        assert!(dest_file.exists());
+        let saved = tokio::fs::read(&dest_file).await.unwrap();
+        assert_eq!(saved, b"test video binary chunk stream");
+        assert!(progress_count > 0);
+
+        let _ = tokio::fs::remove_dir_all(&temp_dir).await;
     }
 }

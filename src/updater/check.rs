@@ -1,8 +1,12 @@
 use super::artifact::{Release, ReleaseAsset};
 
-const OWNER: &str = "SumanCH8514";
-const REPOSITORY: &str = "SumanMovies-Tui";
+pub const OWNER: &str = "mesamirh";
+pub const REPOSITORY: &str = "sumanmovies";
 
+pub fn release_tag_url(tag: &str) -> String {
+    let tag_clean = tag.trim_start_matches('v');
+    format!("https://github.com/{OWNER}/{REPOSITORY}/releases/tag/v{tag_clean}")
+}
 pub async fn check_release(current: &str) -> Result<Option<Release>, String> {
     let release = match fetch_release().await {
         Ok(release) => release,
@@ -107,12 +111,19 @@ async fn fetch_latest_tag() -> Result<String, String> {
     }
     Ok(tag.to_string())
 }
-
 pub(crate) fn http_client() -> Result<reqwest::Client, String> {
     crate::net::http_client_builder()
-        .user_agent("SumanMovies-TUI")
+        .user_agent("sumanmovies")
         .timeout(std::time::Duration::from_secs(30))
         .connect_timeout(std::time::Duration::from_secs(10))
         .build()
         .map_err(|e| format!("HTTP client: {e}"))
+}
+
+pub(crate) fn download_client() -> Result<reqwest::Client, String> {
+    crate::net::http_client_builder()
+        .user_agent("sumanmovies")
+        .connect_timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| format!("Download client: {e}"))
 }

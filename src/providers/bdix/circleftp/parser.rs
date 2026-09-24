@@ -19,20 +19,6 @@ pub struct CircleFtpSearchResponse {
     pub posts: Option<Vec<CircleFtpPost>>,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CircleFtpSeason {
-    pub season_name: Option<String>,
-    pub episodes: Option<Vec<CircleFtpEpisode>>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CircleFtpEpisode {
-    pub title: Option<String>,
-    pub link: Option<String>,
-}
-
 pub fn circleftp_search_to_catalog(response: &CircleFtpSearchResponse) -> Vec<CatalogItem> {
     let mut items = Vec::new();
     if let Some(posts) = &response.posts {
@@ -61,7 +47,7 @@ pub fn circleftp_search_to_catalog(response: &CircleFtpSearchResponse) -> Vec<Ca
                 .image
                 .as_ref()
                 .or(post.image_sm.as_ref())
-                .map(|img| format!("http://new.circleftp.net:5000/uploads/{}", img));
+                .map(|img| format!("{}{}", super::client::UPLOADS_URL, img));
 
             items.push(CatalogItem {
                 id: ProviderMediaId {

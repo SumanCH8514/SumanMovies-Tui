@@ -9,6 +9,8 @@ use hickory_resolver::name_server::TokioConnectionProvider;
 use reqwest::dns::{Addrs, Name, Resolve, Resolving};
 
 const FALLBACK_DNS_PORT: u16 = 53;
+pub const DEFAULT_BROWSER_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+pub const APP_HTTP_USER_AGENT: &str = concat!("MovieBox-Tui/", env!("CARGO_PKG_VERSION"));
 
 static GLOBAL_RESOLVER: std::sync::LazyLock<Arc<TokioResolver>> =
     std::sync::LazyLock::new(|| Arc::new(build_resolver()));
@@ -41,10 +43,15 @@ fn fallback_config() -> ResolverConfig {
 fn build_resolver() -> TokioResolver {
     let mut builder = match TokioResolver::builder_tokio() {
         Ok(builder) => builder,
-        Err(_) => TokioResolver::builder_with_config(
-            fallback_config(),
-            TokioConnectionProvider::default(),
-        ),
+        Err(e) => {
+            log::warn!(
+                "system DNS resolver failed ({e}); falling back to public DNS (Cloudflare/Google/Quad9)"
+            );
+            TokioResolver::builder_with_config(
+                fallback_config(),
+                TokioConnectionProvider::default(),
+            )
+        }
     };
     builder.options_mut().ip_strategy = LookupIpStrategy::Ipv4AndIpv6;
     builder.build()
@@ -65,20 +72,64 @@ impl Resolve for FallbackResolver {
     }
 }
 
-pub fn http_client_builder() -> reqwest::ClientBuilder {
+pub fn http_client_builder_base() -> reqwest::ClientBuilder {
     reqwest::Client::builder()
         .dns_resolver(Arc::new(FallbackResolver::new()))
         .tcp_nodelay(true)
         .tcp_keepalive(Some(std::time::Duration::from_secs(45)))
         .pool_idle_timeout(Some(std::time::Duration::from_secs(90)))
         .pool_max_idle_per_host(8)
+        .connect_timeout(std::time::Duration::from_secs(15))
+}
+
+pub fn http_client_builder() -> reqwest::ClientBuilder {
+    http_client_builder_base().timeout(std::time::Duration::from_secs(60))
+}
+
+pub fn streaming_client_builder() -> reqwest::ClientBuilder {
+    http_client_builder_base()
+}
+
+pub async fn probe_url(url: &str, timeout: std::time::Duration) -> bool {
+    let Ok(client) = reqwest::Client::builder()
+        .timeout(timeout)
+        .connect_timeout(timeout)
+        .build()
+    else {
+        return false;
+    };
+    match client.head(url).send().await {
+        Ok(resp) if resp.status().is_success() || resp.status().is_redirection() => return true,
+        Ok(resp) => {
+            log::debug!(
+                "probe HEAD non-success for {}: {}",
+                crate::logging::sanitize_url(url),
+                resp.status()
+            );
+        }
+        Err(e) => {
+            log::debug!(
+                "probe HEAD error for {}: {e}",
+                crate::logging::sanitize_url(url)
+            );
+        }
+    }
+    match client.get(url).send().await {
+        Ok(resp) => resp.status().is_success() || resp.status().is_redirection(),
+        Err(e) => {
+            log::debug!(
+                "probe GET error for {}: {e}",
+                crate::logging::sanitize_url(url)
+            );
+            false
+        }
+    }
 }
 
 pub fn is_http_url(source: &str) -> bool {
     let trimmed = source.trim();
     trimmed.starts_with("http://") || trimmed.starts_with("https://")
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;

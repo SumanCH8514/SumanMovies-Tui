@@ -3,6 +3,17 @@ pub mod tracker;
 use std::{path::Path, process::Command};
 
 pub const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+pub const ENV_MOVIEBOX_PLAYER: &str = "MOVIEBOX_PLAYER";
+
+#[cfg(not(target_os = "windows"))]
+pub const STANDARD_UNIX_BIN_DIRS: &[&str] = &[
+    "/opt/homebrew/bin",
+    "/usr/local/bin",
+    "/usr/bin",
+    "/bin",
+    "/run/current-system/sw/bin",
+    "/data/data/com.termux/files/usr/bin",
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlayerKind {
@@ -45,6 +56,11 @@ impl PlayerKind {
 pub fn detect() -> Vec<PlayerKind> {
     let mut players = Vec::new();
 
+    let is_termux = crate::updater::artifact::is_termux_environment();
+    if is_termux && !android_openers().is_empty() {
+        players.push(PlayerKind::AndroidIntent);
+    }
+
     #[cfg(target_os = "macos")]
     if iina_available() {
         players.push(PlayerKind::Iina);
@@ -58,7 +74,7 @@ pub fn detect() -> Vec<PlayerKind> {
         players.push(PlayerKind::Vlc);
     }
 
-    if android_opener().is_some() {
+    if !is_termux && !android_openers().is_empty() {
         players.push(PlayerKind::AndroidIntent);
     }
 
@@ -76,19 +92,28 @@ pub fn supports_headers(kind: PlayerKind, headers: &[(String, String)]) -> bool 
     match kind {
         PlayerKind::Mpv => true,
         PlayerKind::Iina => true,
-        PlayerKind::Vlc | PlayerKind::AndroidIntent => headers.iter().all(|(name, _)| {
-            name.eq_ignore_ascii_case("referer") || name.eq_ignore_ascii_case("user-agent")
-        }),
+        PlayerKind::Vlc => true,
+        PlayerKind::AndroidIntent => true,
     }
 }
 
-pub fn format_media_title(title: Option<&str>) -> String {
-    match title.map(str::trim).filter(|t| !t.is_empty()) {
-        Some(t) => format!("SumanMovies TUI Api Service • {t}"),
-        None => "SumanMovies TUI Api Service".to_string(),
+pub fn header_capable_players() -> &'static [PlayerKind] {
+    #[cfg(target_os = "macos")]
+    {
+        &[
+            PlayerKind::Mpv,
+            PlayerKind::Iina,
+            PlayerKind::Vlc,
+            PlayerKind::AndroidIntent,
+        ]
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        &[PlayerKind::Mpv, PlayerKind::Vlc, PlayerKind::AndroidIntent]
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn command(
     kind: PlayerKind,
     url: &str,
@@ -97,7 +122,7 @@ pub fn command(
     window: Option<(u32, u32)>,
     resume_seconds: Option<u64>,
     tracker: Option<(&str, &str, usize, usize)>,
-    title: Option<&str>,
+    max_height: Option<u64>,
 ) -> Command {
     match kind {
         PlayerKind::Mpv => mpv_command(
@@ -108,7 +133,7 @@ pub fn command(
             window,
             resume_seconds,
             tracker,
-            title,
+            max_height,
         ),
         PlayerKind::Iina => iina_command(
             url,
@@ -117,10 +142,10 @@ pub fn command(
             window,
             resume_seconds,
             tracker,
-            title,
+            max_height,
         ),
-        PlayerKind::Vlc => vlc_command(url, subtitle, headers, window, resume_seconds, title),
-        PlayerKind::AndroidIntent => android_intent_command(url, subtitle, headers, title),
+        PlayerKind::Vlc => vlc_command(url, subtitle, headers, window, resume_seconds, max_height),
+        PlayerKind::AndroidIntent => android_intent_command(url, subtitle, headers),
     }
 }
 
@@ -141,108 +166,131 @@ fn build_player_process_command(executable: &str) -> Command {
     }
 }
 
-#[derive(Debug, Clone)]
-enum AndroidOpener {
+#[allow(clippy::enum_variant_names)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AndroidOpener {
+    TermuxAm(String),
     TermuxOpen(String),
     TermuxOpenUrl(String),
-    TermuxAm(String),
+    #[cfg(target_os = "android")]
     SystemAm(String),
 }
 
-fn probe_android_opener() -> Option<AndroidOpener> {
+pub fn probe_android_openers() -> Vec<AndroidOpener> {
+    let mut openers = Vec::new();
+
     if let Some(custom) = configured_executable("MOVIEBOX_ANDROID_PLAYER_PATH") {
         if custom.ends_with("termux-open-url") {
-            return Some(AndroidOpener::TermuxOpenUrl(custom));
+            openers.push(AndroidOpener::TermuxOpenUrl(custom));
         } else if custom.ends_with("termux-am") {
-            return Some(AndroidOpener::TermuxAm(custom));
+            openers.push(AndroidOpener::TermuxAm(custom));
         } else {
-            return Some(AndroidOpener::TermuxOpen(custom));
+            openers.push(AndroidOpener::TermuxOpen(custom));
         }
+        return openers;
     }
 
+    let mut push_unique = |opener: AndroidOpener| {
+        if !openers.iter().any(|existing| match (existing, &opener) {
+            (AndroidOpener::TermuxAm(a), AndroidOpener::TermuxAm(b))
+            | (AndroidOpener::TermuxOpen(a), AndroidOpener::TermuxOpen(b))
+            | (AndroidOpener::TermuxOpenUrl(a), AndroidOpener::TermuxOpenUrl(b)) => a == b,
+            #[cfg(target_os = "android")]
+            (AndroidOpener::SystemAm(a), AndroidOpener::SystemAm(b)) => a == b,
+            _ => false,
+        }) {
+            openers.push(opener);
+        }
+    };
+
+    #[cfg(target_os = "android")]
     let is_termux = crate::updater::artifact::is_termux_environment();
 
     if let Ok(prefix) = std::env::var("PREFIX") {
+        let termux_am = format!("{prefix}/bin/termux-am");
+        if Path::new(&termux_am).is_file() {
+            push_unique(AndroidOpener::TermuxAm(termux_am));
+        }
         let termux_open = format!("{prefix}/bin/termux-open");
         if Path::new(&termux_open).is_file() {
-            return Some(AndroidOpener::TermuxOpen(termux_open));
+            push_unique(AndroidOpener::TermuxOpen(termux_open));
         }
         let termux_open_url = format!("{prefix}/bin/termux-open-url");
         if Path::new(&termux_open_url).is_file() {
-            return Some(AndroidOpener::TermuxOpenUrl(termux_open_url));
-        }
-        let termux_am = format!("{prefix}/bin/termux-am");
-        if Path::new(&termux_am).is_file() {
-            return Some(AndroidOpener::TermuxAm(termux_am));
+            push_unique(AndroidOpener::TermuxOpenUrl(termux_open_url));
         }
     }
 
-    let termux_open_static = "/data/data/com.termux/files/usr/bin/termux-open";
-    if Path::new(termux_open_static).is_file() {
-        return Some(AndroidOpener::TermuxOpen(termux_open_static.to_string()));
+    let termux_am_static = format!(
+        "{}/bin/termux-am",
+        crate::updater::artifact::TERMUX_PREFIX_USR
+    );
+    if Path::new(&termux_am_static).is_file() {
+        push_unique(AndroidOpener::TermuxAm(termux_am_static));
     }
-    let termux_open_url_static = "/data/data/com.termux/files/usr/bin/termux-open-url";
-    if Path::new(termux_open_url_static).is_file() {
-        return Some(AndroidOpener::TermuxOpenUrl(
-            termux_open_url_static.to_string(),
-        ));
+    let termux_open_static = format!(
+        "{}/bin/termux-open",
+        crate::updater::artifact::TERMUX_PREFIX_USR
+    );
+    if Path::new(&termux_open_static).is_file() {
+        push_unique(AndroidOpener::TermuxOpen(termux_open_static));
     }
-    let termux_am_static = "/data/data/com.termux/files/usr/bin/termux-am";
-    if Path::new(termux_am_static).is_file() {
-        return Some(AndroidOpener::TermuxAm(termux_am_static.to_string()));
+    let termux_open_url_static = format!(
+        "{}/bin/termux-open-url",
+        crate::updater::artifact::TERMUX_PREFIX_USR
+    );
+    if Path::new(&termux_open_url_static).is_file() {
+        push_unique(AndroidOpener::TermuxOpenUrl(termux_open_url_static));
     }
 
+    if let Some(path) = find_in_path("termux-am") {
+        push_unique(AndroidOpener::TermuxAm(path));
+    }
     if let Some(path) = find_in_path("termux-open") {
-        return Some(AndroidOpener::TermuxOpen(path));
+        push_unique(AndroidOpener::TermuxOpen(path));
     }
     if let Some(path) = find_in_path("termux-open-url") {
-        return Some(AndroidOpener::TermuxOpenUrl(path));
-    }
-    if let Some(path) = find_in_path("termux-am") {
-        return Some(AndroidOpener::TermuxAm(path));
+        push_unique(AndroidOpener::TermuxOpenUrl(path));
     }
 
+    #[cfg(target_os = "android")]
     if !is_termux {
-        if Path::new("/system/bin/am").is_file() {
-            return Some(AndroidOpener::SystemAm("/system/bin/am".to_string()));
-        }
-        if let Some(path) = find_in_path("am") {
-            return Some(AndroidOpener::SystemAm(path));
+        let is_root = unsafe { libc::getuid() == 0 };
+        if is_root {
+            if Path::new("/system/bin/am").is_file() {
+                push_unique(AndroidOpener::SystemAm("/system/bin/am".to_string()));
+            }
+            if let Some(path) = find_in_path("am") {
+                push_unique(AndroidOpener::SystemAm(path));
+            }
         }
     }
 
-    None
+    openers
 }
 
-fn android_opener() -> Option<AndroidOpener> {
-    static CACHED: std::sync::RwLock<Option<AndroidOpener>> = std::sync::RwLock::new(None);
+static ANDROID_OPENERS: std::sync::LazyLock<Vec<AndroidOpener>> =
+    std::sync::LazyLock::new(probe_android_openers);
 
-    if let Ok(guard) = CACHED.read() {
-        if let Some(opener) = &*guard {
-            return Some(opener.clone());
-        }
-    }
-
-    let detected = probe_android_opener();
-    if let Some(opener) = &detected {
-        if let Ok(mut guard) = CACHED.write() {
-            *guard = Some(opener.clone());
-        }
-    }
-    detected
+pub fn android_openers() -> &'static [AndroidOpener] {
+    ANDROID_OPENERS.as_slice()
 }
 
 fn append_android_intent_extras(
     cmd: &mut Command,
     subtitle: Option<&str>,
     headers: &[(String, String)],
-    title: Option<&str>,
 ) {
-    let media_title = format_media_title(title);
-    cmd.arg("-e").arg("title").arg(media_title);
     if let Some(sub) = subtitle {
         cmd.arg("-e").arg("subtitles_location").arg(sub);
+        cmd.arg("--eu").arg("subtitles_location").arg(sub);
         cmd.arg("-e").arg("subs").arg(sub);
+        cmd.arg("--esal").arg("subs").arg(sub);
+        cmd.arg("-e").arg("subs.enable").arg(sub);
+        cmd.arg("--esal").arg("subs.enable").arg(sub);
+        cmd.arg("-e").arg("sub").arg(sub);
+        cmd.arg("--eu").arg("sub").arg(sub);
+        cmd.arg("-e").arg("title_subtitle").arg(sub);
     }
     for (name, value) in headers {
         if name.eq_ignore_ascii_case("user-agent") {
@@ -253,48 +301,40 @@ fn append_android_intent_extras(
     }
 }
 
-pub fn split_ytdl_format(url: &str) -> (&str, Option<&str>) {
-    if let Some(idx) = url.find("#ytdl-format=") {
-        (&url[..idx], Some(&url[idx + 13..]))
-    } else {
-        (url, None)
-    }
-}
-
-fn android_intent_command(
+pub fn android_intent_command_for_opener(
+    opener: &AndroidOpener,
     url: &str,
     subtitle: Option<&str>,
     headers: &[(String, String)],
-    title: Option<&str>,
 ) -> Command {
-    let (clean_url, _) = split_ytdl_format(url);
-    match android_opener() {
-        Some(AndroidOpener::TermuxOpen(path)) => {
+    match opener {
+        AndroidOpener::TermuxOpen(path) => {
             let mut cmd = Command::new(path);
             cmd.arg("--chooser")
                 .arg("--content-type")
                 .arg("video/*")
-                .arg(clean_url);
+                .arg(url);
             cmd
         }
-        Some(AndroidOpener::TermuxOpenUrl(path)) => {
+        AndroidOpener::TermuxOpenUrl(path) => {
             let mut cmd = Command::new(path);
-            cmd.arg(clean_url);
+            cmd.arg(url);
             cmd
         }
-        Some(AndroidOpener::TermuxAm(path)) => {
+        AndroidOpener::TermuxAm(path) => {
             let mut cmd = Command::new(path);
             cmd.arg("start")
                 .arg("-a")
                 .arg("android.intent.action.VIEW")
                 .arg("-d")
-                .arg(clean_url)
+                .arg(url)
                 .arg("-t")
                 .arg("video/*");
-            append_android_intent_extras(&mut cmd, subtitle, headers, title);
+            append_android_intent_extras(&mut cmd, subtitle, headers);
             cmd
         }
-        Some(AndroidOpener::SystemAm(path)) => {
+        #[cfg(target_os = "android")]
+        AndroidOpener::SystemAm(path) => {
             let mut cmd = Command::new(path);
             cmd.arg("start")
                 .arg("--user")
@@ -302,27 +342,63 @@ fn android_intent_command(
                 .arg("-a")
                 .arg("android.intent.action.VIEW")
                 .arg("-d")
-                .arg(clean_url)
+                .arg(url)
                 .arg("-t")
                 .arg("video/*");
-            append_android_intent_extras(&mut cmd, subtitle, headers, title);
+            append_android_intent_extras(&mut cmd, subtitle, headers);
             let current_path = std::env::var("PATH").unwrap_or_default();
             cmd.env("PATH", format!("/system/bin:/system/xbin:{current_path}"));
             cmd.env_remove("LD_LIBRARY_PATH");
             cmd.env_remove("LD_PRELOAD");
             cmd
         }
-        None => {
+    }
+}
+
+pub fn android_intent_commands(
+    url: &str,
+    subtitle: Option<&str>,
+    headers: &[(String, String)],
+) -> Vec<(AndroidOpener, Command)> {
+    let openers = android_openers();
+    if openers.is_empty() {
+        let mut cmd = Command::new("termux-open");
+        cmd.arg("--chooser")
+            .arg("--content-type")
+            .arg("video/*")
+            .arg(url);
+        return vec![(AndroidOpener::TermuxOpen("termux-open".to_string()), cmd)];
+    }
+    openers
+        .iter()
+        .map(|opener| {
+            let cmd = android_intent_command_for_opener(opener, url, subtitle, headers);
+            (opener.clone(), cmd)
+        })
+        .collect()
+}
+
+fn android_intent_command(
+    url: &str,
+    subtitle: Option<&str>,
+    headers: &[(String, String)],
+) -> Command {
+    let commands = android_intent_commands(url, subtitle, headers);
+    commands
+        .into_iter()
+        .next()
+        .map(|(_, cmd)| cmd)
+        .unwrap_or_else(|| {
             let mut cmd = Command::new("termux-open");
             cmd.arg("--chooser")
                 .arg("--content-type")
                 .arg("video/*")
-                .arg(clean_url);
+                .arg(url);
             cmd
-        }
-    }
+        })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn mpv_command(
     url: &str,
     subtitle: Option<&str>,
@@ -331,9 +407,8 @@ fn mpv_command(
     window: Option<(u32, u32)>,
     resume_seconds: Option<u64>,
     tracker: Option<(&str, &str, usize, usize)>,
-    title: Option<&str>,
+    max_height: Option<u64>,
 ) -> Command {
-    let (clean_url, ytdl_format) = split_ytdl_format(url);
     let fallback = if cfg!(target_os = "windows") {
         "mpv.exe"
     } else {
@@ -343,19 +418,40 @@ fn mpv_command(
     let mut command = build_player_process_command(&executable);
     let prefix = if iina { "--mpv-" } else { "--" };
 
-    let media_title = format_media_title(title);
-    command.arg(format!("{prefix}force-media-title={media_title}"));
-    command.arg(format!("{prefix}title={media_title}"));
-
     if let Some((width, height)) = window {
         command.arg(format!("{prefix}autofit={width}x{height}"));
     }
     command.arg(format!("{prefix}geometry=50%:50%"));
-
+    command.arg(format!("{prefix}cache=yes"));
+    command.arg(format!("{prefix}cache-pause=yes"));
+    command.arg(format!("{prefix}cache-pause-wait=8"));
+    command.arg(format!("{prefix}cache-pause-initial=yes"));
+    let (max_bytes, back_bytes) =
+        if cfg!(target_os = "android") || crate::updater::artifact::is_termux_environment() {
+            ("128M", "50M")
+        } else {
+            ("256M", "100M")
+        };
+    command.arg(format!("{prefix}demuxer-max-bytes={max_bytes}"));
+    command.arg(format!("{prefix}demuxer-max-back-bytes={back_bytes}"));
+    command.arg(format!("{prefix}demuxer-readahead-secs=120"));
+    command.arg(format!("{prefix}demuxer-lavf-buffersize=1048576"));
+    command.arg(format!("{prefix}stream-buffer-size=512k"));
+    command.arg(format!("{prefix}force-seekable=yes"));
+    command.arg(format!(
+        "{prefix}stream-lavf-o=reconnect=1,reconnect_streamed=1,reconnect_delay_max=5"
+    ));
     if !iina {
         command.arg("--idle=no").arg("--keep-open=no");
     }
-
+    if let Some(height) = max_height.filter(|&h| h > 0) {
+        command.arg(format!(
+            "{prefix}ytdl-format=bestvideo[height<={height}]+bestaudio/best[height<={height}]/bestvideo+bestaudio/best"
+        ));
+    } else {
+        command.arg(format!("{prefix}ytdl-format=bestvideo+bestaudio/best"));
+        command.arg(format!("{prefix}hls-bitrate=max"));
+    }
     if let Some(start) = resume_seconds {
         if start > 0 {
             command.arg(format!("{prefix}start={start}"));
@@ -384,16 +480,13 @@ fn mpv_command(
                 command.arg(format!("{prefix}referrer={value}"));
             }
         }
-        let fields = headers
-            .iter()
-            .filter(|(name, _)| {
-                !name.eq_ignore_ascii_case("user-agent") && !name.eq_ignore_ascii_case("referer")
-            })
-            .map(|(name, value)| format!("{name}: {value}"))
-            .collect::<Vec<_>>()
-            .join(",");
-        if !fields.is_empty() {
-            command.arg(format!("{prefix}http-header-fields={fields}"));
+        for (name, value) in headers {
+            if !name.eq_ignore_ascii_case("user-agent") && !name.eq_ignore_ascii_case("referer") {
+                command.arg(format!("{prefix}http-header-fields={name}: {value}"));
+                command.arg(format!(
+                    "{prefix}ytdl-raw-options-append=add-header={name}:{value}"
+                ));
+            }
         }
     }
     if let Some(subtitle) = subtitle {
@@ -406,15 +499,13 @@ fn mpv_command(
         command.arg(format!("{opt}={sub_path}"));
     }
 
-    if clean_url.contains("youtube.com") || clean_url.contains("youtu.be") {
-        command.arg(format!("{prefix}ytdl=yes"));
-        if let Some(fmt) = ytdl_format {
-            command.arg(format!("{prefix}ytdl-format={fmt}"));
-        }
+    if executable.starts_with("flatpak run ")
+        && (url.starts_with('/') || url.starts_with("file://"))
+    {
+        command.arg("@@").arg(url).arg("@@");
+    } else {
+        command.arg(url);
     }
-
-    command.arg(clean_url);
-
     command
 }
 
@@ -436,6 +527,10 @@ fn probe_iina_resolution() -> Option<IinaResolution> {
         return Some(IinaResolution::Cli(cli_global.to_string()));
     }
     if let Some(home) = dirs::home_dir() {
+        let user_cli = home.join("Applications/IINA.app/Contents/MacOS/iina-cli");
+        if user_cli.exists() {
+            return Some(IinaResolution::Cli(user_cli.to_string_lossy().into_owned()));
+        }
         let nix_iina = home.join(".nix-profile/bin/iina-cli");
         if nix_iina.exists() {
             return Some(IinaResolution::Cli(nix_iina.to_string_lossy().into_owned()));
@@ -466,10 +561,11 @@ fn probe_iina_resolution() -> Option<IinaResolution> {
 }
 
 #[cfg(target_os = "macos")]
-fn iina_resolution() -> Option<IinaResolution> {
-    static CACHED: std::sync::RwLock<Option<IinaResolution>> = std::sync::RwLock::new(None);
+static IINA_CACHED: std::sync::RwLock<Option<IinaResolution>> = std::sync::RwLock::new(None);
 
-    if let Ok(guard) = CACHED.read() {
+#[cfg(target_os = "macos")]
+fn iina_resolution() -> Option<IinaResolution> {
+    if let Ok(guard) = IINA_CACHED.read() {
         if let Some(res) = &*guard {
             return Some(res.clone());
         }
@@ -477,7 +573,7 @@ fn iina_resolution() -> Option<IinaResolution> {
 
     let detected = probe_iina_resolution();
     if let Some(res) = &detected {
-        if let Ok(mut guard) = CACHED.write() {
+        if let Ok(mut guard) = IINA_CACHED.write() {
             *guard = Some(res.clone());
         }
     }
@@ -485,6 +581,7 @@ fn iina_resolution() -> Option<IinaResolution> {
 }
 
 #[cfg(target_os = "macos")]
+#[allow(clippy::too_many_arguments)]
 fn iina_command(
     url: &str,
     subtitle: Option<&str>,
@@ -492,7 +589,7 @@ fn iina_command(
     window: Option<(u32, u32)>,
     resume_seconds: Option<u64>,
     tracker: Option<(&str, &str, usize, usize)>,
-    title: Option<&str>,
+    max_height: Option<u64>,
 ) -> Command {
     let resolution = iina_resolution();
     let mut command = match resolution {
@@ -508,7 +605,6 @@ fn iina_command(
         }
         None => Command::new("iina"),
     };
-
     let mpv = mpv_command(
         url,
         subtitle,
@@ -517,15 +613,29 @@ fn iina_command(
         window,
         resume_seconds,
         tracker,
-        title,
+        max_height,
     );
     for arg in mpv.get_args() {
-        command.arg(arg);
+        let s = arg.to_string_lossy();
+        if !s.starts_with("--mpv-script") {
+            command.arg(arg);
+        }
     }
     command
 }
 
+#[cfg(target_os = "macos")]
+pub fn iina_is_app_fallback() -> bool {
+    matches!(iina_resolution(), Some(IinaResolution::AppFallback))
+}
+
 #[cfg(not(target_os = "macos"))]
+pub fn iina_is_app_fallback() -> bool {
+    false
+}
+
+#[cfg(not(target_os = "macos"))]
+#[allow(clippy::too_many_arguments)]
 fn iina_command(
     url: &str,
     subtitle: Option<&str>,
@@ -533,7 +643,7 @@ fn iina_command(
     window: Option<(u32, u32)>,
     resume_seconds: Option<u64>,
     tracker: Option<(&str, &str, usize, usize)>,
-    title: Option<&str>,
+    max_height: Option<u64>,
 ) -> Command {
     mpv_command(
         url,
@@ -543,7 +653,7 @@ fn iina_command(
         window,
         resume_seconds,
         tracker,
-        title,
+        max_height,
     )
 }
 
@@ -553,7 +663,7 @@ fn vlc_command(
     headers: &[(String, String)],
     window: Option<(u32, u32)>,
     resume_seconds: Option<u64>,
-    title: Option<&str>,
+    max_height: Option<u64>,
 ) -> Command {
     let fallback = if cfg!(target_os = "windows") {
         "vlc.exe"
@@ -563,16 +673,17 @@ fn vlc_command(
     let executable = vlc_executable().unwrap_or_else(|| fallback.into());
     let mut command = build_player_process_command(&executable);
 
-    let media_title = format_media_title(title);
-    command.arg(format!("--meta-title={media_title}"));
-
     if let Some((width, height)) = window {
         command
             .arg(format!("--width={width}"))
             .arg(format!("--height={height}"));
     }
     command.arg("--play-and-exit");
-
+    command.arg("--network-caching=10000");
+    command.arg("--adaptive-logic=nearoptimal");
+    if let Some(height) = max_height.filter(|&h| h > 0) {
+        command.arg(format!("--adaptive-maxheight={height}"));
+    }
     if let Some(start) = resume_seconds {
         if start > 0 {
             command.arg(format!("--start-time={start}"));
@@ -591,7 +702,13 @@ fn vlc_command(
         command.arg(format!("--sub-file={sub_path}"));
     }
 
-    command.arg(url);
+    if executable.starts_with("flatpak run ")
+        && (url.starts_with('/') || url.starts_with("file://"))
+    {
+        command.arg("@@").arg(url).arg("@@");
+    } else {
+        command.arg(url);
+    }
     command
 }
 
@@ -653,17 +770,57 @@ fn query_windows_registry_value(key: &str, value_name: Option<&str>) -> Option<S
                 .iter()
                 .position(|&p| p == "REG_SZ" || p == "REG_EXPAND_SZ")
             {
+                let is_expand = parts[pos] == "REG_EXPAND_SZ";
                 if pos + 1 < parts.len() {
                     let val = parts[pos + 1..].join(" ");
                     let clean = val.trim_matches('"').trim();
                     if !clean.is_empty() {
-                        return Some(clean.to_string());
+                        let expanded = if is_expand {
+                            expand_env_vars(clean)
+                        } else {
+                            clean.to_string()
+                        };
+                        return Some(expanded);
                     }
                 }
             }
         }
     }
     None
+}
+
+#[cfg(target_os = "windows")]
+fn expand_env_vars(raw: &str) -> String {
+    let mut result = String::with_capacity(raw.len());
+    let mut chars = raw.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch == '%' {
+            let mut var_name = String::new();
+            let mut found_end = false;
+            for next_ch in chars.by_ref() {
+                if next_ch == '%' {
+                    found_end = true;
+                    break;
+                }
+                var_name.push(next_ch);
+            }
+            if found_end && !var_name.is_empty() {
+                if let Ok(val) = std::env::var(&var_name) {
+                    result.push_str(&val);
+                } else {
+                    result.push('%');
+                    result.push_str(&var_name);
+                    result.push('%');
+                }
+            } else {
+                result.push('%');
+                result.push_str(&var_name);
+            }
+        } else {
+            result.push(ch);
+        }
+    }
+    result
 }
 
 pub fn windows_mpv_candidate_paths(
@@ -863,7 +1020,6 @@ pub fn windows_vlc_candidate_paths(
     }
 
     if let Some(local) = localappdata {
-        candidates.push(format!(r"{local}\Microsoft\WindowsApps\vlc.exe"));
         candidates.push(format!(r"{local}\Microsoft\WinGet\Links\vlc.exe"));
         candidates.push(format!(r"{local}\Programs\VLC\vlc.exe"));
         candidates.push(format!(r"{local}\Programs\VideoLAN\VLC\vlc.exe"));
@@ -1118,12 +1274,13 @@ fn probe_vlc() -> Option<String> {
     )
 }
 
-fn mpv_executable() -> Option<String> {
-    static CACHED: std::sync::RwLock<Option<String>> = std::sync::RwLock::new(None);
+static MPV_CACHED: std::sync::RwLock<Option<String>> = std::sync::RwLock::new(None);
+static VLC_CACHED: std::sync::RwLock<Option<String>> = std::sync::RwLock::new(None);
 
-    if let Ok(guard) = CACHED.read() {
+fn mpv_executable() -> Option<String> {
+    if let Ok(guard) = MPV_CACHED.read() {
         if let Some(path) = &*guard {
-            if Path::new(path).is_file() {
+            if path.starts_with("flatpak run ") || Path::new(path).is_file() {
                 return Some(path.clone());
             }
         }
@@ -1131,7 +1288,7 @@ fn mpv_executable() -> Option<String> {
 
     let detected = probe_mpv();
     if let Some(path) = &detected {
-        if let Ok(mut guard) = CACHED.write() {
+        if let Ok(mut guard) = MPV_CACHED.write() {
             *guard = Some(path.clone());
         }
     }
@@ -1139,11 +1296,9 @@ fn mpv_executable() -> Option<String> {
 }
 
 fn vlc_executable() -> Option<String> {
-    static CACHED: std::sync::RwLock<Option<String>> = std::sync::RwLock::new(None);
-
-    if let Ok(guard) = CACHED.read() {
+    if let Ok(guard) = VLC_CACHED.read() {
         if let Some(path) = &*guard {
-            if Path::new(path).is_file() {
+            if path.starts_with("flatpak run ") || Path::new(path).is_file() {
                 return Some(path.clone());
             }
         }
@@ -1151,11 +1306,23 @@ fn vlc_executable() -> Option<String> {
 
     let detected = probe_vlc();
     if let Some(path) = &detected {
-        if let Ok(mut guard) = CACHED.write() {
+        if let Ok(mut guard) = VLC_CACHED.write() {
             *guard = Some(path.clone());
         }
     }
     detected
+}
+pub fn clear_cached_player_executables() {
+    if let Ok(mut guard) = MPV_CACHED.write() {
+        *guard = None;
+    }
+    if let Ok(mut guard) = VLC_CACHED.write() {
+        *guard = None;
+    }
+    #[cfg(target_os = "macos")]
+    if let Ok(mut guard) = IINA_CACHED.write() {
+        *guard = None;
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -1201,8 +1368,16 @@ fn flatpak_executable(app_id: &str) -> Option<String> {
 }
 
 fn configured_executable(variable: &str) -> Option<String> {
-    let val = std::env::var(variable).ok()?;
-    let trimmed = val.trim();
+    let raw = std::env::var(variable).ok().or_else(|| {
+        let cfg = crate::config::load();
+        match variable {
+            "MOVIEBOX_VLC_PATH" => cfg.vlc_path,
+            "MOVIEBOX_MPV_PATH" => cfg.mpv_path,
+            "MOVIEBOX_IINA_PATH" => cfg.iina_path,
+            _ => None,
+        }
+    })?;
+    let trimmed = raw.trim();
     if trimmed.is_empty() {
         return None;
     }
@@ -1251,15 +1426,7 @@ pub(crate) fn find_in_path(name: &str) -> Option<String> {
     }
     #[cfg(not(target_os = "windows"))]
     {
-        let standard_unix_dirs = [
-            "/opt/homebrew/bin",
-            "/usr/local/bin",
-            "/usr/bin",
-            "/bin",
-            "/run/current-system/sw/bin",
-            "/data/data/com.termux/files/usr/bin",
-        ];
-        for d in standard_unix_dirs {
+        for d in STANDARD_UNIX_BIN_DIRS {
             let p = std::path::PathBuf::from(d);
             if !paths_to_search.contains(&p) {
                 paths_to_search.push(p);
@@ -1371,20 +1538,6 @@ mod tests {
     }
 
     #[test]
-    fn test_format_media_title() {
-        assert_eq!(
-            format_media_title(Some("Inception (2010)")),
-            "SumanMovies TUI Api Service • Inception (2010)"
-        );
-        assert_eq!(
-            format_media_title(Some("   Interstellar  ")),
-            "SumanMovies TUI Api Service • Interstellar"
-        );
-        assert_eq!(format_media_title(Some("")), "SumanMovies TUI Api Service");
-        assert_eq!(format_media_title(None), "SumanMovies TUI Api Service");
-    }
-
-    #[test]
     fn vlc_command_preserves_supported_playback_options() {
         let command = vlc_command(
             "https://example.test/video.m3u8",
@@ -1396,14 +1549,13 @@ mod tests {
             ],
             Some((1280, 720)),
             Some(42),
-            Some("Leo (2023)"),
+            None,
         );
         let args = command
             .get_args()
             .map(|arg| arg.to_string_lossy().into_owned())
             .collect::<Vec<_>>();
 
-        assert!(args.contains(&"--meta-title=SumanMovies TUI Api Service • Leo (2023)".into()));
         assert!(args.contains(&"--width=1280".into()));
         assert!(args.contains(&"--height=720".into()));
         assert!(args.contains(&"--play-and-exit".into()));
@@ -1416,29 +1568,6 @@ mod tests {
             args.last().map(String::as_str),
             Some("https://example.test/video.m3u8")
         );
-    }
-
-    #[test]
-    fn mpv_command_sets_custom_title_flags() {
-        let command = mpv_command(
-            "https://example.test/video.mp4",
-            None,
-            &[],
-            false,
-            None,
-            None,
-            None,
-            Some("Jawan (2023)"),
-        );
-        let args = command
-            .get_args()
-            .map(|arg| arg.to_string_lossy().into_owned())
-            .collect::<Vec<_>>();
-
-        assert!(
-            args.contains(&"--force-media-title=SumanMovies TUI Api Service • Jawan (2023)".into())
-        );
-        assert!(args.contains(&"--title=SumanMovies TUI Api Service • Jawan (2023)".into()));
     }
 
     #[test]
@@ -1477,12 +1606,70 @@ mod tests {
             .collect::<Vec<_>>();
         assert!(args.contains(&r"--sub-file=\\server\share\subs\sub.srt".into()));
     }
+    #[test]
+    fn mpv_command_passes_multiple_header_fields_individually() {
+        let headers = vec![
+            ("Cookie".to_string(), "session=abc, token=123".to_string()),
+            ("Accept".to_string(), "text/html, */*".to_string()),
+            ("User-Agent".to_string(), "CustomUA".to_string()),
+            ("Referer".to_string(), "https://example.com/".to_string()),
+        ];
+        let cmd = mpv_command(
+            "https://example.com/video.mp4",
+            None,
+            &headers,
+            false,
+            None,
+            None,
+            None,
+            None,
+        );
+
+        let args = cmd
+            .get_args()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+        assert!(args.contains(&"--user-agent=CustomUA".to_string()));
+        assert!(args.contains(&"--referrer=https://example.com/".to_string()));
+        assert!(args.contains(&"--http-header-fields=Cookie: session=abc, token=123".to_string()));
+        assert!(args.contains(&"--http-header-fields=Accept: text/html, */*".to_string()));
+    }
+    static ENV_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     #[test]
-    fn header_support_rejects_android_and_unsupported_vlc_headers() {
+    #[cfg(not(target_os = "windows"))]
+    fn test_android_intent_commands_fallback_order() {
+        let _lock = ENV_MUTEX.lock().unwrap();
+        let temp_dir =
+            std::env::temp_dir().join(format!("termux_fallback_test_{}", std::process::id()));
+        let bin_dir = temp_dir.join("bin");
+        std::fs::create_dir_all(&bin_dir).unwrap();
+        let termux_am = bin_dir.join("termux-am");
+        let termux_open = bin_dir.join("termux-open");
+        std::fs::write(&termux_am, "#!/bin/sh\nexit 0").unwrap();
+        std::fs::write(&termux_open, "#!/bin/sh\nexit 0").unwrap();
+
+        unsafe {
+            std::env::set_var("TERMUX_VERSION", "0.118.0");
+            std::env::set_var("PREFIX", temp_dir.to_str().unwrap());
+        }
+        let commands = android_intent_commands("https://example.test/stream.m3u8", None, &[]);
+        unsafe {
+            std::env::remove_var("TERMUX_VERSION");
+            std::env::remove_var("PREFIX");
+        }
+        let _ = std::fs::remove_dir_all(&temp_dir);
+
+        assert!(commands.len() >= 2);
+        assert!(matches!(commands[0].0, AndroidOpener::TermuxAm(_)));
+        assert!(matches!(commands[1].0, AndroidOpener::TermuxOpen(_)));
+    }
+
+    #[test]
+    fn header_support_allows_android_cookies_and_vlc_proxy() {
         let headers = vec![("Cookie".into(), "session=secret".into())];
-        assert!(!supports_headers(PlayerKind::AndroidIntent, &headers));
-        assert!(!supports_headers(PlayerKind::Vlc, &headers));
+        assert!(supports_headers(PlayerKind::AndroidIntent, &headers));
+        assert!(supports_headers(PlayerKind::Vlc, &headers));
         assert!(supports_headers(
             PlayerKind::Vlc,
             &[("referer".into(), "https://example.test/".into())]
@@ -1501,17 +1688,70 @@ mod tests {
 
     #[test]
     fn test_android_intent_command_structure() {
-        let cmd = android_intent_command(
-            "https://example.test/video.mp4",
-            None,
-            &[],
-            Some("Test Movie"),
-        );
+        let cmd = android_intent_command("https://example.test/video.mp4", None, &[]);
         let args = cmd
             .get_args()
             .map(|a| a.to_string_lossy().into_owned())
             .collect::<Vec<_>>();
         assert!(args.contains(&"https://example.test/video.mp4".to_string()));
+    }
+    #[test]
+    fn test_mpv_command_headers_no_broken_ytdl_raw_options() {
+        let ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+        let headers = vec![
+            ("User-Agent".into(), ua.into()),
+            ("Referer".into(), "https://4khdhub.one".into()),
+            ("Cookie".into(), "auth=token123".into()),
+        ];
+        let cmd = mpv_command(
+            "https://example.test/stream.m3u8",
+            None,
+            &headers,
+            false,
+            None,
+            None,
+            None,
+            None,
+        );
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        assert!(args.iter().any(|a| a == &format!("--user-agent={ua}")));
+        assert!(args.iter().any(|a| a == "--referrer=https://4khdhub.one"));
+        assert!(
+            args.iter()
+                .any(|a| a == "--http-header-fields=Cookie: auth=token123")
+        );
+        assert!(
+            args.iter()
+                .any(|a| a == "--ytdl-raw-options-append=add-header=Cookie:auth=token123")
+        );
+        assert!(!args.iter().any(|a| a.starts_with("--ytdl-raw-options=")));
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn test_detect_prioritizes_android_intent_on_termux() {
+        let temp_dir = std::env::temp_dir().join(format!("termux_test_{}", std::process::id()));
+        let bin_dir = temp_dir.join("bin");
+        std::fs::create_dir_all(&bin_dir).unwrap();
+        let termux_am = bin_dir.join("termux-am");
+        std::fs::write(&termux_am, "#!/bin/sh\nexit 0").unwrap();
+        let _lock = ENV_MUTEX.lock().unwrap();
+        unsafe {
+            std::env::set_var("TERMUX_VERSION", "0.118.0");
+            std::env::set_var("PREFIX", temp_dir.to_str().unwrap());
+        }
+        let detected = detect();
+        unsafe {
+            std::env::remove_var("TERMUX_VERSION");
+            std::env::remove_var("PREFIX");
+        }
+        let _ = std::fs::remove_dir_all(&temp_dir);
+
+        assert!(!detected.is_empty());
+        assert_eq!(detected[0], PlayerKind::AndroidIntent);
     }
 
     #[test]
@@ -1584,11 +1824,7 @@ mod tests {
                 .iter()
                 .any(|c| c.contains("Program Files") && c.contains("vlc.exe"))
         );
-        assert!(
-            candidates
-                .iter()
-                .any(|c| c.contains("WindowsApps") && c.contains("vlc.exe"))
-        );
+        assert!(!candidates.iter().any(|c| c.contains("WindowsApps")));
         assert!(
             candidates
                 .iter()
@@ -1618,5 +1854,94 @@ mod tests {
     #[test]
     fn test_create_no_window_constant() {
         assert_eq!(CREATE_NO_WINDOW, 0x0800_0000);
+    }
+    #[test]
+    fn test_configured_executable_fallback_to_config() {
+        clear_cached_player_executables();
+        let _cfg = crate::config::Config {
+            vlc_path: Some("/nonexistent/vlc.exe".to_string()),
+            ..Default::default()
+        };
+        assert!(configured_executable("MOVIEBOX_VLC_PATH").is_none());
+    }
+
+    #[test]
+    fn test_mpv_command_headers_and_arguments_assembly() {
+        let headers = vec![
+            ("User-Agent".to_string(), "MovieBox-Tui/0.1.23".to_string()),
+            ("Referer".to_string(), "https://upstream.cdn/".to_string()),
+            ("Origin".to_string(), "https://upstream.cdn".to_string()),
+        ];
+        let cmd = mpv_command(
+            "https://upstream.cdn/stream.m3u8",
+            Some("/tmp/test.srt"),
+            &headers,
+            false,
+            Some((1920, 1080)),
+            Some(120),
+            None,
+            None,
+        );
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+
+        assert!(args.contains(&"--sub-file=/tmp/test.srt".to_string()));
+        assert!(args.contains(&"--start=120".to_string()));
+        assert!(args.contains(&"--autofit=1920x1080".to_string()));
+        assert!(args.contains(&"--cache=yes".to_string()));
+        assert!(args.contains(&"--cache-pause=yes".to_string()));
+        assert!(args.contains(&"--cache-pause-wait=8".to_string()));
+        assert!(args.contains(&"--cache-pause-initial=yes".to_string()));
+        assert!(args.contains(&"--demuxer-max-bytes=256M".to_string()));
+        assert!(args.contains(&"--demuxer-readahead-secs=120".to_string()));
+        assert!(args.contains(&"--demuxer-lavf-buffersize=1048576".to_string()));
+        assert!(args.contains(&"--stream-buffer-size=512k".to_string()));
+        assert!(args.contains(&"--force-seekable=yes".to_string()));
+        assert!(args.contains(
+            &"--stream-lavf-o=reconnect=1,reconnect_streamed=1,reconnect_delay_max=5".to_string()
+        ));
+        assert!(
+            args.iter().any(|a| a.starts_with("--http-header-fields="))
+                || args
+                    .iter()
+                    .any(|a| a.starts_with("--ytdl-raw-options-append="))
+        );
+        assert_eq!(
+            args.last().map(String::as_str),
+            Some("https://upstream.cdn/stream.m3u8")
+        );
+    }
+
+    #[test]
+    fn test_vlc_command_cookie_header_filtering() {
+        let headers = vec![
+            ("User-Agent".to_string(), "VLC-Agent".to_string()),
+            ("Referer".to_string(), "https://cdn.example.com".to_string()),
+            ("Cookie".to_string(), "CloudFront-Signature=abc".to_string()),
+        ];
+        let cmd = vlc_command(
+            "http://127.0.0.1:4567/proxy/manifest.mpd",
+            None,
+            &headers,
+            None,
+            None,
+            None,
+        );
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+
+        assert!(args.contains(&"--network-caching=10000".to_string()));
+        assert!(args.contains(&"--adaptive-logic=nearoptimal".to_string()));
+        assert!(args.contains(&"--http-user-agent=VLC-Agent".to_string()));
+        assert!(args.contains(&"--http-referrer=https://cdn.example.com".to_string()));
+        assert!(!args.iter().any(|a| a.contains("CloudFront-Signature")));
+        assert_eq!(
+            args.last().map(String::as_str),
+            Some("http://127.0.0.1:4567/proxy/manifest.mpd")
+        );
     }
 }

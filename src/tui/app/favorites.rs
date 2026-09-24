@@ -46,7 +46,6 @@ impl App {
                 if self.state.favorites_focus {
                     let idx = self.state.favorites_landing_state.selected()?;
                     match self.state.effective_home_deck_tab() {
-                        crate::tui::state::HomeDeckTab::Discover => None,
                         crate::tui::state::HomeDeckTab::ContinueWatching => {
                             let items = self.state.continue_watching_items();
                             let item = items.get(idx)?;
@@ -65,6 +64,7 @@ impl App {
                             .favorites_landing_items()
                             .get(idx)
                             .map(|item| (*item).clone()),
+                        crate::tui::state::HomeDeckTab::Discover => None,
                     }
                 } else {
                     let idx = self.state.search_list_state.selected()?;
@@ -129,9 +129,9 @@ impl App {
             },
             "Favorites",
             if now_favorited {
-                format!("Added \"{title}\" to Favorites.")
+                format!("Added: {title}")
             } else {
-                format!("Removed \"{title}\" from Favorites.")
+                format!("Removed: {title}")
             },
         );
     }
@@ -148,9 +148,6 @@ impl App {
         let subject_id = item.subject_id.clone();
         let title = item.title.clone();
 
-        if let Some(prov) = crate::models::ProviderKind::parse(&item.provider) {
-            self.state.active_provider = prov;
-        }
         self.state.active_screen = Screen::Details;
         self.state.active_subject_id = Some(subject_id.clone());
         self.state.selected_details = Some(crate::models::MediaDetails::from_search_result(
@@ -190,16 +187,10 @@ impl App {
         let Some(item) = items.get(index).cloned().cloned() else {
             return;
         };
-        let Some(provider) = crate::models::ProviderKind::parse(&item.provider) else {
-            self.state
-                .set_status_default(format!("Provider '{}' is unavailable", item.provider));
-            return;
-        };
         let subject_id = item.subject_id.clone();
         let title = item.title.clone();
         let search_res = item.to_search_result();
 
-        self.state.active_provider = provider;
         self.state.active_screen = Screen::Details;
         self.state.active_subject_id = Some(subject_id.clone());
         self.state.selected_details = Some(crate::models::MediaDetails::from_search_result(
@@ -210,7 +201,6 @@ impl App {
         self.state.is_loading = true;
         self.state.is_fetching_streams = false;
         self.state.stream_error = None;
-        self.state.has_streams_settled = false;
         self.state.resource_list_state.select(None);
         self.state.language_list_state.select(Some(0));
 
@@ -254,6 +244,7 @@ impl App {
     pub(super) fn load_favorites_virtual_list(&mut self) {
         self.state.input_mode = InputMode::Normal;
         self.state.is_loading = false;
+        self.state.has_search_settled = true;
         self.state.is_homepage_mode = false;
         self.state.active_browse_preset = None;
         self.state.browse_metrics.clear();
@@ -279,7 +270,7 @@ impl App {
             self.state.notify(
                 NotificationKind::Info,
                 "Favorites",
-                "No favorites yet. Favorite a title with 'f' to add one.",
+                "No favorites yet (add with 'f')",
             );
         } else {
             items.sort_by_key(|item| std::cmp::Reverse(item.added_at));

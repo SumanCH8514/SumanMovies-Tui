@@ -33,7 +33,7 @@ impl WatchHistoryItem {
         let title = if title.trim().is_empty() {
             details.title.clone()
         } else {
-            title
+            title.to_string()
         };
         let stype = if details.is_series() { 2 } else { 1 };
         let release_year = details.year.clone().unwrap_or_default();
@@ -62,25 +62,6 @@ impl WatchHistoryItem {
         }
     }
 
-    pub fn display_playback_title(&self) -> String {
-        let clean_title = self.title.trim();
-        if self.stype == 2 || self.season > 0 || self.episode > 0 {
-            match (self.season, self.episode) {
-                (s, e) if s > 0 && e > 0 => format!("{clean_title} • Season {s} • Episode {e}"),
-                (s, 0) if s > 0 => format!("{clean_title} • Season {s}"),
-                (0, e) if e > 0 => format!("{clean_title} • Episode {e}"),
-                _ => clean_title.to_string(),
-            }
-        } else {
-            let year = self.release_year.trim();
-            if !year.is_empty() && year != "Unknown" && !clean_title.contains(year) {
-                format!("{clean_title} ({year})")
-            } else {
-                clean_title.to_string()
-            }
-        }
-    }
-
     pub fn identity(&self) -> crate::models::SubjectIdentity<'_> {
         crate::models::SubjectIdentity {
             provider: &self.provider,
@@ -98,10 +79,11 @@ impl WatchHistoryItem {
         if self.progress_seconds < 30 {
             return false;
         }
-        if let Some(dur) = self.duration_seconds {
-            if dur > 0 && self.progress_seconds >= (dur as f64 * 0.90) as u64 {
-                return false;
-            }
+        let Some(dur) = self.duration_seconds else {
+            return false;
+        };
+        if dur == 0 || self.progress_seconds >= (dur as f64 * 0.90) as u64 {
+            return false;
         }
         true
     }
@@ -259,9 +241,6 @@ impl HistoryManager {
             if path.exists() {
                 if let Ok(content) = fs::read_to_string(&path) {
                     if let Ok(mut hist) = serde_json::from_str::<Self>(&content) {
-                        hist.recent.retain(|item| {
-                            crate::providers::models::ProviderKind::parse(&item.provider).is_some()
-                        });
                         hist.hydrate_watched_index();
                         hist
                     } else {
@@ -403,7 +382,7 @@ impl HistoryManager {
             if let Some(t) = title {
                 let clean_i = crate::providers::moviebox::clean_moviebox_title(&i.title);
                 let clean_t = crate::providers::moviebox::clean_moviebox_title(t);
-                if !clean_i.is_empty() && clean_i.eq_ignore_ascii_case(&clean_t) {
+                if !clean_i.is_empty() && clean_i.eq_ignore_ascii_case(clean_t) {
                     if i.stype == 1 {
                         return true;
                     }
@@ -818,22 +797,17 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&temp_dir);
     }
-
     #[test]
-    fn test_display_playback_title_series_and_movies() {
-        let series_item = dummy_item("moviebox", "mb_123", "Friends", 2, "1994", 1, 24);
-        assert_eq!(
-            series_item.display_playback_title(),
-            "Friends • Season 1 • Episode 24"
-        );
+    fn test_history_item_live_stream_without_duration_not_in_progress() {
+        let mut item = dummy_item("tv", "live_1", "BBC News", 1, "", 0, 0);
+        item.duration_seconds = None;
+        item.progress_seconds = 600;
+        assert!(!item.is_in_progress());
 
-        let movie_item = dummy_item("moviebox", "mb_456", "Inception", 1, "2010", 0, 0);
-        assert_eq!(movie_item.display_playback_title(), "Inception (2010)");
+        item.duration_seconds = Some(0);
+        assert!(!item.is_in_progress());
 
-        let movie_with_year_in_title = dummy_item("moviebox", "mb_789", "Leo (2023)", 1, "2023", 0, 0);
-        assert_eq!(movie_with_year_in_title.display_playback_title(), "Leo (2023)");
-
-        let movie_unknown_year = dummy_item("moviebox", "mb_999", "Special Movie", 1, "Unknown", 0, 0);
-        assert_eq!(movie_unknown_year.display_playback_title(), "Special Movie");
+        item.duration_seconds = Some(3600);
+        assert!(item.is_in_progress());
     }
 }

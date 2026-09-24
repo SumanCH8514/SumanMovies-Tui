@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use sumanmovies_tui::models::MediaType;
 use sumanmovies_tui::providers::addons::adapter::{
     meta_detail_to_media_details, parse_audio_tracks, parse_codec, parse_quality,
@@ -7,6 +6,7 @@ use sumanmovies_tui::providers::addons::adapter::{
 use sumanmovies_tui::providers::addons::models::{
     AddonManifest, InstalledAddon, MetaDetail, StreamBehaviorHints, StreamItem,
 };
+use std::collections::HashMap;
 
 #[test]
 fn test_addon_manifest_fixture_deserialization() {
@@ -66,7 +66,7 @@ fn test_addon_series_classification_and_default_season_structure() {
     };
 
     let details = meta_detail_to_media_details(&off_campus_series);
-    assert_eq!(details.id.value, "tt32034988");
+    assert_eq!(details.id.value, "series:tt32034988");
     assert_eq!(details.title, "Off Campus");
     assert_eq!(details.media_type, MediaType::Series);
     assert_eq!(details.year.as_deref(), Some("2026"));
@@ -416,16 +416,12 @@ async fn test_addon_enable_disable_and_removal_lifecycle() {
     assert_eq!(app.state().installed_addons.len(), initial_count + 1);
 
     let idx = initial_count;
-    app.handle_action(sumanmovies_tui::tui::action::Action::AddonToggleEnabled(
-        idx,
-    ))
-    .await;
+    app.handle_action(sumanmovies_tui::tui::action::Action::AddonToggleEnabled(idx))
+        .await;
     assert!(!app.state().installed_addons[idx].enabled);
 
-    app.handle_action(sumanmovies_tui::tui::action::Action::AddonToggleEnabled(
-        idx,
-    ))
-    .await;
+    app.handle_action(sumanmovies_tui::tui::action::Action::AddonToggleEnabled(idx))
+        .await;
     assert!(app.state().installed_addons[idx].enabled);
 
     app.handle_action(sumanmovies_tui::tui::action::Action::AddonRemove(idx))

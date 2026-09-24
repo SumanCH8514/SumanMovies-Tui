@@ -23,7 +23,6 @@ pub enum DetailsPane {
 pub enum AppMode {
     Streaming,
     Tv,
-    Addon,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -65,6 +64,14 @@ impl SettingsCategory {
             Self::StorageInfo => "Maintenance",
         }
     }
+    pub fn compact_title(self) -> &'static str {
+        match self {
+            Self::General => "1:Gen",
+            Self::ContentModes => "2:Modes",
+            Self::Appearance => "3:Theme",
+            Self::StorageInfo => "4:Info",
+        }
+    }
 
     pub fn badge(self) -> &'static str {
         match self {
@@ -78,9 +85,9 @@ impl SettingsCategory {
     pub fn row_count(self) -> usize {
         match self {
             Self::General => 3,
-            Self::ContentModes => 4,
+            Self::ContentModes => 3,
             Self::Appearance => 1,
-            Self::StorageInfo => 3,
+            Self::StorageInfo => 5,
         }
     }
     pub fn next(self) -> Self {
@@ -146,71 +153,6 @@ pub fn result_columns_for(width: u16) -> u16 {
     }
 }
 
-#[derive(Debug, Default)]
-pub struct UiState {
-    pub active_screen: Screen,
-    pub input_mode: InputMode,
-    pub dirty: bool,
-    pub show_theme_popup: bool,
-    pub active_theme_kind: String,
-    pub theme_is_auto: bool,
-    pub show_browse_popup: bool,
-    pub show_settings_popup: bool,
-    pub settings_category: SettingsCategory,
-    pub settings_selected_row: usize,
-    pub show_help: bool,
-    pub help_scroll: usize,
-    pub cursor_beam: bool,
-    pub details_pane: DetailsPane,
-    pub player_picker_popup: bool,
-    pub settings_player_picker: bool,
-    pub subtitle_popup: bool,
-    pub is_download_subtitle_popup: bool,
-    pub tv_config_popup: bool,
-    pub addon_manager_popup: bool,
-    pub favorites_focus: bool,
-    pub is_loading: bool,
-    pub is_resolving_playback: bool,
-    pub is_fetching_streams: bool,
-}
-
-#[derive(Debug, Default)]
-pub struct CatalogState {
-    pub active_provider: ProviderKind,
-    pub provider_generation: u64,
-    pub current_tab_id: String,
-    pub current_page: usize,
-    pub is_homepage_mode: bool,
-    pub active_subject_id: Option<String>,
-    pub search_error: Option<String>,
-    pub details_error: Option<String>,
-    pub stream_error: Option<String>,
-}
-
-#[derive(Debug, Default)]
-pub struct PlaybackState {
-    pub is_playing: bool,
-    pub default_player: Option<String>,
-    pub available_players: Vec<PlayerKind>,
-    pub pending_play_link: Option<String>,
-    pub pending_playback_source: Option<crate::providers::models::PlaybackSource>,
-}
-
-#[derive(Debug, Default)]
-pub struct DownloadState {
-    pub download_progress: Option<f64>,
-    pub download_status: Option<String>,
-    pub download_title: Option<String>,
-    pub download_dir: Option<std::path::PathBuf>,
-    pub download_queue_total: usize,
-    pub show_season_download_confirm: bool,
-    pub season_download_confirm_yes_selected: bool,
-    pub show_episode_download_confirm: bool,
-    pub episode_download_confirm_yes_selected: bool,
-    pub is_waiting_for_download_stream: bool,
-    pub auto_play_on_ready: bool,
-}
-
 pub struct AppState {
     pub active_provider: ProviderKind,
     pub provider_generation: u64,
@@ -242,17 +184,13 @@ pub struct AppState {
     pub selected_resources: Vec<Release>,
     pub stream_pool: std::collections::HashMap<String, SubjectStreamPool>,
     pub fetch_cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
-    pub show_season_download_confirm: bool,
-    pub season_download_confirm_yes_selected: bool,
-    pub show_episode_download_confirm: bool,
-    pub episode_download_confirm_yes_selected: bool,
     pub is_waiting_for_download_stream: bool,
     pub auto_play_on_ready: bool,
     pub is_fetching_streams: bool,
     pub stream_error: Option<String>,
     pub details_error: Option<String>,
     pub preview_cache: lru::LruCache<String, MediaDetails>,
-    pub resource_list_state: ListState,
+    pub resource_list_state: TableState,
 
     pub details_pane: DetailsPane,
     pub selected_season: usize,
@@ -285,6 +223,8 @@ pub struct AppState {
     pub settings_category: SettingsCategory,
     pub settings_selected_row: usize,
     pub settings_download_dir_input: Option<crate::tui::text::TextInputBuffer>,
+    pub show_sources_popup: bool,
+    pub sources_list_state: ListState,
 
     pub poster_protocol: Option<(ratatui::layout::Rect, ratatui_image::protocol::Protocol)>,
     pub image_picker: Option<ratatui_image::picker::Picker>,
@@ -313,6 +253,9 @@ pub struct AppState {
     pub settings_player_picker: bool,
     pub available_players: Vec<PlayerKind>,
     pub default_player: Option<String>,
+    pub vlc_path: Option<String>,
+    pub mpv_path: Option<String>,
+    pub iina_path: Option<String>,
     pub is_loading: bool,
     pub is_resolving_playback: bool,
     pub has_streams_settled: bool,
@@ -349,8 +292,18 @@ pub struct AppState {
     pub subtitle_list_state: ListState,
     pub pending_play_link: Option<String>,
     pub pending_playback_source: Option<crate::providers::models::PlaybackSource>,
+    pub show_overview_modal: bool,
+    pub overview_modal_scroll: usize,
+    pub overview_modal_title: String,
+    pub overview_modal_content: String,
     pub basic_terminal: bool,
-    pub bdix_enabled: bool,
+    pub moviebox_enabled: bool,
+    pub fourkhdhub_enabled: bool,
+    pub youtube_enabled: bool,
+    pub dramachi_enabled: bool,
+    pub bdix_circleftp_enabled: bool,
+    pub bdix_dhakaflix_enabled: bool,
+    pub bdix_probed: bool,
     pub streaming_enabled: bool,
 
     pub is_tv_mode: bool,
@@ -363,7 +316,6 @@ pub struct AppState {
     pub tv_input_buffer: crate::tui::text::TextInputBuffer,
     pub tv_input_is_file: bool,
 
-    pub is_addon_mode: bool,
     pub addons_enabled: bool,
     pub installed_addons: Vec<crate::providers::addons::models::InstalledAddon>,
     pub addon_manager_popup: bool,
@@ -383,6 +335,7 @@ impl Default for AppState {
             active_provider: ProviderKind::MovieBox,
             provider_generation: 0,
             active_screen: Screen::Home,
+            dirty: true,
             input_mode: InputMode::Normal,
             search_query: crate::tui::text::TextInputBuffer::new(),
             last_suggest_query: String::new(),
@@ -399,7 +352,7 @@ impl Default for AppState {
             search_posters: lru::LruCache::new(cache_capacity(96)),
             failed_posters: lru::LruCache::new(cache_capacity(300)),
             search_poster_protocols: lru::LruCache::new(cache_capacity(128)),
-            poster_fetch_semaphore: std::sync::Arc::new(tokio::sync::Semaphore::new(16)),
+            poster_fetch_semaphore: std::sync::Arc::new(tokio::sync::Semaphore::new(4)),
             in_flight_posters: std::collections::HashSet::new(),
             search_list_state: TableState::default(),
             basic_terminal: crate::tui::terminal::uses_basic_ui(),
@@ -408,16 +361,12 @@ impl Default for AppState {
             selected_resources: vec![],
             stream_pool: std::collections::HashMap::new(),
             fetch_cancel: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
-            show_season_download_confirm: false,
-            season_download_confirm_yes_selected: false,
-            show_episode_download_confirm: false,
-            episode_download_confirm_yes_selected: false,
             is_waiting_for_download_stream: false,
             is_fetching_streams: false,
             auto_play_on_ready: false,
             stream_error: None,
             details_error: None,
-            resource_list_state: ListState::default(),
+            resource_list_state: TableState::default(),
             preview_cache: lru::LruCache::new(cache_capacity(64)),
             details_pane: DetailsPane::default(),
             selected_season: 1,
@@ -448,6 +397,8 @@ impl Default for AppState {
             settings_category: SettingsCategory::General,
             settings_selected_row: 0,
             settings_download_dir_input: None,
+            show_sources_popup: false,
+            sources_list_state: ListState::default(),
 
             poster_protocol: None,
             image_picker: None,
@@ -474,7 +425,9 @@ impl Default for AppState {
             settings_player_picker: false,
             available_players: Vec::new(),
             default_player: None,
-            dirty: true,
+            vlc_path: None,
+            mpv_path: None,
+            iina_path: None,
             is_loading: false,
             is_resolving_playback: false,
             has_streams_settled: false,
@@ -511,7 +464,17 @@ impl Default for AppState {
             subtitle_list_state: ListState::default(),
             pending_play_link: None,
             pending_playback_source: None,
-            bdix_enabled: false,
+            show_overview_modal: false,
+            overview_modal_scroll: 0,
+            overview_modal_title: String::new(),
+            overview_modal_content: String::new(),
+            moviebox_enabled: true,
+            fourkhdhub_enabled: true,
+            youtube_enabled: true,
+            dramachi_enabled: true,
+            bdix_circleftp_enabled: false,
+            bdix_dhakaflix_enabled: false,
+            bdix_probed: false,
             streaming_enabled: true,
             is_tv_mode: false,
             tv_enabled: true,
@@ -522,7 +485,6 @@ impl Default for AppState {
             tv_input_active: false,
             tv_input_buffer: crate::tui::text::TextInputBuffer::new(),
             tv_input_is_file: false,
-            is_addon_mode: false,
             addons_enabled: false,
             installed_addons: Vec::new(),
             addon_manager_popup: false,
@@ -547,28 +509,45 @@ const fn cache_capacity(n: usize) -> std::num::NonZeroUsize {
 
 impl AppState {
     pub fn mode(&self) -> AppMode {
-        if self.is_tv_mode && !self.is_addon_mode {
+        if self.is_tv_mode {
             AppMode::Tv
-        } else if self.is_addon_mode && !self.is_tv_mode {
-            AppMode::Addon
         } else {
             AppMode::Streaming
         }
+    }
+    pub fn reset_details_view(&mut self) {
+        self.details_pane = DetailsPane::default();
+        self.selected_season = 1;
+        self.selected_episode = 1;
+        self.season_list_state.select(None);
+        self.episode_list_state.select(None);
+        self.language_list_state.select(None);
+        self.resource_list_state.select(None);
+        self.show_overview_modal = false;
+        self.subtitle_popup = false;
+        self.is_download_subtitle_popup = false;
+        self.player_picker_popup = false;
+        self.selected_details = None;
+        self.selected_resources.clear();
+        self.active_subject_id = None;
+        self.available_seasons.clear();
+        self.available_episode_numbers.clear();
+        self.is_fetching_streams = false;
+        self.stream_error = None;
+        self.language_chosen = false;
+        self.stream_pool.clear();
+        self.pending_episode_fetch = None;
+        self.poster_image = None;
+        self.poster_protocol = None;
     }
 
     pub fn set_mode(&mut self, mode: AppMode) {
         match mode {
             AppMode::Streaming => {
                 self.is_tv_mode = false;
-                self.is_addon_mode = false;
             }
             AppMode::Tv => {
                 self.is_tv_mode = true;
-                self.is_addon_mode = false;
-            }
-            AppMode::Addon => {
-                self.is_tv_mode = false;
-                self.is_addon_mode = true;
             }
         }
     }
@@ -612,11 +591,39 @@ impl AppState {
         })
     }
 
+    pub fn provider_enabled(&self, p: ProviderKind) -> bool {
+        match p {
+            ProviderKind::MovieBox => self.moviebox_enabled,
+            ProviderKind::FourKHdHub => self.fourkhdhub_enabled,
+            ProviderKind::YouTube => self.youtube_enabled,
+            ProviderKind::Dramachi => self.dramachi_enabled,
+            ProviderKind::BdixCircleFtp => self.bdix_circleftp_enabled,
+            ProviderKind::BdixDhakaFlix => self.bdix_dhakaflix_enabled,
+            ProviderKind::Addons => self.addons_enabled,
+        }
+    }
+
+    pub fn set_provider_enabled(&mut self, p: ProviderKind, enabled: bool) {
+        match p {
+            ProviderKind::MovieBox => self.moviebox_enabled = enabled,
+            ProviderKind::FourKHdHub => self.fourkhdhub_enabled = enabled,
+            ProviderKind::YouTube => self.youtube_enabled = enabled,
+            ProviderKind::Dramachi => self.dramachi_enabled = enabled,
+            ProviderKind::BdixCircleFtp => self.bdix_circleftp_enabled = enabled,
+            ProviderKind::BdixDhakaFlix => self.bdix_dhakaflix_enabled = enabled,
+            ProviderKind::Addons => self.addons_enabled = enabled,
+        }
+    }
+
     pub fn available_providers(&self) -> Vec<ProviderKind> {
-        crate::models::ProviderKind::ENABLED
+        let mut providers: Vec<ProviderKind> = crate::models::ProviderKind::ENABLED
             .into_iter()
-            .filter(|p| !p.is_bdix() || self.bdix_enabled)
-            .collect()
+            .filter(|p| self.provider_enabled(*p))
+            .collect();
+        if self.addons_enabled || !self.installed_addons.is_empty() {
+            providers.push(ProviderKind::Addons);
+        }
+        providers
     }
 
     pub fn next_provider(&self) -> ProviderKind {
@@ -624,11 +631,13 @@ impl AppState {
         if available_providers.is_empty() {
             return self.active_provider;
         }
-        let current = available_providers
+        match available_providers
             .iter()
             .position(|provider| *provider == self.active_provider)
-            .unwrap_or(0);
-        available_providers[(current + 1) % available_providers.len()]
+        {
+            None => available_providers[0],
+            Some(current) => available_providers[(current + 1) % available_providers.len()],
+        }
     }
 
     pub fn notify(
@@ -637,6 +646,41 @@ impl AppState {
         title: impl Into<String>,
         message: impl Into<String>,
     ) {
+        let title = title.into();
+        let message = message.into();
+
+        let same_category = |a: &str, b: &str| -> bool {
+            if a.eq_ignore_ascii_case(b) {
+                return true;
+            }
+            let is_playback = |s: &str| {
+                let lower = s.to_lowercase();
+                lower.contains("playback")
+                    || lower.contains("player")
+                    || lower.contains("stream")
+                    || lower.contains("mpv")
+            };
+            let is_download = |s: &str| s.to_lowercase().contains("download");
+            let is_update = |s: &str| {
+                let lower = s.to_lowercase();
+                lower.contains("update") || lower.contains("upgrade")
+            };
+            let is_cache = |s: &str| s.to_lowercase().contains("cache");
+            (is_playback(a) && is_playback(b))
+                || (is_download(a) && is_download(b))
+                || (is_update(a) && is_update(b))
+                || (is_cache(a) && is_cache(b))
+        };
+
+        if let Some(existing) = self
+            .notifications
+            .iter_mut()
+            .find(|n| same_category(&n.title, &title))
+        {
+            *existing = crate::tui::overlay::Notification::new(kind, title, message);
+            return;
+        }
+
         if self.notifications.len() >= 3 {
             let removable = self
                 .notifications
@@ -761,13 +805,13 @@ impl AppState {
             || self.show_browse_popup
             || self.show_provider_popup
             || self.show_settings_popup
+            || self.show_sources_popup
             || self.addon_manager_popup
             || self.tv_config_popup
             || self.player_picker_popup
             || self.subtitle_popup
             || self.is_download_subtitle_popup
-            || self.show_season_download_confirm
-            || self.show_episode_download_confirm
+            || self.show_overview_modal
             || (self.update_available.is_some() && self.input_mode != InputMode::Editing)
             || self.is_updating
             || (self.input_mode == InputMode::Editing && !self.search_suggestions.is_empty())
@@ -814,8 +858,7 @@ impl AppState {
     }
 
     pub fn favorites_available(&self) -> bool {
-        (self.streaming_enabled && !self.is_tv_mode && !self.is_addon_mode)
-            || (self.addons_enabled && self.is_addon_mode)
+        self.streaming_enabled && !self.is_tv_mode
     }
 
     pub fn favorites_landing_visible(&self) -> bool {
@@ -836,10 +879,7 @@ impl AppState {
             .history
             .recent
             .iter()
-            .filter(|item| {
-                item.is_in_progress()
-                    && crate::models::ProviderKind::parse(&item.provider).is_some()
-            })
+            .filter(|item| item.is_in_progress())
             .collect();
         items.sort_by_key(|item| std::cmp::Reverse(item.timestamp));
         items.truncate(5);
@@ -849,10 +889,7 @@ impl AppState {
     pub fn continue_watching_available(&self) -> bool {
         self.streaming_enabled
             && !self.is_tv_mode
-            && self.history.recent.iter().any(|item| {
-                item.is_in_progress()
-                    && crate::models::ProviderKind::parse(&item.provider).is_some()
-            })
+            && self.history.recent.iter().any(|item| item.is_in_progress())
     }
 
     pub fn available_home_deck_tabs(&self) -> Vec<HomeDeckTab> {
@@ -941,7 +978,7 @@ impl AppState {
             let prev_idx = tabs
                 .iter()
                 .position(|&t| t == current)
-                .map(|i| (i + tabs.len() - 1) % tabs.len())
+                .map(|i| if i == 0 { tabs.len() - 1 } else { i - 1 })
                 .unwrap_or(0);
             self.home_deck_tab = tabs[prev_idx];
             if self.favorites_focus {
@@ -1056,11 +1093,7 @@ impl AppState {
     }
 
     pub fn can_disable_tv_mode(&self) -> bool {
-        self.streaming_enabled || self.addons_enabled
-    }
-
-    pub fn can_disable_addons_mode(&self) -> bool {
-        self.streaming_enabled || self.tv_enabled
+        self.streaming_enabled
     }
     pub fn expand_download_path(raw: &str) -> Option<std::path::PathBuf> {
         let clean = raw.trim_matches(|c| c == '\'' || c == '"').trim();
@@ -1143,130 +1176,51 @@ pub fn step_list_selection(state: &mut ListState, total_items: usize, step: isiz
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TvManagerRow {
-    Header(&'static str),
     Playlist(usize),
-    AddUrl,
-    AddFile,
-    Reload,
-    Done,
+    AddPlaylist,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AddonManagerRow {
-    Header(&'static str),
     Addon(usize),
     AddUrl,
-}
-pub fn step_header_aware_list<F>(current: usize, total: usize, step: isize, is_header: F) -> usize
-where
-    F: Fn(usize) -> bool,
-{
-    if total == 0 {
-        return 0;
-    }
-    if step == 0 {
-        return current;
-    }
-
-    if step < -1 {
-        let jump = (-step) as usize;
-        let mut target = current.saturating_sub(jump);
-        while target > 0 && is_header(target) {
-            target = target.saturating_sub(1);
-        }
-        if is_header(target) {
-            if let Some(first_valid) = (0..total).find(|&i| !is_header(i)) {
-                target = first_valid;
-            }
-        }
-        return target;
-    } else if step > 1 {
-        let jump = step as usize;
-        let mut target = (current + jump).min(total.saturating_sub(1));
-        while target < total && is_header(target) {
-            target += 1;
-        }
-        if target >= total || is_header(target) {
-            if let Some(last_valid) = (0..total).rposition(|i| !is_header(i)) {
-                target = last_valid;
-            }
-        }
-        return target;
-    }
-
-    let forward = step > 0;
-    let mut next = if forward {
-        if current + 1 >= total { 0 } else { current + 1 }
-    } else if current == 0 {
-        total.saturating_sub(1)
-    } else {
-        current - 1
-    };
-
-    while next != current && is_header(next) {
-        next = if forward {
-            if next + 1 >= total { 0 } else { next + 1 }
-        } else if next == 0 {
-            total.saturating_sub(1)
-        } else {
-            next - 1
-        };
-    }
-
-    next
 }
 
 impl AppState {
     pub fn tv_manager_rows(&self) -> Vec<TvManagerRow> {
-        let mut rows = vec![TvManagerRow::Header("URL playlists")];
-        for (index, source) in self.tv_playlists.iter().enumerate() {
-            if crate::tui::text::is_http_url(source) {
-                rows.push(TvManagerRow::Playlist(index));
-            }
+        let mut rows = Vec::with_capacity(self.tv_playlists.len() + 1);
+        for index in 0..self.tv_playlists.len() {
+            rows.push(TvManagerRow::Playlist(index));
         }
-        rows.push(TvManagerRow::AddUrl);
-        rows.push(TvManagerRow::Header("File playlists"));
-        for (index, source) in self.tv_playlists.iter().enumerate() {
-            if !crate::tui::text::is_http_url(source) {
-                rows.push(TvManagerRow::Playlist(index));
-            }
-        }
-        rows.push(TvManagerRow::AddFile);
-        rows.push(TvManagerRow::Reload);
-        rows.push(TvManagerRow::Done);
+        rows.push(TvManagerRow::AddPlaylist);
         rows
     }
 
     pub fn step_tv_manager_selected(&mut self, step: isize) {
-        let rows = self.tv_manager_rows();
-        self.tv_manager_selected =
-            step_header_aware_list(self.tv_manager_selected, rows.len(), step, |idx| {
-                matches!(rows.get(idx), Some(TvManagerRow::Header(_)))
-            });
+        let rows_len = self.tv_manager_rows().len();
+        if rows_len == 0 {
+            self.tv_manager_selected = 0;
+            return;
+        }
+        if step > 0 {
+            self.tv_manager_selected = (self.tv_manager_selected + step as usize) % rows_len;
+        } else {
+            let back = (-step) as usize % rows_len;
+            self.tv_manager_selected = (self.tv_manager_selected + rows_len - back) % rows_len;
+        }
     }
 
     pub fn first_tv_manager_selected(&mut self) {
-        let rows = self.tv_manager_rows();
-        if let Some(idx) = rows
-            .iter()
-            .position(|r| !matches!(r, TvManagerRow::Header(_)))
-        {
-            self.tv_manager_selected = idx;
-        }
+        self.tv_manager_selected = 0;
     }
 
     pub fn last_tv_manager_selected(&mut self) {
-        let rows = self.tv_manager_rows();
-        if let Some(idx) = rows
-            .iter()
-            .rposition(|r| !matches!(r, TvManagerRow::Header(_)))
-        {
-            self.tv_manager_selected = idx;
-        }
+        let total = self.tv_manager_rows().len();
+        self.tv_manager_selected = total.saturating_sub(1);
     }
 
     pub fn addon_manager_rows(&self) -> Vec<AddonManagerRow> {
-        let mut rows = vec![AddonManagerRow::Header("Installed Addons")];
+        let mut rows = Vec::with_capacity(self.installed_addons.len() + 1);
         for index in 0..self.installed_addons.len() {
             rows.push(AddonManagerRow::Addon(index));
         }
@@ -1275,30 +1229,136 @@ impl AppState {
     }
 
     pub fn step_addon_manager_selected(&mut self, step: isize) {
-        let rows = self.addon_manager_rows();
-        self.addon_manager_selected =
-            step_header_aware_list(self.addon_manager_selected, rows.len(), step, |idx| {
-                matches!(rows.get(idx), Some(AddonManagerRow::Header(_)))
-            });
-    }
-
-    pub fn first_addon_manager_selected(&mut self) {
-        let rows = self.addon_manager_rows();
-        if let Some(idx) = rows
-            .iter()
-            .position(|r| !matches!(r, AddonManagerRow::Header(_)))
-        {
-            self.addon_manager_selected = idx;
+        let total = self.addon_manager_rows().len();
+        if total == 0 {
+            self.addon_manager_selected = 0;
+            return;
+        }
+        if step > 0 {
+            self.addon_manager_selected = (self.addon_manager_selected + step as usize) % total;
+        } else {
+            let s = (-step) as usize % total;
+            self.addon_manager_selected = (self.addon_manager_selected + total - s) % total;
         }
     }
 
+    pub fn first_addon_manager_selected(&mut self) {
+        self.addon_manager_selected = 0;
+    }
+
     pub fn last_addon_manager_selected(&mut self) {
-        let rows = self.addon_manager_rows();
-        if let Some(idx) = rows
+        let total = self.addon_manager_rows().len();
+        self.addon_manager_selected = total.saturating_sub(1);
+    }
+
+    pub fn max_addon_name_width(&self) -> usize {
+        self.installed_addons
             .iter()
-            .rposition(|r| !matches!(r, AddonManagerRow::Header(_)))
+            .map(|a| crate::tui::text::width(&a.name))
+            .max()
+            .unwrap_or(0)
+    }
+    pub fn open_overview_modal(&mut self, title: String, content: String) {
+        self.overview_modal_title = title;
+        self.overview_modal_content = content;
+        self.overview_modal_scroll = 0;
+        self.show_overview_modal = true;
+    }
+
+    pub fn close_overview_modal(&mut self) {
+        self.show_overview_modal = false;
+        self.overview_modal_scroll = 0;
+    }
+
+    pub fn series_synopsis(&self) -> Option<(String, String)> {
+        let details = self.selected_details.as_ref()?;
+        let raw_title = if !details.title.trim().is_empty() {
+            &details.title
+        } else if let Some(res) = self
+            .search_results
+            .iter()
+            .find(|r| self.active_subject_id.as_deref() == Some(&r.id))
         {
-            self.addon_manager_selected = idx;
+            &res.title
+        } else {
+            "Unknown Title"
+        };
+        let title = crate::providers::moviebox::clean_moviebox_title(raw_title);
+        let intro = details
+            .description
+            .as_deref()
+            .filter(|s| !s.trim().is_empty())
+            .or_else(|| {
+                self.search_preview
+                    .as_ref()
+                    .filter(|p| {
+                        p.id.value == details.id.value && p.id.provider == details.id.provider
+                    })
+                    .and_then(|p| p.description.as_deref())
+            })
+            .unwrap_or("No description available.");
+
+        Some((format!("{title} · Synopsis"), intro.to_string()))
+    }
+
+    pub fn episode_overview(&self) -> Option<(String, String)> {
+        let details = self.selected_details.as_ref()?;
+        let raw_title = if !details.title.trim().is_empty() {
+            &details.title
+        } else if let Some(res) = self
+            .search_results
+            .iter()
+            .find(|r| self.active_subject_id.as_deref() == Some(&r.id))
+        {
+            &res.title
+        } else {
+            "Unknown Title"
+        };
+        let title = crate::providers::moviebox::clean_moviebox_title(raw_title);
+
+        let season_idx = self.season_list_state.selected().unwrap_or(0);
+        let se_num = self
+            .available_seasons
+            .get(season_idx)
+            .map(|s| s.number)
+            .unwrap_or(1);
+        let selected_ep_idx = self.episode_list_state.selected().unwrap_or(0);
+        let ep_num = self
+            .available_episode_numbers
+            .get(season_idx)
+            .and_then(|nums| nums.get(selected_ep_idx).copied())
+            .unwrap_or(selected_ep_idx + 1);
+
+        let ep_match = details
+            .seasons
+            .iter()
+            .find(|s| s.number == se_num)
+            .and_then(|s| s.episodes.iter().find(|e| e.number == ep_num));
+
+        let ep_title = ep_match
+            .and_then(|e| e.title.as_deref())
+            .map(|t| t.trim())
+            .filter(|t| !t.is_empty());
+
+        let ep_overview = ep_match
+            .and_then(|e| e.overview.as_deref())
+            .map(|o| o.trim())
+            .filter(|o| !o.is_empty())?;
+
+        let modal_title = if let Some(t) = ep_title {
+            format!("{title} · S{se_num:02}E{ep_num:02} · {t}")
+        } else {
+            format!("{title} · S{se_num:02}E{ep_num:02}")
+        };
+
+        Some((modal_title, ep_overview.to_string()))
+    }
+
+    pub fn active_overview(&self) -> Option<(String, String)> {
+        if self.details_pane == DetailsPane::Episodes {
+            self.episode_overview().or_else(|| self.series_synopsis())
+        } else {
+            self.series_synopsis()
         }
     }
 }
@@ -1336,6 +1396,17 @@ mod tests {
         assert_eq!(result_columns_for(279), 4);
         assert_eq!(result_columns_for(280), 5);
         assert_eq!(result_columns_for(320), 5);
+    }
+
+    #[test]
+    fn addons_provider_appears_when_enabled() {
+        let mut s = AppState {
+            addons_enabled: true,
+            ..Default::default()
+        };
+        assert!(s.available_providers().contains(&ProviderKind::Addons));
+        s.addons_enabled = false;
+        assert!(!s.available_providers().contains(&ProviderKind::Addons));
     }
 
     #[test]
@@ -1424,14 +1495,6 @@ mod tests {
         assert!(state.has_active_modal());
         state.is_download_subtitle_popup = false;
 
-        state.show_season_download_confirm = true;
-        assert!(state.has_active_modal());
-        state.show_season_download_confirm = false;
-
-        state.show_episode_download_confirm = true;
-        assert!(state.has_active_modal());
-        state.show_episode_download_confirm = false;
-
         state.update_available = Some(("v2.0.0".to_string(), "Notes".to_string()));
         assert!(state.has_active_modal());
         state.input_mode = InputMode::Editing;
@@ -1476,6 +1539,60 @@ mod tests {
         state.search_suggestions = vec!["suggestion".to_string()];
         state.input_mode = InputMode::Normal;
         assert!(state.favorites_landing_visible());
+    }
+
+    #[test]
+    fn test_notify_replaces_same_category_in_place() {
+        let mut state = AppState::default();
+        state.notify(
+            crate::tui::overlay::NotificationKind::Info,
+            "Preparing playback",
+            "Resolving stream...",
+        );
+        assert_eq!(state.notifications.len(), 1);
+        assert_eq!(state.notifications[0].title, "Preparing playback");
+        assert_eq!(state.notifications[0].message, "Resolving stream...");
+
+        state.notify(
+            crate::tui::overlay::NotificationKind::Info,
+            "Playback Cancelled",
+            "Stream launch cancelled.",
+        );
+        assert_eq!(state.notifications.len(), 1);
+        assert_eq!(state.notifications[0].title, "Playback Cancelled");
+        assert_eq!(state.notifications[0].message, "Stream launch cancelled.");
+
+        state.notify(
+            crate::tui::overlay::NotificationKind::Info,
+            "Opening Player",
+            "Launching mpv.",
+        );
+        assert_eq!(state.notifications.len(), 1);
+        assert_eq!(state.notifications[0].title, "Opening Player");
+
+        state.notify(
+            crate::tui::overlay::NotificationKind::Error,
+            "4KHDHub Stream Unavailable",
+            "Mirrors dead or expired.",
+        );
+        assert_eq!(state.notifications.len(), 1);
+        assert_eq!(state.notifications[0].title, "4KHDHub Stream Unavailable");
+        assert_eq!(state.notifications[0].message, "Mirrors dead or expired.");
+        state.notify(
+            crate::tui::overlay::NotificationKind::Info,
+            "Preparing download",
+            "Waiting for details...",
+        );
+        assert_eq!(state.notifications.len(), 2);
+        assert_eq!(state.notifications[1].title, "Preparing download");
+
+        state.notify(
+            crate::tui::overlay::NotificationKind::Info,
+            "Download Started",
+            "Started: Movie.mkv",
+        );
+        assert_eq!(state.notifications.len(), 2);
+        assert_eq!(state.notifications[1].title, "Download Started");
     }
 
     #[test]

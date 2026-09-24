@@ -5,11 +5,8 @@ use std::collections::BTreeMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 use url::Url;
 
-const SECRET_KEY_DEFAULT: &str = "76iRl07s0xSN9jqmEWAt79EBJZulIQIsV64FZr2O";
+const DEFAULT_SECRET_BYTES: &[u8] = b"\xef\xa8\x91\x97\x4e\xec\xd3\x14\x8d\xf6\x3a\xa6\x11\x60\x2d\xef\xd1\x01\x25\x9b\xa5\x21\x02\x2c\x57\xae\x05\x66\xbd\x8e";
 const SIGNATURE_BODY_MAX_BYTES: usize = 102_400;
-
-static DEFAULT_SECRET_BYTES: std::sync::LazyLock<Vec<u8>> =
-    std::sync::LazyLock::new(|| b64_decode(SECRET_KEY_DEFAULT));
 
 type HmacMd5 = Hmac<Md5>;
 
@@ -23,15 +20,6 @@ fn md5_hex(data: &[u8]) -> String {
         let _ = write!(&mut hex, "{:02x}", b);
     }
     hex
-}
-
-fn b64_decode(val: &str) -> Vec<u8> {
-    let mut padded = val.to_string();
-    let padding = (4 - padded.len() % 4) % 4;
-    padded.push_str(&"=".repeat(padding));
-    base64::engine::general_purpose::STANDARD
-        .decode(padded)
-        .unwrap_or_default()
 }
 
 fn b64_encode(data: &[u8]) -> String {
@@ -140,7 +128,7 @@ pub fn generate_x_tr_signature(
     timestamp_ms: u64,
 ) -> String {
     let canonical = build_canonical_string(method, accept, content_type, url, body, timestamp_ms);
-    let Ok(mut mac) = HmacMd5::new_from_slice(&DEFAULT_SECRET_BYTES) else {
+    let Ok(mut mac) = HmacMd5::new_from_slice(DEFAULT_SECRET_BYTES) else {
         log::warn!("moviebox signature fallback: invalid HMAC key material");
         return format!("{}|2|", timestamp_ms);
     };

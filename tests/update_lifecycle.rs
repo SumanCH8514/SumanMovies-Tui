@@ -1,5 +1,3 @@
-use ratatui::layout::Rect;
-use std::io::Write;
 use sumanmovies_tui::models::NotificationKind;
 use sumanmovies_tui::tui::action::Action;
 use sumanmovies_tui::tui::app::App;
@@ -11,6 +9,8 @@ use sumanmovies_tui::updater::apply::{
 use sumanmovies_tui::updater::extract::extract_binary;
 use sumanmovies_tui::updater::verify::{compute_sha256, parse_sha256sums, verify_checksum};
 use sumanmovies_tui::updater::{Release, ReleaseAsset, TargetPlatform};
+use ratatui::layout::Rect;
+use std::io::Write;
 
 #[tokio::test]
 async fn test_update_check_single_flight() {
@@ -219,7 +219,7 @@ e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  two_spaces.tar
 fn test_tar_gz_extraction_and_permissions() {
     let temp = tempfile::tempdir().unwrap();
     let archive_path = temp.path().join("test.tar.gz");
-    let staged_path = temp.path().join("sumanmovies-tui");
+    let staged_path = temp.path().join("moviebox-tui");
 
     {
         let file = std::fs::File::create(&archive_path).unwrap();
@@ -228,7 +228,7 @@ fn test_tar_gz_extraction_and_permissions() {
 
         let data = b"#!/bin/sh\necho updated\n";
         let mut header = tar::Header::new_gnu();
-        header.set_path("sumanmovies-tui").unwrap();
+        header.set_path("moviebox-tui").unwrap();
         header.set_size(data.len() as u64);
         header.set_mode(0o755);
         header.set_cksum();
@@ -236,13 +236,7 @@ fn test_tar_gz_extraction_and_permissions() {
         tar.finish().unwrap();
     }
 
-    extract_binary(
-        &archive_path,
-        "test.tar.gz",
-        "sumanmovies-tui",
-        &staged_path,
-    )
-    .unwrap();
+    extract_binary(&archive_path, "test.tar.gz", "moviebox-tui", &staged_path).unwrap();
     assert!(staged_path.exists());
     assert_eq!(
         std::fs::read(&staged_path).unwrap(),
@@ -254,24 +248,18 @@ fn test_tar_gz_extraction_and_permissions() {
 fn test_zip_extraction_and_permissions() {
     let temp = tempfile::tempdir().unwrap();
     let archive_path = temp.path().join("test.zip");
-    let staged_path = temp.path().join("sumanmovies-tui.exe");
+    let staged_path = temp.path().join("moviebox-tui.exe");
 
     {
         let file = std::fs::File::create(&archive_path).unwrap();
         let mut zip = zip::ZipWriter::new(file);
         let options = zip::write::SimpleFileOptions::default();
-        zip.start_file("dist/sumanmovies-tui.exe", options).unwrap();
+        zip.start_file("dist/moviebox-tui.exe", options).unwrap();
         zip.write_all(b"windows binary payload").unwrap();
         zip.finish().unwrap();
     }
 
-    extract_binary(
-        &archive_path,
-        "test.zip",
-        "sumanmovies-tui.exe",
-        &staged_path,
-    )
-    .unwrap();
+    extract_binary(&archive_path, "test.zip", "moviebox-tui.exe", &staged_path).unwrap();
     assert!(staged_path.exists());
     assert_eq!(
         std::fs::read(&staged_path).unwrap(),
@@ -283,7 +271,7 @@ fn test_zip_extraction_and_permissions() {
 fn test_archive_path_traversal_rejection() {
     let temp = tempfile::tempdir().unwrap();
     let archive_path = temp.path().join("malicious.tar.gz");
-    let staged_path = temp.path().join("sumanmovies-tui");
+    let staged_path = temp.path().join("moviebox-tui");
 
     {
         let file = std::fs::File::create(&archive_path).unwrap();
@@ -313,7 +301,7 @@ fn test_archive_path_traversal_rejection() {
     let res = extract_binary(
         &archive_path,
         "malicious.tar.gz",
-        "sumanmovies-tui",
+        "moviebox-tui",
         &staged_path,
     );
     assert!(res.is_err());
@@ -360,15 +348,15 @@ fn test_binary_replacement_and_rollback_on_failure() {
 #[test]
 fn test_homebrew_detection_and_safe_refusal() {
     let homebrew_path =
-        std::path::Path::new("/opt/homebrew/Cellar/sumanmovies-tui/0.1.12/bin/sumanmovies-tui");
+        std::path::Path::new("/opt/homebrew/Cellar/moviebox-tui/0.1.12/bin/moviebox-tui");
     assert!(is_homebrew_managed(homebrew_path));
 
     let linuxbrew_path = std::path::Path::new(
-        "/home/linuxbrew/.linuxbrew/Cellar/sumanmovies-tui/0.1.12/bin/sumanmovies-tui",
+        "/home/linuxbrew/.linuxbrew/Cellar/moviebox-tui/0.1.12/bin/moviebox-tui",
     );
     assert!(is_homebrew_managed(linuxbrew_path));
 
-    let standard_user_path = std::path::Path::new("/Users/samir/.local/bin/sumanmovies-tui");
+    let standard_user_path = std::path::Path::new("/Users/samir/.local/bin/moviebox-tui");
     assert!(!is_homebrew_managed(standard_user_path));
 }
 
@@ -379,7 +367,7 @@ fn test_update_asset_missing_for_current_platform() {
         tag_name: "v0.1.13".to_string(),
         notes: "Notes".to_string(),
         assets: vec![ReleaseAsset {
-            name: "SumanMovies_Linux_x64.tar.gz".to_string(),
+            name: "MovieBox_Linux_x64.tar.gz".to_string(),
             download_url: "https://...".to_string(),
             size: Some(1000),
         }],
@@ -438,9 +426,86 @@ async fn test_update_progress_message_tracking() {
         "Downloading binary...".to_string(),
     ))
     .await;
-
     assert_eq!(
         app.state().update_progress_msg.as_deref(),
         Some("Downloading binary...")
     );
+}
+
+#[tokio::test]
+async fn test_update_modal_rendered_symmetry_and_exact_height() {
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
+    let mut app = App::new();
+    let notes = "### Highlights\n- Feature One\n- Feature Two\n- Feature Three";
+    app.state_mut().update_available = Some(("0.1.21".to_string(), notes.to_string()));
+
+    for (w, h) in [(80, 24), (85, 26), (120, 30)] {
+        let backend = TestBackend::new(w, h);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| {
+                app.draw(frame);
+            })
+            .unwrap();
+
+        let area = Rect::new(0, 0, w, h);
+        let layout = update_modal_layout(area, notes);
+        let buffer = terminal.backend().buffer();
+
+        let top_border_y = layout.popup_area.y;
+        let bottom_border_y = layout.popup_area.y + layout.popup_area.height - 1;
+
+        let top_cell = &buffer[(layout.popup_area.x, top_border_y)];
+        assert!(
+            top_cell.symbol() == "╭" || top_cell.symbol() == "+" || top_cell.symbol() == "┌",
+            "expected top corner, got {:?} at ({}, {}) in {}x{}",
+            top_cell.symbol(),
+            layout.popup_area.x,
+            top_border_y,
+            w,
+            h
+        );
+
+        let bottom_cell = &buffer[(layout.popup_area.x, bottom_border_y)];
+        assert!(
+            bottom_cell.symbol() == "╰"
+                || bottom_cell.symbol() == "+"
+                || bottom_cell.symbol() == "└",
+            "expected bottom corner, got {:?} at ({}, {}) in {}x{}",
+            bottom_cell.symbol(),
+            layout.popup_area.x,
+            bottom_border_y,
+            w,
+            h
+        );
+
+        let button_row = layout.button_row_y;
+        assert_eq!(button_row, bottom_border_y);
+
+        let mut btn_line = String::new();
+        for x in layout.popup_area.x..layout.popup_area.x + layout.popup_area.width {
+            btn_line.push(
+                buffer[(x, button_row)]
+                    .symbol()
+                    .chars()
+                    .next()
+                    .unwrap_or(' '),
+            );
+        }
+        assert!(btn_line.contains("[u] Update") || btn_line.contains("[b] Copy"));
+
+        let mut title_line = String::new();
+        for x in layout.popup_area.x..layout.popup_area.x + layout.popup_area.width {
+            title_line.push(
+                buffer[(x, top_border_y)]
+                    .symbol()
+                    .chars()
+                    .next()
+                    .unwrap_or(' '),
+            );
+        }
+        assert!(title_line.contains("Update Available"));
+    }
 }

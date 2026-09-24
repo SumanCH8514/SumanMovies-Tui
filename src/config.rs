@@ -12,12 +12,21 @@ pub struct Config {
     pub active_mode: String,
     pub active_provider: ProviderKind,
     pub active_theme: String,
-    pub bdix_enabled: bool,
+    pub moviebox_enabled: bool,
+    pub fourkhdhub_enabled: bool,
+    pub youtube_enabled: bool,
+    pub dramachi_enabled: bool,
+    pub bdix_circleftp_enabled: bool,
+    pub bdix_dhakaflix_enabled: bool,
+    pub bdix_probed: bool,
     pub streaming_enabled: bool,
     pub tv_enabled: bool,
     pub addons_enabled: bool,
     pub default_player: Option<String>,
     pub download_dir: Option<String>,
+    pub vlc_path: Option<String>,
+    pub mpv_path: Option<String>,
+    pub iina_path: Option<String>,
 }
 impl Default for Config {
     fn default() -> Self {
@@ -27,12 +36,21 @@ impl Default for Config {
             active_mode: "streaming".to_string(),
             active_provider: ProviderKind::MovieBox,
             active_theme: String::new(),
-            bdix_enabled: false,
+            moviebox_enabled: true,
+            fourkhdhub_enabled: true,
+            youtube_enabled: true,
+            dramachi_enabled: true,
+            bdix_circleftp_enabled: false,
+            bdix_dhakaflix_enabled: false,
+            bdix_probed: false,
             streaming_enabled: true,
             tv_enabled: true,
             addons_enabled: false,
             default_player: None,
             download_dir: None,
+            vlc_path: None,
+            mpv_path: None,
+            iina_path: None,
         }
     }
 }
@@ -58,7 +76,15 @@ pub fn config_dir() -> Option<PathBuf> {
             return Some(p);
         }
     }
-    dirs::home_dir().map(|h| h.join(".config").join(APP_NAME))
+    if let Some(dir) = dirs::home_dir().map(|h| h.join(".config").join(APP_NAME)) {
+        return Some(dir);
+    }
+    let fallback = std::env::temp_dir().join(APP_NAME).join("config");
+    log::warn!(
+        "unable to locate user config directory, falling back to {}",
+        fallback.display()
+    );
+    Some(fallback)
 }
 
 pub fn data_dir() -> Option<PathBuf> {
@@ -80,7 +106,15 @@ pub fn data_dir() -> Option<PathBuf> {
             return Some(p);
         }
     }
-    dirs::home_dir().map(|h| h.join(".local").join("share").join(APP_NAME))
+    if let Some(dir) = dirs::home_dir().map(|h| h.join(".local").join("share").join(APP_NAME)) {
+        return Some(dir);
+    }
+    let fallback = std::env::temp_dir().join(APP_NAME).join("data");
+    log::warn!(
+        "unable to locate user data directory, falling back to {}",
+        fallback.display()
+    );
+    Some(fallback)
 }
 
 pub fn cache_dir() -> PathBuf {
@@ -111,6 +145,12 @@ pub fn cache_dir() -> PathBuf {
 }
 
 pub fn logs_dir() -> PathBuf {
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(dir) = dirs::data_local_dir() {
+            return dir.join(APP_NAME).join("logs");
+        }
+    }
     data_dir()
         .map(|dir| dir.join("logs"))
         .unwrap_or_else(|| std::env::temp_dir().join(APP_NAME).join("logs"))
@@ -150,7 +190,25 @@ pub fn load() -> Config {
     };
     if path.exists() {
         if let Ok(content) = std::fs::read_to_string(&path) {
-            if let Ok(config) = serde_json::from_str::<Config>(&content) {
+            let mut val: serde_json::Value = match serde_json::from_str(&content) {
+                Ok(v) => v,
+                Err(e) => {
+                    log::warn!("config invalid JSON: {e}; resetting");
+                    serde_json::Value::default()
+                }
+            };
+            let old_bdix = val
+                .get("bdix_enabled")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            if let Some(obj) = val.as_object_mut() {
+                obj.remove("bdix_enabled");
+            }
+            if let Ok(mut config) = serde_json::from_value::<Config>(val) {
+                if old_bdix {
+                    config.bdix_circleftp_enabled = true;
+                    config.bdix_dhakaflix_enabled = true;
+                }
                 return config;
             }
         }

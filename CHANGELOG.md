@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.0.4] - 2026-09-24
+
+### Added
+- **4KHDHub Advanced Resolver & Multi-Mirror Engine**:
+  - Integrated Greenmotors and Greenmountmotors multi-stage decoding pipeline (nested base64 + ROT-13 unmasking) to unlock hidden stream mirrors.
+  - Implemented intent-aware mirror scoring (`ResolutionIntent::Playback` vs `ResolutionIntent::Download`) to dynamically prioritize fast streaming CDNs or high-throughput storage endpoints.
+  - Upgraded resolution token detection supporting `2160`, `4K`, `UHD`, `1080`, `FHD`, `720`, `HD`, and `480`/`SD` with automated size-weighted sort order.
+  - Extended resolver timeout from 4s to 7s to eliminate premature mirror dropouts on busy servers.
+- **Universal Multi-Provider Download Pipeline**:
+  - **YouTube Downloads**: Direct video and audio downloading with custom format resolution (`yt-dlp` integration) cleanly separating `#ytdl-format` parameters.
+  - **MovieBox Downloads**: Resilient multi-connection chunk downloading for direct MP4s and seamless child-process execution for DASH (`.mpd`) streams.
+  - **Dramachi CDN Downloads**: Native high-speed direct downloading for Asian and K-Drama content.
+  - **4KHDHub Downloads**: Direct downloads with forwarded headers, cookies, and user-agent preservation.
+- **Dramachi Korean & Asian Drama Provider Integration**:
+  - Integrated full Dramachi catalog browsing, season/episode discovery, and direct CDN streaming.
+- **Discover Categories Home Landing Deck**:
+  - Full bidirectional keyboard (`Tab`, `Shift+Tab`, `Left`, `Right`) and single-click mouse navigation between Discover Categories, Continue Watching, and Favorites tabs.
+
+### Fixed
+- **MovieBox Service Update Notice Video Interception**:
+  - Filtered out the deprecation notice video (`"This version will be discontinued soon"` / `b164fbfb434779...`) across all direct MP4 and DASH stream selection lists.
+- **DASH Multi-Resolution Stream Decomposition**:
+  - Decomposed single multi-bitrate DASH manifests into selectable quality rows (1080p, 720p, 480p).
+- **YouTube Playback & Download Dispatch**:
+  - Resolved an issue where YouTube streams were routed into the MovieBox stream resolver rather than direct playback/download.
+- **Windows Test Suite Stabilization**:
+  - Isolated Android/Termux player environment tests on Windows to ensure consistent test execution across platforms.
+
 ## [1.0.3] - 2026-09-15
 
 ### Added

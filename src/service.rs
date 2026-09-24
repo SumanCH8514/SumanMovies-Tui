@@ -18,6 +18,7 @@ pub struct MovieBoxService {
     pub circleftp_client: CircleFtpClient,
     pub dhakaflix_client: DhakaFlixClient,
     pub addon_client: crate::providers::addons::AddonClient,
+    pub dramachi_client: crate::providers::dramachi::DramachiClient,
     pub http_client: reqwest::Client,
 }
 
@@ -41,6 +42,7 @@ impl MovieBoxService {
             circleftp_client: CircleFtpClient::new(),
             dhakaflix_client: DhakaFlixClient::new(),
             addon_client: crate::providers::addons::AddonClient::new(),
+            dramachi_client: crate::providers::dramachi::DramachiClient::new(),
             http_client,
         }
     }
@@ -61,6 +63,7 @@ impl MovieBoxService {
             ProviderKind::BdixCircleFtp => Provider::capabilities(&self.circleftp_client),
             ProviderKind::BdixDhakaFlix => Provider::capabilities(&self.dhakaflix_client),
             ProviderKind::Addons => Provider::capabilities(&self.addon_client),
+            ProviderKind::Dramachi => Provider::capabilities(&self.dramachi_client),
         }
     }
 
@@ -95,6 +98,7 @@ impl MovieBoxService {
                 Provider::search(&self.dhakaflix_client, query, page).await
             }
             ProviderKind::Addons => Provider::search(&self.addon_client, query, page).await,
+            ProviderKind::Dramachi => Provider::search(&self.dramachi_client, query, page).await,
         }
     }
 
@@ -121,10 +125,6 @@ impl MovieBoxService {
             .fetch_catalog(&base_url, r#type, catalog_id, None)
             .await
             .map_err(|e| e.to_string())?;
-
-        if metas.is_empty() {
-            return Err("No catalog items found".to_string());
-        }
 
         let items: Vec<CatalogItem> = metas
             .iter()
@@ -167,6 +167,7 @@ impl MovieBoxService {
                 Provider::details(&self.dhakaflix_client, subject_id).await
             }
             ProviderKind::Addons => Provider::details(&self.addon_client, subject_id).await,
+            ProviderKind::Dramachi => Provider::details(&self.dramachi_client, subject_id).await,
         }
     }
 
@@ -201,6 +202,8 @@ impl MovieBoxService {
         subject_id: &str,
         resource_id: &str,
         sibling_ids: &[String],
+        season: usize,
+        episode: usize,
     ) -> Result<Vec<crate::providers::models::SubtitleOption>, String> {
         let mut all_captions = Vec::new();
         let mut seen_urls = std::collections::HashSet::new();
@@ -219,30 +222,36 @@ impl MovieBoxService {
                 if !sib.is_empty() && sib != subject_id {
                     let client = &self.client;
                     sibling_futs.push(async move {
-                        if let Ok((items, _)) = client.fetch_resource_page(sib, 0, 1).await {
-                            if let Some(item) = items.first() {
-                                let item_rid = item
-                                    .get("resourceId")
-                                    .or_else(|| item.get("id"))
-                                    .and_then(|v| {
-                                        if let Some(n) = v.as_i64() {
-                                            Some(n.to_string())
-                                        } else if let Some(n) = v.as_u64() {
-                                            Some(n.to_string())
-                                        } else {
-                                            v.as_str().map(|s| s.to_string())
+                        tokio::time::timeout(std::time::Duration::from_secs(8), async move {
+                            let page = if episode > 0 { (episode - 1) / 20 + 1 } else { 1 };
+                            if let Ok((items, _)) = client.fetch_resource_page(sib, 0, page).await {
+                                let matched_item = find_matching_resource_item(&items, season, episode);
+                                if let Some(item) = matched_item {
+                                    let item_rid = item
+                                        .get("resourceId")
+                                        .or_else(|| item.get("id"))
+                                        .and_then(|v| {
+                                            if let Some(n) = v.as_i64() {
+                                                Some(n.to_string())
+                                            } else if let Some(n) = v.as_u64() {
+                                                Some(n.to_string())
+                                            } else {
+                                                v.as_str().map(|s| s.to_string())
+                                            }
+                                        });
+                                    if let Some(rid) = item_rid {
+                                        if let Ok(res_payload) = client.get_ext_captions(sib, &rid).await {
+                                            return crate::providers::moviebox::adapt::captions_json_to_options(
+                                                &res_payload,
+                                            );
                                         }
-                                    });
-                                if let Some(rid) = item_rid {
-                                    if let Ok(res_payload) = client.get_ext_captions(sib, &rid).await {
-                                        return crate::providers::moviebox::adapt::captions_json_to_options(
-                                            &res_payload,
-                                        );
                                     }
                                 }
                             }
-                        }
-                        Vec::new()
+                            Vec::new()
+                        })
+                        .await
+                        .unwrap_or_default()
                     });
                 }
             }
@@ -289,24 +298,40 @@ impl MovieBoxService {
             }
         }
     }
-
     pub async fn fetch_poster_bytes(&self, url: &str) -> Option<Vec<u8>> {
+        const MAX_POSTER_BYTES: u64 = 5 * 1024 * 1024;
         let response = self
             .http_client
             .get(url)
-            .header("User-Agent", "SumanMovies-TUI/1.0")
+            .header("User-Agent", crate::net::APP_HTTP_USER_AGENT)
             .send()
             .await
             .ok()?
             .error_for_status()
             .ok()?;
-        Some(response.bytes().await.ok()?.to_vec())
+        if response
+            .content_length()
+            .is_some_and(|len| len > MAX_POSTER_BYTES)
+        {
+            log::warn!(
+                "poster at {} exceeds size limit ({} bytes), skipping",
+                crate::logging::sanitize_url(url),
+                response.content_length().unwrap_or(0)
+            );
+            return None;
+        }
+        let bytes = response.bytes().await.ok()?;
+        if bytes.len() as u64 > MAX_POSTER_BYTES {
+            return None;
+        }
+        Some(bytes.to_vec())
     }
 
     pub async fn download_subtitle_file(
         &self,
         url: &str,
         headers: &[(String, String)],
+        preferred_filename: Option<&str>,
     ) -> Result<PathBuf, String> {
         let mut request = self.http_client.get(url);
         for (name, value) in headers {
@@ -335,16 +360,19 @@ impl MovieBoxService {
         let base_dir = resolve_subtitle_dir();
         let _ = std::fs::create_dir_all(&base_dir);
 
-        let path = base_dir.join(format!(
-            "{}_{}.{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_nanos(),
-            extension
-        ));
-
+        let file_stem = if let Some(pref) = preferred_filename {
+            crate::download::safe_file_stem(pref)
+        } else {
+            format!(
+                "{}_{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_nanos()
+            )
+        };
+        let path = base_dir.join(format!("{file_stem}.{extension}"));
         tokio::fs::write(&path, bytes)
             .await
             .map_err(|e| format!("Failed to write subtitle file: {e}"))?;
@@ -423,30 +451,32 @@ pub fn extract_browse_metrics(item: &serde_json::Value) -> BrowseMetrics {
 }
 
 pub fn resolve_subtitle_dir() -> PathBuf {
-    if let Some(home) = dirs::home_dir() {
-        let storage = home.join("storage/downloads/moviebox_subs");
-        if home.join("storage/downloads").exists() {
-            let _ = std::fs::create_dir_all(&storage);
-            return storage;
+    if crate::updater::artifact::is_termux_environment() {
+        if let Some(home) = dirs::home_dir() {
+            let storage = home.join("storage/downloads/moviebox_subs");
+            if home.join("storage/downloads").exists() {
+                let _ = std::fs::create_dir_all(&storage);
+                return storage;
+            }
         }
     }
     crate::config::cache_dir().join("subs")
 }
 
 pub fn ensure_moviebox_subdir(path: &Path) -> PathBuf {
-    if let Some(name) = path.file_name() {
-        let s = name.to_string_lossy();
-        if s.eq_ignore_ascii_case("SumanMovies-TUI") || s.eq_ignore_ascii_case("SumanMovies") {
-            return path.to_path_buf();
-        }
-        if s.eq_ignore_ascii_case("MovieBox-TUI") || s.eq_ignore_ascii_case("MovieBox") {
-            if let Some(parent) = path.parent() {
-                return parent.join("SumanMovies-TUI");
-            }
-            return PathBuf::from("SumanMovies-TUI");
-        }
+    let is_already_mb = path
+        .file_name()
+        .map(|name| {
+            let s = name.to_string_lossy();
+            s.eq_ignore_ascii_case("MovieBox-TUI") || s.eq_ignore_ascii_case("MovieBox")
+        })
+        .unwrap_or(false);
+
+    if is_already_mb {
+        path.to_path_buf()
+    } else {
+        path.join("MovieBox-TUI")
     }
-    path.join("SumanMovies-TUI")
 }
 
 pub fn resolve_download_dir(custom_dir: Option<&Path>) -> PathBuf {
@@ -464,14 +494,36 @@ pub fn resolve_download_dir(custom_dir: Option<&Path>) -> PathBuf {
         .or_else(|| dirs::home_dir().map(|h| h.join("Downloads")))
         .unwrap_or_else(|| PathBuf::from("."));
 
-    if let Some(home) = dirs::home_dir() {
-        let android_storage = home.join("storage/downloads");
-        if android_storage.exists() {
-            return ensure_moviebox_subdir(&android_storage);
+    if crate::updater::artifact::is_termux_environment() {
+        if let Some(home) = dirs::home_dir() {
+            let android_storage = home.join("storage/downloads");
+            if android_storage.exists() {
+                return ensure_moviebox_subdir(&android_storage);
+            }
         }
     }
 
     ensure_moviebox_subdir(&base_dir)
+}
+
+pub fn find_matching_resource_item(
+    items: &[serde_json::Value],
+    season: usize,
+    episode: usize,
+) -> Option<&serde_json::Value> {
+    items.iter().find(|item| {
+        let parse_num = |k: &str| -> Option<usize> {
+            item.get(k).and_then(|v| {
+                v.as_u64()
+                    .map(|n| n as usize)
+                    .or_else(|| v.as_i64().map(|n| n as usize))
+                    .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+            })
+        };
+        let se = parse_num("se");
+        let ep_num = parse_num("ep");
+        (season == 0 && episode == 0) || (se == Some(season) && ep_num == Some(episode))
+    })
 }
 
 #[cfg(test)]
@@ -493,23 +545,60 @@ mod tests {
     }
 
     #[test]
-    fn test_ensure_moviebox_subdir_migrates_legacy() {
-        let downloads = PathBuf::from("/home/user/Downloads");
-        assert_eq!(
-            ensure_moviebox_subdir(&downloads),
-            PathBuf::from("/home/user/Downloads/SumanMovies-TUI")
-        );
+    fn test_find_matching_resource_item_integer_and_string_values() {
+        let items = vec![
+            serde_json::json!({
+                "id": "1001",
+                "se": 1,
+                "ep": 1
+            }),
+            serde_json::json!({
+                "id": "1002",
+                "se": "2",
+                "ep": "5"
+            }),
+        ];
 
-        let legacy_mb = PathBuf::from("/home/user/Downloads/MovieBox-TUI");
-        assert_eq!(
-            ensure_moviebox_subdir(&legacy_mb),
-            PathBuf::from("/home/user/Downloads/SumanMovies-TUI")
-        );
+        let matched = find_matching_resource_item(&items, 2, 5);
+        assert!(matched.is_some());
+        assert_eq!(matched.unwrap().get("id").unwrap().as_str(), Some("1002"));
+    }
 
-        let existing_sm = PathBuf::from("/home/user/Downloads/SumanMovies-TUI");
+    #[test]
+    fn test_find_matching_resource_item_series_does_not_fall_back_to_episode_one() {
+        let items = vec![
+            serde_json::json!({
+                "id": "1001",
+                "se": 1,
+                "ep": 1
+            }),
+            serde_json::json!({
+                "id": "1002",
+                "se": 1,
+                "ep": 2
+            }),
+        ];
+
+        let matched = find_matching_resource_item(&items, 2, 3);
+        assert!(matched.is_none());
+    }
+
+    #[test]
+    fn test_find_matching_resource_item_movie_matches_first() {
+        let items = vec![
+            serde_json::json!({
+                "id": "movie_res_1"
+            }),
+            serde_json::json!({
+                "id": "movie_res_2"
+            }),
+        ];
+
+        let matched = find_matching_resource_item(&items, 0, 0);
+        assert!(matched.is_some());
         assert_eq!(
-            ensure_moviebox_subdir(&existing_sm),
-            PathBuf::from("/home/user/Downloads/SumanMovies-TUI")
+            matched.unwrap().get("id").unwrap().as_str(),
+            Some("movie_res_1")
         );
     }
 }

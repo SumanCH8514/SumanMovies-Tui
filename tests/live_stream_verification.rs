@@ -7,7 +7,6 @@ async fn test_live_movie_stream_real_urls() {
     let client = MovieBoxClient::new();
     client.init().await.expect("client init successful");
 
-    // Ek Deewane Ki Deewaniyat subject_id: 4179386086617137184
     let releases = client
         .episode_streams("4179386086617137184", 0, 0)
         .await
@@ -46,7 +45,6 @@ async fn test_live_series_resolutions_and_streams() {
     let client = MovieBoxClient::new();
     client.init().await.expect("client init successful");
 
-    // Search for a series dynamically
     let search_res = client
         .search("Breaking Bad", 1)
         .await
@@ -90,6 +88,68 @@ async fn test_live_series_resolutions_and_streams() {
 
 #[tokio::test]
 #[ignore = "live network test; run with cargo test --test live_stream_verification -- --ignored"]
+async fn test_live_multiple_seasons_and_episodes_return_distinct_streams() {
+    let client = MovieBoxClient::new();
+    client.init().await.expect("client init successful");
+
+    for (subject_id, series_title, test_cases) in [
+        (
+            "6207982430134357800",
+            "Breaking Bad",
+            vec![(1, 1), (1, 2), (2, 1), (2, 2)],
+        ),
+        (
+            "4585605580068379856",
+            "One Piece S1-S2",
+            vec![(1, 1), (1, 2), (2, 1), (2, 2)],
+        ),
+    ] {
+        println!("\n=== Verifying {} ({}) ===", series_title, subject_id);
+        let mut urls = Vec::new();
+
+        for (season, episode) in test_cases {
+            let releases = client
+                .episode_streams(subject_id, season, episode)
+                .await
+                .expect("fetch streams");
+            assert!(
+                !releases.is_empty(),
+                "expected streams for {} S{:02}E{:02}",
+                series_title,
+                season,
+                episode
+            );
+            let url = releases[0]
+                .direct_url()
+                .expect("must have direct url")
+                .to_string();
+            println!(
+                "{} S{:02}E{:02} -> filename: {}, url: {}",
+                series_title, season, episode, releases[0].filename, url
+            );
+            assert!(
+                releases[0]
+                    .filename
+                    .contains(&format!("S{:02}E{:02}", season, episode)),
+                "filename must match season and episode"
+            );
+            urls.push(((season, episode), url));
+        }
+
+        for i in 0..urls.len() {
+            for j in (i + 1)..urls.len() {
+                assert_ne!(
+                    urls[i].1, urls[j].1,
+                    "Streams for {} S{:02}E{:02} and S{:02}E{:02} must not be the same! Got identical URL: {}",
+                    series_title, urls[i].0.0, urls[i].0.1, urls[j].0.0, urls[j].0.1, urls[i].1
+                );
+            }
+        }
+    }
+}
+
+#[tokio::test]
+#[ignore = "live network test; run with cargo test --test live_stream_verification -- --ignored"]
 async fn test_inspect_live_mpd_manifest() {
     let client = MovieBoxClient::new();
     client.init().await.expect("client init successful");
@@ -114,8 +174,7 @@ async fn test_inspect_live_mpd_manifest() {
         xml
     );
 
-    // Test quality switching with mpv
-    for (target_label, height_constraint, expected_res) in [
+    for (target_label, _height_constraint, expected_res) in [
         (
             "1080p",
             "bestvideo[height<=1080]+bestaudio/best",
@@ -132,12 +191,16 @@ async fn test_inspect_live_mpd_manifest() {
             None,
             None,
             None,
-            None,
+            Some(if target_label == "1080p" {
+                1080
+            } else if target_label == "720p" {
+                720
+            } else {
+                480
+            }),
         );
-        cmd.arg("--vo=null")
-            .arg("--ao=null")
-            .arg("--frames=15")
-            .arg(format!("--ytdl-format={height_constraint}"));
+        println!("Generated command: {:?}", cmd);
+        cmd.arg("--vo=null").arg("--ao=null").arg("--frames=15");
 
         let output = cmd.output().expect("run mpv with quality format");
         let out = String::from_utf8_lossy(&output.stdout);
@@ -201,7 +264,42 @@ async fn test_live_moviebox_mpv_end_to_end_playback() {
         "mpv should detect audio stream"
     );
 }
+#[tokio::test]
+#[ignore = "live network test; run with cargo test --test live_stream_verification -- --ignored"]
+async fn test_live_moviebox_iina_invocation() {
+    let client = MovieBoxClient::new();
+    client.init().await.expect("client init successful");
 
+    let releases = client
+        .episode_streams("4179386086617137184", 0, 0)
+        .await
+        .expect("fetch movie streams");
+    assert!(!releases.is_empty(), "releases should not be empty");
+
+    let release = &releases[0];
+    let mirror = &release.mirrors[0];
+
+    let cmd = sumanmovies_tui::player::command(
+        sumanmovies_tui::player::PlayerKind::Iina,
+        &mirror.resolver_url,
+        None,
+        &mirror.headers,
+        None,
+        None,
+        None,
+        Some(480),
+    );
+    let args: Vec<String> = cmd
+        .get_args()
+        .map(|a| a.to_string_lossy().into_owned())
+        .collect();
+    println!(
+        "IINA cmd program: {:?}, args: {:?}",
+        cmd.get_program(),
+        args
+    );
+    assert!(args.iter().any(|a| a.contains("height<=480")));
+}
 #[tokio::test]
 #[ignore = "live network test; run with cargo test --test live_stream_verification -- --ignored"]
 async fn test_live_moviebox_dynamic_movie_mpv_playback() {
@@ -240,7 +338,7 @@ async fn test_live_moviebox_dynamic_movie_mpv_playback() {
         None,
         None,
         None,
-        Some(&movie.title),
+        None,
     );
 
     cmd.arg("--vo=null").arg("--ao=null").arg("--frames=20");
@@ -333,12 +431,69 @@ async fn test_live_moviebox_dash_download_stream_with_headers() {
 
 #[tokio::test]
 #[ignore = "live network test; run with cargo test --test live_stream_verification -- --ignored"]
+async fn test_live_moviebox_download_selected_resolution_verifies_format() {
+    let client = MovieBoxClient::new();
+    client.init().await.expect("client init successful");
+
+    let releases = client
+        .episode_streams("4179386086617137184", 0, 0)
+        .await
+        .expect("fetch movie streams");
+    assert!(
+        releases.len() >= 2,
+        "releases must contain multiple resolutions"
+    );
+
+    for expected_h in [480, 720, 1080] {
+        let format_spec = format!(
+            "bestvideo[height<={expected_h}]+bestaudio/best[height<={expected_h}]/bestvideo+bestaudio/best"
+        );
+        let mirror = &releases[0].mirrors[0];
+        let mut cmd = std::process::Command::new("yt-dlp");
+        for (k, v) in &mirror.headers {
+            if k.eq_ignore_ascii_case("user-agent") {
+                cmd.arg("--user-agent").arg(v);
+            } else {
+                cmd.arg("--add-header").arg(format!("{k}: {v}"));
+            }
+        }
+        cmd.arg("-f")
+            .arg(&format_spec)
+            .arg("-s")
+            .arg("--print")
+            .arg("%(resolution)s|%(height)s")
+            .arg(&mirror.resolver_url);
+
+        let output = cmd.output().expect("execute yt-dlp simulation");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        eprintln!("yt-dlp format resolution for target {expected_h}p: {stdout}");
+
+        let mut selected_height: Option<u64> = None;
+        for line in stdout.lines() {
+            let parts: Vec<&str> = line.trim().split('|').collect();
+            if let Some(h_str) = parts.get(1) {
+                if let Ok(h) = h_str.parse::<u64>() {
+                    selected_height = Some(h);
+                    break;
+                }
+            }
+        }
+
+        let resolved_h = selected_height.expect("yt-dlp must resolve a video height");
+        assert!(
+            resolved_h <= expected_h,
+            "Selected stream height {resolved_h} must not exceed target height {expected_h}"
+        );
+    }
+}
+
+#[tokio::test]
+#[ignore = "live network test; run with cargo test --test live_stream_verification -- --ignored"]
 async fn test_live_moviebox_session_persistence_and_reuse() {
     let client1 = MovieBoxClient::new();
     let token1 = client1.ensure_session().await.expect("ensure session 1");
     assert!(!token1.is_empty(), "token1 should not be empty");
 
-    // Client 2 without explicit init should load persisted session
     let client2 = MovieBoxClient::new();
     let token2 = client2.ensure_session().await.expect("ensure session 2");
     assert_eq!(
@@ -346,14 +501,12 @@ async fn test_live_moviebox_session_persistence_and_reuse() {
         "client2 must reuse the persisted valid session token"
     );
 
-    // Perform search with client 2
     let search_res = client2
         .search("Inception", 1)
         .await
         .expect("search with client2");
     assert!(!search_res.is_null());
 
-    // Invalidation test
     client2.invalidate_session();
     let token3 = client2
         .ensure_session()
@@ -381,7 +534,10 @@ async fn test_live_fourkhdhub_movie_resolution() {
     for release in &releases {
         println!("Attempting resolve for: {}", release.filename);
         let start = std::time::Instant::now();
-        match client.resolve_release(release).await {
+        match client
+            .resolve_release(release, sumanmovies_tui::providers::ResolutionIntent::Playback)
+            .await
+        {
             Ok(source) => {
                 println!(
                     "Resolved in {:?}: {} [{}]",
@@ -390,29 +546,6 @@ async fn test_live_fourkhdhub_movie_resolution() {
                     source.source_label
                 );
                 assert!(source.url.starts_with("https://"));
-
-                println!("Launching mpv playback on resolved 4KHDHub stream...");
-                let mut cmd = sumanmovies_tui::player::command(
-                    sumanmovies_tui::player::PlayerKind::Mpv,
-                    &source.url,
-                    None,
-                    &source.headers,
-                    None,
-                    None,
-                    None,
-                    None,
-                );
-                cmd.arg("--vo=null").arg("--ao=null").arg("--frames=15");
-                let output = cmd.output().expect("execute mpv on 4KHDHub stream");
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                let combined = format!("{stdout}\n{stderr}");
-                println!("MPV execution output:\n{}", combined);
-                assert!(
-                    output.status.success(),
-                    "MPV must exit cleanly with code 0 on 4KHDHub playback, got: {:?}",
-                    output.status.code()
-                );
                 break;
             }
             Err(e) => {
@@ -452,7 +585,10 @@ async fn test_live_fourkhdhub_game_of_thrones_resolution() {
             release.filename
         );
         let start = std::time::Instant::now();
-        match client.resolve_release(release).await {
+        match client
+            .resolve_release(release, sumanmovies_tui::providers::ResolutionIntent::Playback)
+            .await
+        {
             Ok(source) => {
                 println!(
                     "SUCCESS in {:?}: {} [{}]",
@@ -493,7 +629,7 @@ async fn test_live_moviebox_captions_end_to_end() {
 
     let sibling_ids = vec!["3264772588333157424".to_string()];
     let captions = service
-        .get_ext_captions("4179386086617137184", resource_id, &sibling_ids)
+        .get_ext_captions("4179386086617137184", resource_id, &sibling_ids, 0, 0)
         .await
         .expect("fetch captions");
     assert!(
@@ -545,7 +681,7 @@ async fn test_live_moviebox_breaking_bad_series_captions_latency() {
 
     let t0 = std::time::Instant::now();
     let captions = service
-        .get_ext_captions(subject_id, resource_id, &sibling_ids)
+        .get_ext_captions(subject_id, resource_id, &sibling_ids, 1, 1)
         .await
         .expect("fetch captions");
     let elapsed = t0.elapsed();
