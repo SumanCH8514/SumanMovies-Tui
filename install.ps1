@@ -136,7 +136,7 @@ function Print-Header {
     }
 
     $BannerPad = [Math]::Max(0, [int][Math]::Floor(($Cols - $BannerWidth) / 2))
-    $Sub = "Official Installer"
+    $Sub = "SumanMovies Official Installer"
     $SubPad = [Math]::Max(0, [int][Math]::Floor(($Cols - $Sub.Length) / 2))
 
     foreach ($Line in $Lines) {
