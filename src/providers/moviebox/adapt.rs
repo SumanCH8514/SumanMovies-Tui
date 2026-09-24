@@ -393,6 +393,7 @@ pub fn moviebox_details_json_to_media_details(
                             season: se_num,
                             number: ep_num as usize,
                             title: None,
+                            overview: None,
                         });
                     }
                 }
@@ -402,6 +403,7 @@ pub fn moviebox_details_json_to_media_details(
                         season: se_num,
                         number: ep_num,
                         title: None,
+                        overview: None,
                     });
                 }
             }
@@ -558,7 +560,8 @@ pub fn moviebox_resource_item_to_release(item: &serde_json::Value) -> Release {
         .get("resourceLink")
         .or_else(|| item.get("url"))
         .and_then(|l| l.as_str())
-        .filter(|s| !s.is_empty());
+        .filter(|s| !s.is_empty())
+        .filter(|s| !is_deprecation_notice_url(s));
 
     if let Some(link) = resource_link {
         let label = item
@@ -594,6 +597,7 @@ pub fn is_deprecation_notice_url(url: &str) -> bool {
     let lower = url.to_ascii_lowercase();
     lower.contains("1c7de0bd3393702d9191801f15f88f8d")
         || lower.contains("9a0461bc39da389663bf3dbb17091d3f")
+        || lower.contains("b164fbfb4347792950bdfbfb563d39d9")
         || lower.contains("/notice.mp4")
         || lower.contains("notice")
         || (lower.contains("macdn.aoneroom.com") && lower.contains("/other/"))
@@ -602,6 +606,35 @@ pub fn is_deprecation_notice_url(url: &str) -> bool {
 pub fn resolve_dash_manifest_from_policy(sign_cookie: &str) -> Option<String> {
     for part in sign_cookie.split(';') {
         let trimmed = part.trim();
+        if let Some(idx) = trimmed.find("urlprefix=") {
+            let prefix_part = &trimmed[idx + "urlprefix=".len()..];
+            let b64_token = prefix_part.split(':').next().unwrap_or(prefix_part).trim();
+            let mut normalized: String = b64_token
+                .chars()
+                .map(|c| match c {
+                    '-' => '+',
+                    '_' => '/',
+                    other => other,
+                })
+                .collect();
+            let padding = (4 - normalized.len() % 4) % 4;
+            if padding > 0 {
+                normalized.push_str(&"=".repeat(padding));
+            }
+            if let Ok(decoded_bytes) =
+                base64::engine::general_purpose::STANDARD.decode(normalized.as_bytes())
+            {
+                if let Ok(url_str) = String::from_utf8(decoded_bytes) {
+                    let base_resource = url_str.trim_end_matches('*').trim_end_matches('/');
+                    if !base_resource.is_empty()
+                        && (base_resource.starts_with("http://")
+                            || base_resource.starts_with("https://"))
+                    {
+                        return Some(format!("{base_resource}/index.mpd"));
+                    }
+                }
+            }
+        }
         if let Some(policy_raw) = trimmed.strip_prefix("CloudFront-Policy=") {
             let policy_clean = policy_raw.trim();
             let mut normalized: String = policy_clean
@@ -725,15 +758,8 @@ pub fn moviebox_play_info_json_to_releases(
             continue;
         };
 
-        let is_dash = playable_url.ends_with(".mpd") || format_type.eq_ignore_ascii_case("DASH");
-        let parsed_res_count = resolutions_str
-            .split(',')
-            .filter_map(|s| s.trim().parse::<u32>().ok())
-            .count();
-        let is_multi_res = is_dash || parsed_res_count > 1;
-
         let mut headers = vec![
-            ("Referer".to_string(), "https://sportslive.wine".to_string()),
+            ("Referer".to_string(), super::STREAM_REFERER.to_string()),
             ("User-Agent".to_string(), user_agent.to_string()),
         ];
         if !sign_cookie.is_empty() {
@@ -747,48 +773,59 @@ pub fn moviebox_play_info_json_to_releases(
             headers.push(("Cookie".to_string(), clean_cookie));
         }
 
-        let max_res = resolutions_str
+        let mut parsed_resolutions = resolutions_str
             .split(',')
             .filter_map(|s| s.trim().parse::<u32>().ok())
-            .max()
-            .unwrap_or(1080);
+            .collect::<Vec<_>>();
+        parsed_resolutions.sort_unstable_by(|a, b| b.cmp(a));
+        parsed_resolutions.dedup();
 
-        let quality = if is_multi_res {
-            Some("multi".to_string())
+        let res_list = if parsed_resolutions.is_empty() {
+            vec![1080]
         } else {
-            Some(format!("{max_res}p"))
+            parsed_resolutions
         };
+
         let codec_disp = codec.as_deref().unwrap_or(format_type);
-        let res_label = if is_multi_res {
-            "Multi-Res".to_string()
-        } else {
-            format!("{max_res}p")
-        };
-        let filename = if season > 0 && episode > 0 {
-            format!("{title_prefix} S{season:02}E{episode:02} {res_label} {codec_disp}")
-        } else {
-            format!("{title_prefix} {res_label} {codec_disp}")
-        };
+        let highest_res = res_list.first().copied().unwrap_or(1080) as f64;
 
-        let mirror = SourceMirror {
-            label: format!("{res_label} {codec_disp}"),
-            resolver_url: playable_url,
-            headers,
-            direct_file: true,
-        };
+        for res in res_list {
+            let res_label = format!("{res}p");
+            let filename = if season > 0 && episode > 0 {
+                format!("{title_prefix} S{season:02}E{episode:02} {res_label} {codec_disp}")
+            } else {
+                format!("{title_prefix} {res_label} {codec_disp}")
+            };
 
-        releases.push(Release {
-            provider: ProviderKind::MovieBox,
-            filename,
-            quality,
-            codec: codec.clone(),
-            language: None,
-            size_bytes,
-            season: if season > 0 { Some(season) } else { None },
-            episode: if episode > 0 { Some(episode) } else { None },
-            mirrors: vec![mirror],
-            resource_id: stream_id,
-        });
+            let mirror = SourceMirror {
+                label: format!("{res_label} {codec_disp}"),
+                resolver_url: playable_url.clone(),
+                headers: headers.clone(),
+                direct_file: true,
+            };
+
+            let scaled_size = size_bytes.map(|total| {
+                if (res as f64) >= highest_res || highest_res <= 0.0 {
+                    total
+                } else {
+                    let scale = (res as f64 / highest_res).powf(1.6);
+                    (total as f64 * scale.clamp(0.15, 1.0)) as u64
+                }
+            });
+
+            releases.push(Release {
+                provider: ProviderKind::MovieBox,
+                filename,
+                quality: Some(res_label),
+                codec: codec.clone(),
+                language: None,
+                size_bytes: scaled_size,
+                season: if season > 0 { Some(season) } else { None },
+                episode: if episode > 0 { Some(episode) } else { None },
+                mirrors: vec![mirror],
+                resource_id: stream_id.clone(),
+            });
+        }
     }
 
     releases
@@ -806,6 +843,7 @@ pub fn moviebox_resource_json_to_releases(payload: &serde_json::Value) -> Vec<Re
     items
         .iter()
         .map(moviebox_resource_item_to_release)
+        .filter(|r| !r.mirrors.is_empty())
         .collect()
 }
 

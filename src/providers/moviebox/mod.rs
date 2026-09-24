@@ -6,6 +6,8 @@ pub mod title;
 
 pub use title::clean_moviebox_title;
 
+pub const STREAM_REFERER: &str = "https://sportslive.wine";
+
 use crate::providers::models::{CatalogItem, MediaDetails, ProviderError, ProviderKind};
 use crate::providers::{Provider, ProviderCapabilities};
 

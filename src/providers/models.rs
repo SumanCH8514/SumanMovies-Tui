@@ -106,6 +106,8 @@ pub struct Episode {
     pub season: usize,
     pub number: usize,
     pub title: Option<String>,
+    #[serde(default)]
+    pub overview: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
