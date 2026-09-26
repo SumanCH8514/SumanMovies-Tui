@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.0.5] - 2026-09-26
+
+### Fixed
+- **Audio-Only Stream Resolution Indicator**:
+  - Configured YouTube audio-only stream resolutions to display as `MP3` (`-2`) in the Streams table instead of incorrectly falling back to `1080p`.
+  - Added dedicated high-contrast green styling for the `MP3` resolution badge across all 9 UI themes and basic terminal mode.
+- **Home Landing Deck Discover Categories**:
+  - Implemented single-click mouse triggers and keyboard `Submit` (`Enter`) navigation for all Discover Category presets (*Trending Now*, *Top Rated Series*, *Latest Releases*, *Most Watched*).
+  - Wired top-right `[ /browse ]` header click to directly open the browse menu.
+- **Player Media Titles & Branding**:
+  - Restored player metadata window titles (`SumanMovies TUI Api Service • <Title>`) across MPV, VLC, and Android intent arguments.
+  - Restored `SumanMovies-TUI` default download directory naming and Settings multi-line descriptive hints.
+  - Restored details header artwork threshold and synopsis modal click interaction.
+
 ## [1.0.4] - 2026-09-24
 
 ### Added

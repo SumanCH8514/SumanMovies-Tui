@@ -1,6 +1,6 @@
 [package]
 name = "sumanmovies-tui"
-version = "1.0.4"
+version = "1.0.5"
 edition = "2024"
 authors = ["Suman <https://github.com/SumanCH8514>"]
 description = "SumanMovies - Terminal interface to find, download, and stream movies, TV shows, and 4K releases using local media players."
