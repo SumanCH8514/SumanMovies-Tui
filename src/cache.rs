@@ -686,6 +686,10 @@ pub fn clear_all_cache() -> Result<(), String> {
             purge_subtitle_cache_files(&storage, &mut errors);
         }
     }
+    let sm_temp_subs = std::env::temp_dir().join("sumanmovies-tui").join("subs");
+    if sm_temp_subs.exists() {
+        purge_subtitle_cache_files(&sm_temp_subs, &mut errors);
+    }
     let temp_subs = std::env::temp_dir().join("moviebox-tui").join("subs");
     if temp_subs.exists() {
         purge_subtitle_cache_files(&temp_subs, &mut errors);

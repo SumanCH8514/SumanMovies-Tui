@@ -1446,11 +1446,13 @@ impl App {
 
                 if context.provider == ProviderKind::FourKHdHub
                     || context.provider == ProviderKind::Dramachi
+                    || context.provider == ProviderKind::YouTube
                     || context.provider.is_bdix()
                 {
                     let sender = self.action_sender.clone();
                     let fourk_client = self.service.fourk_client.clone();
                     let dramachi_client = self.service.dramachi_client.clone();
+                    let youtube_client = self.service.youtube_client.clone();
                     let circleftp_client = self.service.circleftp_client.clone();
                     let dhakaflix_client = self.service.dhakaflix_client.clone();
                     let id = subject_id.clone();
@@ -1471,6 +1473,15 @@ impl App {
                             ProviderKind::Dramachi => {
                                 crate::providers::ReleaseProvider::episode_streams(
                                     &dramachi_client,
+                                    &id,
+                                    season,
+                                    episode,
+                                )
+                                .await
+                            }
+                            ProviderKind::YouTube => {
+                                crate::providers::ReleaseProvider::episode_streams(
+                                    &youtube_client,
                                     &id,
                                     season,
                                     episode,
@@ -1669,6 +1680,8 @@ impl App {
                                     !base_link.is_empty()
                                         && base_link == i_base_link
                                         && item.quality == i.quality
+                                } else if context.provider == ProviderKind::YouTube {
+                                    item.quality == i.quality || item.filename == i.filename
                                 } else {
                                     !link.is_empty() && link == i_link
                                 };

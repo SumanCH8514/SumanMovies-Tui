@@ -252,7 +252,20 @@ impl Release {
             .is_some_and(|q| q.eq_ignore_ascii_case("multi") || q.eq_ignore_ascii_case("multi-res"))
     }
 
+    pub fn is_audio(&self) -> bool {
+        self.quality
+            .as_deref()
+            .is_some_and(|q| {
+                let l = q.trim().to_ascii_lowercase();
+                l == "audio" || l == "mp3" || l == "audio only"
+            })
+            || self.filename.to_ascii_lowercase().contains("audio only")
+    }
+
     pub fn resolution_u64(&self) -> u64 {
+        if self.is_audio() {
+            return 0;
+        }
         self.quality
             .as_deref()
             .and_then(|q| {
@@ -266,7 +279,9 @@ impl Release {
     }
 
     pub fn resolution_i64(&self) -> i64 {
-        if self.is_multi_resolution() {
+        if self.is_audio() {
+            -2
+        } else if self.is_multi_resolution() {
             -1
         } else {
             self.resolution_u64() as i64
@@ -448,6 +463,22 @@ mod tests {
         assert_eq!(make_release(Some("2160p")).resolution_u64(), 2160);
         assert_eq!(make_release(Some("1080p")).resolution_u64(), 1080);
         assert_eq!(make_release(None).resolution_u64(), 1080);
+
+        let audio_release = Release {
+            provider: ProviderKind::YouTube,
+            filename: "YouTube - abc123xyz (Audio Only)".to_string(),
+            quality: Some("MP3".to_string()),
+            codec: Some("M4A/Opus".to_string()),
+            language: None,
+            size_bytes: None,
+            season: None,
+            episode: None,
+            mirrors: Vec::new(),
+            resource_id: None,
+        };
+        assert!(audio_release.is_audio());
+        assert_eq!(audio_release.resolution_u64(), 0);
+        assert_eq!(audio_release.resolution_i64(), -2);
     }
 
     #[test]

@@ -80,7 +80,7 @@ impl DetailsLayoutTier {
                 .clamp(1, synopsis_limit)
         };
         let content_rows = if show_poster {
-            6
+            (meta_lines + synopsis_rows).max(6)
         } else {
             meta_lines + synopsis_rows
         };

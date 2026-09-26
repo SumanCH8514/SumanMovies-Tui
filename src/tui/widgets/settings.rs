@@ -1,9 +1,9 @@
 use ratatui::{
     Frame,
-    layout::{Constraint, Layout, Rect},
+    layout::{Alignment, Constraint, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::Paragraph,
+    widgets::{Block, Borders, Paragraph},
 };
 
 use crate::tui::{
@@ -75,7 +75,7 @@ pub fn settings_category_tab_at(
 }
 
 pub fn settings_row_rects(popup_area: Rect, category: SettingsCategory) -> Vec<Rect> {
-    if popup_area.width < 4 || popup_area.height < 4 {
+    if popup_area.width < 4 || popup_area.height < 6 {
         return Vec::new();
     }
     let inner = Rect {
@@ -84,21 +84,30 @@ pub fn settings_row_rects(popup_area: Rect, category: SettingsCategory) -> Vec<R
         width: popup_area.width.saturating_sub(2),
         height: popup_area.height.saturating_sub(2),
     };
-    let rows_height = category.row_count() as u16;
+    let rows_height = (category.row_count() as u16 * 2).min(inner.height.saturating_sub(5));
     let sections = Layout::vertical([
         Constraint::Length(2),
+        Constraint::Length(1),
         Constraint::Length(rows_height),
         Constraint::Min(0),
+        Constraint::Length(2),
     ])
     .split(inner);
-    let rows_area = sections[1];
-    let card_x = popup_area.x + 2;
-    let card_width = popup_area.width.saturating_sub(4);
+    let rows_area = sections[2];
+    let card_x = popup_area.x + 3;
+    let card_width = popup_area.width.saturating_sub(6);
     let row_count = category.row_count();
     let mut rects = Vec::with_capacity(row_count);
     for i in 0..row_count {
-        let y = rows_area.y + i as u16;
-        if y < rows_area.bottom() {
+        let y = rows_area.y + (i as u16 * 2);
+        if y.saturating_add(1) < rows_area.bottom() {
+            rects.push(Rect {
+                x: card_x,
+                y,
+                width: card_width,
+                height: 2,
+            });
+        } else if y < rows_area.bottom() {
             rects.push(Rect {
                 x: card_x,
                 y,
@@ -136,20 +145,61 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &mut AppState, theme: &Theme) 
         modal = modal.border_style(theme.muted).title_style(theme.muted);
     }
     let inner = modal.render(frame, popup_area, area);
-    if inner.width < 10 || inner.height < 3 {
+    if inner.width < 10 || inner.height < 4 {
         return;
     }
 
-    let rows_height = state.settings_category.row_count() as u16;
+    let rows_height =
+        (state.settings_category.row_count() as u16 * 2).min(inner.height.saturating_sub(5));
     let sections = Layout::vertical([
         Constraint::Length(2),
+        Constraint::Length(1),
         Constraint::Length(rows_height),
         Constraint::Min(0),
+        Constraint::Length(2),
     ])
     .split(inner);
 
     render_tabs(frame, sections[0], popup_area, state, theme);
-    render_category_rows(frame, sections[1], popup_area, state, theme);
+    render_category_description(frame, sections[1], popup_area, state, theme);
+    render_category_rows(frame, sections[2], popup_area, state, theme);
+    render_footer(frame, sections[4], state, theme);
+}
+
+fn category_subtitle(cat: SettingsCategory) -> &'static str {
+    match cat {
+        SettingsCategory::General => "Application defaults & media playback settings",
+        SettingsCategory::ContentModes => "Toggle active content providers & streaming sources",
+        SettingsCategory::Appearance => "UI color theme, palette previews & terminal depth",
+        SettingsCategory::StorageInfo => "Cache cleanup, release updates & diagnostics",
+    }
+}
+
+fn render_category_description(
+    frame: &mut Frame,
+    area: Rect,
+    popup_area: Rect,
+    state: &AppState,
+    theme: &Theme,
+) {
+    let desc_render_area = Rect {
+        x: popup_area.x + 3,
+        y: area.y,
+        width: popup_area.width.saturating_sub(6),
+        height: area.height.min(1),
+    };
+    let desc_style = if has_active_settings_popup(state) {
+        theme.muted
+    } else if state.basic_terminal {
+        theme.text_dim
+    } else {
+        theme.overlay1
+    };
+    let line = Line::from(vec![Span::styled(
+        category_subtitle(state.settings_category),
+        desc_style,
+    )]);
+    frame.render_widget(Paragraph::new(line), desc_render_area);
 }
 
 fn render_tabs(frame: &mut Frame, area: Rect, popup_area: Rect, state: &AppState, theme: &Theme) {
@@ -216,9 +266,9 @@ fn render_category_rows(
     theme: &Theme,
 ) {
     let rows_area = Rect {
-        x: popup_area.x + 2,
+        x: popup_area.x + 3,
         y: area.y,
-        width: popup_area.width.saturating_sub(4),
+        width: popup_area.width.saturating_sub(6),
         height: area.height,
     };
     match state.settings_category {
@@ -243,6 +293,7 @@ struct SettingRow<'a> {
     is_selected: bool,
     has_active_popup: bool,
     label: &'a str,
+    subtext: &'a str,
     value_spans: Vec<Span<'a>>,
 }
 fn on_off_spans<'a>(
@@ -289,6 +340,22 @@ fn render_row(
         return;
     }
     let is_active_selection = row.is_selected && !row.has_active_popup;
+    let cursor = if is_active_selection {
+        if basic_terminal { "> " } else { "▸ " }
+    } else {
+        "  "
+    };
+
+    let cursor_style = if is_active_selection {
+        if basic_terminal {
+            theme.text.add_modifier(Modifier::BOLD)
+        } else {
+            theme.accent.add_modifier(Modifier::BOLD)
+        }
+    } else {
+        Style::default()
+    };
+
     let label_style = if row.has_active_popup {
         theme.muted
     } else if is_active_selection {
@@ -299,11 +366,13 @@ fn render_row(
         theme.text
     };
 
-    let row_bg = if is_active_selection {
+    let row_bg = if is_active_selection && !basic_terminal {
         crate::tui::overlay::selection_style(theme, basic_terminal)
     } else {
         Style::default()
     };
+
+    let cursor_width = crate::tui::text::width(cursor);
     let label_width = crate::tui::text::width(row.label);
 
     let right_width: usize = row
@@ -312,30 +381,60 @@ fn render_row(
         .map(|s| crate::tui::text::width(&s.content))
         .sum();
 
-    let right_margin = 3;
-    let left_margin = 2;
+    let right_margin = 1;
     let area_width = area.width as usize;
-    let max_label_w = area_width.saturating_sub(left_margin + right_width + right_margin + 1);
+    let max_label_w = area_width.saturating_sub(cursor_width + right_width + right_margin + 1);
     let display_label = if label_width > max_label_w && max_label_w >= 4 {
         crate::tui::text::truncate_width(row.label, max_label_w)
     } else {
         std::borrow::Cow::Borrowed(row.label)
     };
     let display_label_w = crate::tui::text::width(&display_label);
-    let pad = area_width.saturating_sub(left_margin + display_label_w + right_width + right_margin);
+    let pad =
+        area_width.saturating_sub(cursor_width + display_label_w + right_width + right_margin);
 
-    let mut line_spans = Vec::new();
-    line_spans.push(Span::raw(" ".repeat(left_margin)));
-    line_spans.push(Span::styled(display_label, label_style));
+    let mut line1_spans = Vec::new();
+    line1_spans.push(Span::styled(cursor, cursor_style));
+    line1_spans.push(Span::styled(display_label, label_style));
     if pad > 0 {
-        line_spans.push(Span::raw(" ".repeat(pad)));
+        line1_spans.push(Span::raw(" ".repeat(pad)));
     } else {
-        line_spans.push(Span::raw(" "));
+        line1_spans.push(Span::raw(" "));
     }
-    line_spans.extend(row.value_spans);
-    line_spans.push(Span::raw(" ".repeat(right_margin)));
+    line1_spans.extend(row.value_spans);
+    line1_spans.push(Span::raw(" ".repeat(right_margin)));
 
-    frame.render_widget(Paragraph::new(Line::from(line_spans)).style(row_bg), area);
+    let subtext_indent = "  ";
+    let max_subtext_w = area_width.saturating_sub(subtext_indent.len());
+    let display_subtext = if crate::tui::text::width(row.subtext) > max_subtext_w {
+        crate::tui::text::truncate_width(row.subtext, max_subtext_w)
+    } else {
+        std::borrow::Cow::Borrowed(row.subtext)
+    };
+    let subtext_width = crate::tui::text::width(&display_subtext);
+    let subtext_pad = area_width.saturating_sub(subtext_indent.len() + subtext_width);
+    let mut line2_spans = Vec::new();
+    line2_spans.push(Span::raw(subtext_indent));
+    line2_spans.push(Span::styled(
+        display_subtext,
+        if row.has_active_popup {
+            theme.muted
+        } else if row.is_selected {
+            theme.subtext1
+        } else {
+            theme.overlay1
+        },
+    ));
+    if subtext_pad > 0 {
+        line2_spans.push(Span::raw(" ".repeat(subtext_pad)));
+    }
+    let lines = if area.height >= 2 {
+        vec![Line::from(line1_spans), Line::from(line2_spans)]
+    } else {
+        vec![Line::from(line1_spans)]
+    };
+
+    frame.render_widget(Paragraph::new(lines).style(row_bg), area);
 }
 
 fn render_general_settings(frame: &mut Frame, area: Rect, state: &AppState, theme: &Theme) {
@@ -357,6 +456,7 @@ fn render_general_settings(frame: &mut Frame, area: Rect, state: &AppState, them
                 is_selected,
                 has_active_popup,
                 label: "Automatic Updates",
+                subtext: "Check GitHub for new releases on startup",
                 value_spans,
             },
             theme,
@@ -393,6 +493,7 @@ fn render_general_settings(frame: &mut Frame, area: Rect, state: &AppState, them
                 is_selected,
                 has_active_popup,
                 label: "Default Media Player",
+                subtext: "Preferred player launched for video streams",
                 value_spans,
             },
             theme,
@@ -459,6 +560,7 @@ fn render_general_settings(frame: &mut Frame, area: Rect, state: &AppState, them
                 is_selected,
                 has_active_popup,
                 label: "Download Folder",
+                subtext: "Directory for saving downloaded videos & subtitles",
                 value_spans,
             },
             theme,
@@ -486,6 +588,7 @@ fn render_content_modes_settings(frame: &mut Frame, area: Rect, state: &AppState
                 is_selected,
                 has_active_popup,
                 label: "Streaming Mode",
+                subtext: "MovieBox & 4KHDHub streaming catalog",
                 value_spans,
             },
             theme,
@@ -524,6 +627,7 @@ fn render_content_modes_settings(frame: &mut Frame, area: Rect, state: &AppState
                 is_selected,
                 has_active_popup,
                 label: "Streaming Sources",
+                subtext: "Configure active movie/series source providers",
                 value_spans,
             },
             theme,
@@ -546,6 +650,7 @@ fn render_content_modes_settings(frame: &mut Frame, area: Rect, state: &AppState
                 is_selected,
                 has_active_popup,
                 label: "Live TV Mode",
+                subtext: "Live IPTV channels and custom M3U playlists",
                 value_spans,
             },
             theme,
@@ -587,11 +692,39 @@ fn render_appearance_settings(frame: &mut Frame, area: Rect, state: &AppState, t
                 is_selected,
                 has_active_popup,
                 label: "Theme",
+                subtext: "Active color theme and palette styling",
                 value_spans,
             },
             theme,
             state.basic_terminal,
         );
+    }
+
+    if area.height >= 7 {
+        let info_y = area.y + 5;
+        let info_area = Rect {
+            x: area.x,
+            y: info_y,
+            width: area.width,
+            height: area.bottom().saturating_sub(info_y),
+        };
+        let label = "Terminal Depth";
+        let value = crate::tui::theme::ColorSupport::current().label();
+        let label_width = crate::tui::text::width(label);
+        let val_width = crate::tui::text::width(value);
+        let pad = (info_area.width as usize).saturating_sub(label_width + val_width);
+        let lines = vec![
+            Line::from(vec![
+                Span::styled(label, theme.text),
+                Span::raw(" ".repeat(pad)),
+                Span::styled(value, theme.subtext1),
+            ]),
+            Line::from(vec![Span::styled(
+                "Live preview: color switches take effect instantly",
+                theme.overlay1,
+            )]),
+        ];
+        frame.render_widget(Paragraph::new(lines), info_area);
     }
 }
 
@@ -639,6 +772,7 @@ fn render_storage_settings(frame: &mut Frame, area: Rect, state: &AppState, them
                 is_selected,
                 has_active_popup,
                 label: "Check for Updates",
+                subtext: "Query GitHub API for latest binary releases",
                 value_spans,
             },
             theme,
@@ -673,6 +807,7 @@ fn render_storage_settings(frame: &mut Frame, area: Rect, state: &AppState, them
                 is_selected,
                 has_active_popup,
                 label: "Re-check BDIX Network",
+                subtext: "Re-detect active BDIX FTP mirrors",
                 value_spans,
             },
             theme,
@@ -707,6 +842,7 @@ fn render_storage_settings(frame: &mut Frame, area: Rect, state: &AppState, them
                 is_selected,
                 has_active_popup,
                 label: "Clear Disk Cache",
+                subtext: "Remove temporary cached images and responses",
                 value_spans,
             },
             theme,
@@ -741,6 +877,7 @@ fn render_storage_settings(frame: &mut Frame, area: Rect, state: &AppState, them
                 is_selected,
                 has_active_popup,
                 label: "Clear Watch History",
+                subtext: "Reset saved playback progress & watch states",
                 value_spans,
             },
             theme,
@@ -775,6 +912,7 @@ fn render_storage_settings(frame: &mut Frame, area: Rect, state: &AppState, them
                 is_selected,
                 has_active_popup,
                 label: "GitHub Repository",
+                subtext: "Open project homepage in default web browser",
                 value_spans,
             },
             theme,
@@ -786,8 +924,15 @@ fn render_storage_settings(frame: &mut Frame, area: Rect, state: &AppState, them
 fn settings_row_rects_in_area(area: Rect, count: usize) -> Vec<Rect> {
     let mut rects = Vec::with_capacity(count);
     for i in 0..count {
-        let y = area.y + i as u16;
-        if y < area.bottom() {
+        let y = area.y + (i as u16 * 2);
+        if y.saturating_add(1) < area.bottom() {
+            rects.push(Rect {
+                x: area.x,
+                y,
+                width: area.width,
+                height: 2,
+            });
+        } else if y < area.bottom() {
             rects.push(Rect {
                 x: area.x,
                 y,
@@ -797,6 +942,112 @@ fn settings_row_rects_in_area(area: Rect, count: usize) -> Vec<Rect> {
         }
     }
     rects
+}
+
+fn render_footer(frame: &mut Frame, area: Rect, state: &AppState, theme: &Theme) {
+    let mut footer_spans: Vec<Span<'static>> = Vec::new();
+    if state.settings_download_dir_input.is_some() {
+        if state.basic_terminal {
+            footer_spans.extend([
+                Span::raw("[Enter] Save   "),
+                Span::raw("[Esc] Cancel   "),
+                Span::raw("[Backspace] Delete"),
+            ]);
+        } else {
+            footer_spans.extend(overlay::key_hint("Enter", "Save", theme));
+            footer_spans.push(Span::raw("   "));
+            footer_spans.extend(overlay::key_hint("Esc", "Cancel", theme));
+            footer_spans.push(Span::raw("   "));
+            footer_spans.extend(overlay::key_hint("Backspace", "Delete", theme));
+        }
+    } else if state.basic_terminal {
+        if area.width >= 66 {
+            footer_spans.extend([
+                Span::raw("[Tab] Category   "),
+                Span::raw("[↑↓] Move   "),
+                Span::raw("[←→] Edit   "),
+                Span::raw("[Enter] Select   "),
+                Span::raw("[Esc] Close"),
+            ]);
+        } else if area.width >= 60 {
+            footer_spans.extend([
+                Span::raw("[Tab] Category  "),
+                Span::raw("[↑↓] Move  "),
+                Span::raw("[←→] Edit  "),
+                Span::raw("[Enter] Select  "),
+                Span::raw("[Esc] Close"),
+            ]);
+        } else if area.width >= 48 {
+            footer_spans.extend([
+                Span::raw("[Tab] Cat   "),
+                Span::raw("[↑↓] Move   "),
+                Span::raw("[←→] Edit   "),
+                Span::raw("[Enter] Sel   "),
+                Span::raw("[Esc] Close"),
+            ]);
+        } else {
+            footer_spans.extend([
+                Span::raw("[Tab] Cat  "),
+                Span::raw("[↑↓]  "),
+                Span::raw("[←→]  "),
+                Span::raw("[Enter]  "),
+                Span::raw("[Esc] Close"),
+            ]);
+        }
+    } else if area.width >= 66 {
+        let gap = "   ";
+        footer_spans.extend(overlay::key_hint("Tab", "Category", theme));
+        footer_spans.push(Span::raw(gap));
+        footer_spans.extend(overlay::key_hint("↑↓", "Move", theme));
+        footer_spans.push(Span::raw(gap));
+        footer_spans.extend(overlay::key_hint("←→", "Edit", theme));
+        footer_spans.push(Span::raw(gap));
+        footer_spans.extend(overlay::key_hint("Enter", "Select", theme));
+        footer_spans.push(Span::raw(gap));
+        footer_spans.extend(overlay::key_hint("Esc", "Close", theme));
+    } else if area.width >= 60 {
+        let gap = "  ";
+        footer_spans.extend(overlay::key_hint("Tab", "Category", theme));
+        footer_spans.push(Span::raw(gap));
+        footer_spans.extend(overlay::key_hint("↑↓", "Move", theme));
+        footer_spans.push(Span::raw(gap));
+        footer_spans.extend(overlay::key_hint("←→", "Edit", theme));
+        footer_spans.push(Span::raw(gap));
+        footer_spans.extend(overlay::key_hint("Enter", "Select", theme));
+        footer_spans.push(Span::raw(gap));
+        footer_spans.extend(overlay::key_hint("Esc", "Close", theme));
+    } else if area.width >= 48 {
+        let gap = "   ";
+        footer_spans.extend(overlay::key_hint("Tab", "Cat", theme));
+        footer_spans.push(Span::raw(gap));
+        footer_spans.extend(overlay::key_hint("↑↓", "Move", theme));
+        footer_spans.push(Span::raw(gap));
+        footer_spans.extend(overlay::key_hint("←→", "Edit", theme));
+        footer_spans.push(Span::raw(gap));
+        footer_spans.extend(overlay::key_hint("Enter", "Sel", theme));
+        footer_spans.push(Span::raw(gap));
+        footer_spans.extend(overlay::key_hint("Esc", "Close", theme));
+    } else {
+        let gap = "  ";
+        footer_spans.extend(overlay::key_hint("Tab", "Cat", theme));
+        footer_spans.push(Span::raw(gap));
+        footer_spans.extend(overlay::key_hint("↑↓", "", theme));
+        footer_spans.push(Span::raw(gap));
+        footer_spans.extend(overlay::key_hint("←→", "", theme));
+        footer_spans.push(Span::raw(gap));
+        footer_spans.extend(overlay::key_hint("Enter", "", theme));
+        footer_spans.push(Span::raw(gap));
+        footer_spans.extend(overlay::key_hint("Esc", "Close", theme));
+    }
+
+    let p = Paragraph::new(Line::from(footer_spans))
+        .alignment(Alignment::Center)
+        .block(
+            Block::default()
+                .borders(Borders::TOP)
+                .border_style(theme.muted),
+        );
+    frame.render_widget(p, area);
 }
 
 #[cfg(test)]

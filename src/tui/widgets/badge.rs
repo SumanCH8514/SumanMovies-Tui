@@ -8,6 +8,7 @@ use crate::tui::theme::Theme;
 
 pub fn resolution_label(resolution: i64) -> &'static str {
     match resolution {
+        -2 => "MP3",
         -1 => "Multi",
         2160 | 4320 => "4K",
         1080 => "1080p",
@@ -30,6 +31,7 @@ pub fn resolution_badge_spans<'a>(
     if modal_active {
         if basic_terminal {
             let label = match resolution {
+                -2 => "[MP3]",
                 -1 => "[Multi]",
                 2160 | 4320 => "[4K]",
                 1080 => "[1080p]",
@@ -46,6 +48,7 @@ pub fn resolution_badge_spans<'a>(
         }
 
         let label = match resolution {
+            -2 => "  MP3  ",
             -1 => " Multi ",
             2160 | 4320 => "  4K   ",
             1080 => " 1080p ",
@@ -65,6 +68,7 @@ pub fn resolution_badge_spans<'a>(
 
     if basic_terminal {
         let (label, style) = match resolution {
+            -2 => ("[MP3]", theme.success.add_modifier(Modifier::BOLD)),
             -1 => ("[Multi]", theme.lavender.add_modifier(Modifier::BOLD)),
             2160 | 4320 => ("[4K]", theme.rating.add_modifier(Modifier::BOLD)),
             1080 => ("[1080p]", theme.highlight.add_modifier(Modifier::BOLD)),
@@ -79,6 +83,24 @@ pub fn resolution_badge_spans<'a>(
 
     let is_light = theme.is_light;
     let (badge_bg, contrast_fg, label) = match resolution {
+        -2 => {
+            let accent_color = theme.success.fg.unwrap_or(theme.base);
+            if is_selected {
+                (
+                    accent_color,
+                    if is_light {
+                        Color::White
+                    } else {
+                        theme.crust_color()
+                    },
+                    "  MP3  ",
+                )
+            } else if is_light {
+                (theme.surface2_color(), accent_color, "  MP3  ")
+            } else {
+                (theme.surface1_color(), accent_color, "  MP3  ")
+            }
+        }
         -1 => {
             let accent_color = theme.lavender.fg.unwrap_or(theme.base);
             if is_selected {
@@ -224,7 +246,9 @@ pub fn provider_badge_span<'a>(
 pub fn extract_resolution(title: &str, quality: Option<&str>) -> Option<i64> {
     if let Some(q) = quality {
         let q_lower = q.trim().to_ascii_lowercase();
-        if q_lower.contains("2160") || q_lower.contains("4k") || q_lower.contains("uhd") {
+        if q_lower.contains("audio") || q_lower.contains("mp3") {
+            return Some(-2);
+        } else if q_lower.contains("2160") || q_lower.contains("4k") || q_lower.contains("uhd") {
             return Some(2160);
         } else if q_lower.contains("1080") || q_lower.contains("fhd") {
             return Some(1080);
@@ -242,7 +266,9 @@ pub fn extract_resolution(title: &str, quality: Option<&str>) -> Option<i64> {
     }
 
     let title_lower = title.to_ascii_lowercase();
-    if title_lower.contains("2160p")
+    if title_lower.contains("audio only") || title_lower.contains(" mp3") {
+        Some(-2)
+    } else if title_lower.contains("2160p")
         || title_lower.contains("2160")
         || title_lower.contains("4k")
         || title_lower.contains("uhd")
@@ -462,7 +488,7 @@ mod tests {
         for theme_name in crate::tui::theme::AVAILABLE_THEMES {
             let kind = crate::tui::theme::ThemeKind::parse(theme_name);
             let theme = crate::tui::theme::Theme::from_kind(kind);
-            for res in [-1, 2160, 1080, 720, 480] {
+            for res in [-2, -1, 2160, 1080, 720, 480] {
                 let unselected = resolution_badge_spans(res, &theme, false, false, false);
                 let selected = resolution_badge_spans(res, &theme, false, false, true);
                 assert!(unselected[0].style.bg.is_some());
@@ -483,6 +509,7 @@ mod tests {
 
     #[test]
     fn test_resolution_label() {
+        assert_eq!(resolution_label(-2), "MP3");
         assert_eq!(resolution_label(-1), "Multi");
         assert_eq!(resolution_label(4320), "4K");
         assert_eq!(resolution_label(2160), "4K");

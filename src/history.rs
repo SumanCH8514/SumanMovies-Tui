@@ -141,6 +141,25 @@ impl WatchHistoryItem {
         }
     }
 
+    pub fn display_playback_title(&self) -> String {
+        let clean_title = self.title.trim();
+        if self.stype == 2 || self.season > 0 || self.episode > 0 {
+            match (self.season, self.episode) {
+                (s, e) if s > 0 && e > 0 => format!("{clean_title} • Season {s} • Episode {e}"),
+                (s, 0) if s > 0 => format!("{clean_title} • Season {s}"),
+                (0, e) if e > 0 => format!("{clean_title} • Episode {e}"),
+                _ => clean_title.to_string(),
+            }
+        } else {
+            let year = self.release_year.trim();
+            if !year.is_empty() && year != "Unknown" && !clean_title.contains(year) {
+                format!("{clean_title} ({year})")
+            } else {
+                clean_title.to_string()
+            }
+        }
+    }
+
     pub fn formatted_relative_time(&self) -> String {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -809,5 +828,25 @@ mod tests {
 
         item.duration_seconds = Some(3600);
         assert!(item.is_in_progress());
+    }
+
+    #[test]
+    fn test_display_playback_title_series_and_movies() {
+        let series_item = dummy_item("moviebox", "mb_123", "Friends", 2, "1994", 1, 24);
+        assert_eq!(
+            series_item.display_playback_title(),
+            "Friends • Season 1 • Episode 24"
+        );
+
+        let movie_item = dummy_item("moviebox", "mb_456", "Inception", 1, "2010", 0, 0);
+        assert_eq!(movie_item.display_playback_title(), "Inception (2010)");
+
+        let movie_with_year_in_title =
+            dummy_item("moviebox", "mb_789", "Leo (2023)", 1, "2023", 0, 0);
+        assert_eq!(movie_with_year_in_title.display_playback_title(), "Leo (2023)");
+
+        let movie_unknown_year =
+            dummy_item("moviebox", "mb_999", "Special Movie", 1, "Unknown", 0, 0);
+        assert_eq!(movie_unknown_year.display_playback_title(), "Special Movie");
     }
 }

@@ -113,6 +113,13 @@ pub fn header_capable_players() -> &'static [PlayerKind] {
     }
 }
 
+pub fn format_media_title(title: Option<&str>) -> String {
+    match title.map(str::trim).filter(|t| !t.is_empty()) {
+        Some(t) => format!("SumanMovies TUI Api Service • {t}"),
+        None => "SumanMovies TUI Api Service".to_string(),
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn command(
     kind: PlayerKind,
@@ -123,6 +130,7 @@ pub fn command(
     resume_seconds: Option<u64>,
     tracker: Option<(&str, &str, usize, usize)>,
     max_height: Option<u64>,
+    title: Option<&str>,
 ) -> Command {
     match kind {
         PlayerKind::Mpv => mpv_command(
@@ -134,6 +142,7 @@ pub fn command(
             resume_seconds,
             tracker,
             max_height,
+            title,
         ),
         PlayerKind::Iina => iina_command(
             url,
@@ -143,9 +152,18 @@ pub fn command(
             resume_seconds,
             tracker,
             max_height,
+            title,
         ),
-        PlayerKind::Vlc => vlc_command(url, subtitle, headers, window, resume_seconds, max_height),
-        PlayerKind::AndroidIntent => android_intent_command(url, subtitle, headers),
+        PlayerKind::Vlc => vlc_command(
+            url,
+            subtitle,
+            headers,
+            window,
+            resume_seconds,
+            max_height,
+            title,
+        ),
+        PlayerKind::AndroidIntent => android_intent_command(url, subtitle, headers, title),
     }
 }
 
@@ -280,7 +298,10 @@ fn append_android_intent_extras(
     cmd: &mut Command,
     subtitle: Option<&str>,
     headers: &[(String, String)],
+    title: Option<&str>,
 ) {
+    let media_title = format_media_title(title);
+    cmd.arg("-e").arg("title").arg(media_title);
     if let Some(sub) = subtitle {
         cmd.arg("-e").arg("subtitles_location").arg(sub);
         cmd.arg("--eu").arg("subtitles_location").arg(sub);
@@ -306,6 +327,7 @@ pub fn android_intent_command_for_opener(
     url: &str,
     subtitle: Option<&str>,
     headers: &[(String, String)],
+    title: Option<&str>,
 ) -> Command {
     match opener {
         AndroidOpener::TermuxOpen(path) => {
@@ -330,7 +352,7 @@ pub fn android_intent_command_for_opener(
                 .arg(url)
                 .arg("-t")
                 .arg("video/*");
-            append_android_intent_extras(&mut cmd, subtitle, headers);
+            append_android_intent_extras(&mut cmd, subtitle, headers, title);
             cmd
         }
         #[cfg(target_os = "android")]
@@ -345,7 +367,7 @@ pub fn android_intent_command_for_opener(
                 .arg(url)
                 .arg("-t")
                 .arg("video/*");
-            append_android_intent_extras(&mut cmd, subtitle, headers);
+            append_android_intent_extras(&mut cmd, subtitle, headers, title);
             let current_path = std::env::var("PATH").unwrap_or_default();
             cmd.env("PATH", format!("/system/bin:/system/xbin:{current_path}"));
             cmd.env_remove("LD_LIBRARY_PATH");
@@ -359,6 +381,7 @@ pub fn android_intent_commands(
     url: &str,
     subtitle: Option<&str>,
     headers: &[(String, String)],
+    title: Option<&str>,
 ) -> Vec<(AndroidOpener, Command)> {
     let openers = android_openers();
     if openers.is_empty() {
@@ -372,7 +395,7 @@ pub fn android_intent_commands(
     openers
         .iter()
         .map(|opener| {
-            let cmd = android_intent_command_for_opener(opener, url, subtitle, headers);
+            let cmd = android_intent_command_for_opener(opener, url, subtitle, headers, title);
             (opener.clone(), cmd)
         })
         .collect()
@@ -382,8 +405,9 @@ fn android_intent_command(
     url: &str,
     subtitle: Option<&str>,
     headers: &[(String, String)],
+    title: Option<&str>,
 ) -> Command {
-    let commands = android_intent_commands(url, subtitle, headers);
+    let commands = android_intent_commands(url, subtitle, headers, title);
     commands
         .into_iter()
         .next()
@@ -408,6 +432,7 @@ fn mpv_command(
     resume_seconds: Option<u64>,
     tracker: Option<(&str, &str, usize, usize)>,
     max_height: Option<u64>,
+    title: Option<&str>,
 ) -> Command {
     let fallback = if cfg!(target_os = "windows") {
         "mpv.exe"
@@ -417,6 +442,10 @@ fn mpv_command(
     let executable = mpv_executable().unwrap_or_else(|| fallback.into());
     let mut command = build_player_process_command(&executable);
     let prefix = if iina { "--mpv-" } else { "--" };
+
+    let media_title = format_media_title(title);
+    command.arg(format!("{prefix}force-media-title={media_title}"));
+    command.arg(format!("{prefix}title={media_title}"));
 
     if let Some((width, height)) = window {
         command.arg(format!("{prefix}autofit={width}x{height}"));
@@ -590,6 +619,7 @@ fn iina_command(
     resume_seconds: Option<u64>,
     tracker: Option<(&str, &str, usize, usize)>,
     max_height: Option<u64>,
+    title: Option<&str>,
 ) -> Command {
     let resolution = iina_resolution();
     let mut command = match resolution {
@@ -614,6 +644,7 @@ fn iina_command(
         resume_seconds,
         tracker,
         max_height,
+        title,
     );
     for arg in mpv.get_args() {
         let s = arg.to_string_lossy();
@@ -644,6 +675,7 @@ fn iina_command(
     resume_seconds: Option<u64>,
     tracker: Option<(&str, &str, usize, usize)>,
     max_height: Option<u64>,
+    title: Option<&str>,
 ) -> Command {
     mpv_command(
         url,
@@ -654,6 +686,7 @@ fn iina_command(
         resume_seconds,
         tracker,
         max_height,
+        title,
     )
 }
 
@@ -664,6 +697,7 @@ fn vlc_command(
     window: Option<(u32, u32)>,
     resume_seconds: Option<u64>,
     max_height: Option<u64>,
+    title: Option<&str>,
 ) -> Command {
     let fallback = if cfg!(target_os = "windows") {
         "vlc.exe"
@@ -672,6 +706,9 @@ fn vlc_command(
     };
     let executable = vlc_executable().unwrap_or_else(|| fallback.into());
     let mut command = build_player_process_command(&executable);
+
+    let media_title = format_media_title(title);
+    command.arg(format!("--meta-title={media_title}"));
 
     if let Some((width, height)) = window {
         command
@@ -1538,6 +1575,44 @@ mod tests {
     }
 
     #[test]
+    fn test_format_media_title() {
+        assert_eq!(
+            format_media_title(Some("Inception (2010)")),
+            "SumanMovies TUI Api Service • Inception (2010)"
+        );
+        assert_eq!(
+            format_media_title(Some("   Interstellar  ")),
+            "SumanMovies TUI Api Service • Interstellar"
+        );
+        assert_eq!(format_media_title(Some("")), "SumanMovies TUI Api Service");
+        assert_eq!(format_media_title(None), "SumanMovies TUI Api Service");
+    }
+
+    #[test]
+    fn mpv_command_sets_custom_title_flags() {
+        let command = mpv_command(
+            "https://example.test/video.mp4",
+            None,
+            &[],
+            false,
+            None,
+            None,
+            None,
+            None,
+            Some("Jawan (2023)"),
+        );
+        let args = command
+            .get_args()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+
+        assert!(
+            args.contains(&"--force-media-title=SumanMovies TUI Api Service • Jawan (2023)".into())
+        );
+        assert!(args.contains(&"--title=SumanMovies TUI Api Service • Jawan (2023)".into()));
+    }
+
+    #[test]
     fn vlc_command_preserves_supported_playback_options() {
         let command = vlc_command(
             "https://example.test/video.m3u8",
@@ -1550,12 +1625,14 @@ mod tests {
             Some((1280, 720)),
             Some(42),
             None,
+            Some("Leo (2023)"),
         );
         let args = command
             .get_args()
             .map(|arg| arg.to_string_lossy().into_owned())
             .collect::<Vec<_>>();
 
+        assert!(args.contains(&"--meta-title=SumanMovies TUI Api Service • Leo (2023)".into()));
         assert!(args.contains(&"--width=1280".into()));
         assert!(args.contains(&"--height=720".into()));
         assert!(args.contains(&"--play-and-exit".into()));
@@ -1579,6 +1656,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         );
         let args = command
             .get_args()
@@ -1596,6 +1674,7 @@ mod tests {
             "https://example.test/video.mp4",
             Some(r"\\server\share\subs\sub.srt"),
             &[],
+            None,
             None,
             None,
             None,
@@ -1623,6 +1702,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         );
 
         let args = cmd
@@ -1634,6 +1714,7 @@ mod tests {
         assert!(args.contains(&"--http-header-fields=Cookie: session=abc, token=123".to_string()));
         assert!(args.contains(&"--http-header-fields=Accept: text/html, */*".to_string()));
     }
+    #[cfg(not(target_os = "windows"))]
     static ENV_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     #[test]
@@ -1653,7 +1734,8 @@ mod tests {
             std::env::set_var("TERMUX_VERSION", "0.118.0");
             std::env::set_var("PREFIX", temp_dir.to_str().unwrap());
         }
-        let commands = android_intent_commands("https://example.test/stream.m3u8", None, &[]);
+        let commands =
+            android_intent_commands("https://example.test/stream.m3u8", None, &[], None);
         unsafe {
             std::env::remove_var("TERMUX_VERSION");
             std::env::remove_var("PREFIX");
@@ -1687,8 +1769,25 @@ mod tests {
     }
 
     #[test]
+    fn test_android_intent_extras_include_title() {
+        let mut cmd = Command::new("am");
+        append_android_intent_extras(&mut cmd, None, &[], Some("Test Movie"));
+        let args = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+        assert!(args.contains(&"title".to_string()));
+        assert!(args.contains(&"SumanMovies TUI Api Service • Test Movie".to_string()));
+    }
+
+    #[test]
     fn test_android_intent_command_structure() {
-        let cmd = android_intent_command("https://example.test/video.mp4", None, &[]);
+        let cmd = android_intent_command(
+            "https://example.test/video.mp4",
+            None,
+            &[],
+            Some("Test Movie"),
+        );
         let args = cmd
             .get_args()
             .map(|a| a.to_string_lossy().into_owned())
@@ -1708,6 +1807,7 @@ mod tests {
             None,
             &headers,
             false,
+            None,
             None,
             None,
             None,
@@ -1881,6 +1981,7 @@ mod tests {
             Some(120),
             None,
             None,
+            None,
         );
         let args: Vec<String> = cmd
             .get_args()
@@ -1925,6 +2026,7 @@ mod tests {
             "http://127.0.0.1:4567/proxy/manifest.mpd",
             None,
             &headers,
+            None,
             None,
             None,
             None,

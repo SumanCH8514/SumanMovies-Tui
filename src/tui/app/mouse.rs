@@ -319,20 +319,20 @@ impl App {
                         match env {
                             crate::updater::apply::InstallationEnvironment::Homebrew => {
                                 self.state
-                                    .set_status_short("Run: brew upgrade moviebox-tui");
+                                    .set_status_short("Run: brew upgrade sumanmovies-tui");
                                 self.state.notify(
                                     NotificationKind::Info,
                                     "Homebrew Upgrade",
-                                    "Run: brew upgrade moviebox-tui",
+                                    "Run: brew upgrade sumanmovies-tui",
                                 );
                             }
                             crate::updater::apply::InstallationEnvironment::Scoop => {
                                 self.state
-                                    .set_status_short("Run: scoop update moviebox-tui");
+                                    .set_status_short("Run: scoop update sumanmovies-tui");
                                 self.state.notify(
                                     NotificationKind::Info,
                                     "Scoop Upgrade",
-                                    "Run: scoop update moviebox-tui",
+                                    "Run: scoop update sumanmovies-tui",
                                 );
                             }
                             crate::updater::apply::InstallationEnvironment::DirectReplace
@@ -652,9 +652,16 @@ impl App {
                 {
                     let rel_row = row - deck_card_area.top();
                     if rel_row == 0 {
-                        self.state.cycle_home_deck_tab();
-                        self.state.favorites_focus = true;
-                        self.state.input_mode = InputMode::Normal;
+                        if self.state.effective_home_deck_tab()
+                            == crate::tui::state::HomeDeckTab::Discover
+                            && col >= deck_card_area.right().saturating_sub(13)
+                        {
+                            self.action_sender.send(Action::ShowBrowseMenu).ok();
+                        } else {
+                            self.state.cycle_home_deck_tab();
+                            self.state.favorites_focus = true;
+                            self.state.input_mode = InputMode::Normal;
+                        }
                     } else if rel_row >= 1 && rel_row <= item_count {
                         let idx = (rel_row - 1) as usize;
                         let prev_selected = if self.state.favorites_focus {
@@ -665,17 +672,28 @@ impl App {
                         self.state.favorites_focus = true;
                         self.state.input_mode = InputMode::Normal;
                         self.state.favorites_landing_state.select(Some(idx));
-                        if prev_selected == Some(idx) {
-                            match self.state.effective_home_deck_tab() {
-                                crate::tui::state::HomeDeckTab::ContinueWatching => {
+                        match self.state.effective_home_deck_tab() {
+                            crate::tui::state::HomeDeckTab::Discover => {
+                                let preset = match idx {
+                                    0 => BrowsePreset::Trending,
+                                    1 => BrowsePreset::TopRatedAllTime,
+                                    2 => BrowsePreset::TopRatedRecent,
+                                    3 => BrowsePreset::MostWatched,
+                                    _ => BrowsePreset::Trending,
+                                };
+                                self.action_sender.send(Action::SelectBrowse(preset)).ok();
+                            }
+                            crate::tui::state::HomeDeckTab::ContinueWatching => {
+                                if prev_selected == Some(idx) {
                                     self.action_sender
                                         .send(Action::OpenContinueWatching(idx))
                                         .ok();
                                 }
-                                crate::tui::state::HomeDeckTab::Favorites => {
+                            }
+                            crate::tui::state::HomeDeckTab::Favorites => {
+                                if prev_selected == Some(idx) {
                                     self.action_sender.send(Action::OpenFavorite(idx)).ok();
                                 }
-                                crate::tui::state::HomeDeckTab::Discover => {}
                             }
                         }
                     } else if overflow > 0 && rel_row == item_count + 1 {
@@ -691,7 +709,9 @@ impl App {
                             crate::tui::state::HomeDeckTab::Favorites => {
                                 self.action_sender.send(Action::ShowFavorites).ok();
                             }
-                            crate::tui::state::HomeDeckTab::Discover => {}
+                            crate::tui::state::HomeDeckTab::Discover => {
+                                self.action_sender.send(Action::ShowBrowseMenu).ok();
+                            }
                         }
                     } else {
                         self.state.favorites_focus = true;
@@ -1552,4 +1572,53 @@ mod tests {
         assert!(outside_handled);
         assert!(!app.state.show_overview_modal);
     }
+
+    #[tokio::test]
+    async fn test_discover_categories_click_dispatches_browse_preset() {
+        let mut app = App::new();
+        let area = Rect::new(0, 0, 80, 24);
+        app.state.active_screen = Screen::Home;
+        app.state.home_deck_tab = crate::tui::state::HomeDeckTab::Discover;
+        assert!(app.state.landing_deck_visible());
+
+        let (_tier, rows) = crate::tui::screens::home::landing_split(
+            area,
+            app.state.is_tv_mode,
+            app.state.basic_terminal,
+            app.state.landing_deck_visible(),
+        );
+        let card_width = crate::tui::screens::home::search_deck_width(area, &app.state, true);
+        let card_x = area.x + area.width.saturating_sub(card_width) / 2;
+        let deck_y = rows.rects[rows.favorites].y;
+
+        // Click row 1: "Trending Now"
+        app.handle_home_mouse(card_x + 5, deck_y + 1, area);
+        assert!(matches!(
+            app.action_receiver.try_recv().ok(),
+            Some(Action::SelectBrowse(BrowsePreset::Trending))
+        ));
+
+        // Click row 2: "Top Rated Series"
+        app.handle_home_mouse(card_x + 5, deck_y + 2, area);
+        assert!(matches!(
+            app.action_receiver.try_recv().ok(),
+            Some(Action::SelectBrowse(BrowsePreset::TopRatedAllTime))
+        ));
+
+        // Click row 3: "Latest Releases"
+        app.handle_home_mouse(card_x + 5, deck_y + 3, area);
+        assert!(matches!(
+            app.action_receiver.try_recv().ok(),
+            Some(Action::SelectBrowse(BrowsePreset::TopRatedRecent))
+        ));
+
+        // Click row 4: "Most Watched"
+        app.handle_home_mouse(card_x + 5, deck_y + 4, area);
+        assert!(matches!(
+            app.action_receiver.try_recv().ok(),
+            Some(Action::SelectBrowse(BrowsePreset::MostWatched))
+        ));
+    }
 }
+
+

@@ -795,7 +795,16 @@ impl App {
                             crate::tui::state::HomeDeckTab::Favorites => {
                                 self.open_favorite(idx);
                             }
-                            crate::tui::state::HomeDeckTab::Discover => {}
+                            crate::tui::state::HomeDeckTab::Discover => {
+                                let preset = match idx {
+                                    0 => crate::tui::state::BrowsePreset::Trending,
+                                    1 => crate::tui::state::BrowsePreset::TopRatedAllTime,
+                                    2 => crate::tui::state::BrowsePreset::TopRatedRecent,
+                                    3 => crate::tui::state::BrowsePreset::MostWatched,
+                                    _ => crate::tui::state::BrowsePreset::Trending,
+                                };
+                                self.action_sender.send(Action::SelectBrowse(preset)).ok();
+                            }
                         }
                     }
                     return None;

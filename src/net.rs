@@ -10,7 +10,7 @@ use reqwest::dns::{Addrs, Name, Resolve, Resolving};
 
 const FALLBACK_DNS_PORT: u16 = 53;
 pub const DEFAULT_BROWSER_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
-pub const APP_HTTP_USER_AGENT: &str = concat!("MovieBox-Tui/", env!("CARGO_PKG_VERSION"));
+pub const APP_HTTP_USER_AGENT: &str = concat!("SumanMovies-Tui/", env!("CARGO_PKG_VERSION"));
 
 static GLOBAL_RESOLVER: std::sync::LazyLock<Arc<TokioResolver>> =
     std::sync::LazyLock::new(|| Arc::new(build_resolver()));

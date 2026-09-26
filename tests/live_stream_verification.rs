@@ -198,6 +198,7 @@ async fn test_inspect_live_mpd_manifest() {
             } else {
                 480
             }),
+            None,
         );
         println!("Generated command: {:?}", cmd);
         cmd.arg("--vo=null").arg("--ao=null").arg("--frames=15");
@@ -245,6 +246,7 @@ async fn test_live_moviebox_mpv_end_to_end_playback() {
         None,
         None,
         None,
+        None,
     );
 
     cmd.arg("--vo=null").arg("--ao=null").arg("--frames=20");
@@ -288,6 +290,7 @@ async fn test_live_moviebox_iina_invocation() {
         None,
         None,
         Some(480),
+        None,
     );
     let args: Vec<String> = cmd
         .get_args()
@@ -335,6 +338,7 @@ async fn test_live_moviebox_dynamic_movie_mpv_playback() {
         &mirror.resolver_url,
         None,
         &mirror.headers,
+        None,
         None,
         None,
         None,

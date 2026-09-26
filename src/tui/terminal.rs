@@ -37,11 +37,15 @@ fn outer_terminal_supports_graphics() -> bool {
 }
 
 pub fn should_query_images() -> bool {
-    if std::env::var("MOVIEBOX_NO_IMAGE").is_ok_and(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-    {
+    let no_image = std::env::var("SUMANMOVIES_NO_IMAGE")
+        .or_else(|_| std::env::var("MOVIEBOX_NO_IMAGE"))
+        .is_ok_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
+    if no_image {
         return false;
     }
-    if let Ok(forced) = std::env::var("MOVIEBOX_IMAGE_PROTOCOL") {
+    let proto_var = std::env::var("SUMANMOVIES_IMAGE_PROTOCOL")
+        .or_else(|_| std::env::var("MOVIEBOX_IMAGE_PROTOCOL"));
+    if let Ok(forced) = proto_var {
         let forced = forced.trim();
         if forced.eq_ignore_ascii_case("none")
             || forced.eq_ignore_ascii_case("off")
@@ -54,6 +58,7 @@ pub fn should_query_images() -> bool {
         }
     }
     if is_inside_tmux()
+        && std::env::var("SUMANMOVIES_IMAGE_PROTOCOL").is_err()
         && std::env::var("MOVIEBOX_IMAGE_PROTOCOL").is_err()
         && !outer_terminal_supports_graphics()
     {

@@ -18,7 +18,7 @@ impl AddonClient {
         let http = crate::net::http_client_builder()
             .timeout(Duration::from_secs(12))
             .connect_timeout(Duration::from_secs(8))
-            .user_agent("MovieBox-Tui/1.0 (Addon-Client)")
+            .user_agent("SumanMovies-Tui/1.0 (Addon-Client)")
             .build()
             .unwrap_or_default();
         Self { http }

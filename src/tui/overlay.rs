@@ -159,16 +159,12 @@ pub fn addon_manager_layout(
 }
 
 pub fn settings_modal_layout(area: Rect, category: crate::tui::state::SettingsCategory) -> Rect {
-    let min_width = 44u16.min(area.width.saturating_sub(2));
-    let popup_width = 58u16.min(area.width.saturating_sub(2)).max(min_width);
-    let content_height = category.row_count() as u16;
-    let popup_height = (content_height + 4).min(area.height.saturating_sub(2));
-    let available_width = area.width.saturating_sub(2).max(1);
-    let width = popup_width.min(available_width);
-    let x = area.x + area.width.saturating_sub(width) / 2;
-    let search_y = home_search_y(area);
-    let y = search_y.min(area.bottom().saturating_sub(popup_height));
-    Rect::new(x, y, width, popup_height)
+    let min_width = 46u16.min(area.width.saturating_sub(2));
+    let popup_width = 76u16.min(area.width.saturating_sub(2)).max(min_width);
+    let content_height = (category.row_count() as u16 * 2).max(4);
+    let desired_height = 2 + 1 + content_height + 2 + 2;
+    let popup_height = desired_height.min(area.height.saturating_sub(2)).max(11);
+    centered(area, popup_width, popup_height, min_width, 76)
 }
 
 pub fn help_modal_layout(area: Rect, desired_width: u16, desired_height: u16) -> Rect {

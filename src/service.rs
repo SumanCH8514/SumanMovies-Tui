@@ -464,19 +464,19 @@ pub fn resolve_subtitle_dir() -> PathBuf {
 }
 
 pub fn ensure_moviebox_subdir(path: &Path) -> PathBuf {
-    let is_already_mb = path
-        .file_name()
-        .map(|name| {
-            let s = name.to_string_lossy();
-            s.eq_ignore_ascii_case("MovieBox-TUI") || s.eq_ignore_ascii_case("MovieBox")
-        })
-        .unwrap_or(false);
-
-    if is_already_mb {
-        path.to_path_buf()
-    } else {
-        path.join("MovieBox-TUI")
+    if let Some(name) = path.file_name() {
+        let s = name.to_string_lossy();
+        if s.eq_ignore_ascii_case("SumanMovies-TUI") || s.eq_ignore_ascii_case("SumanMovies") {
+            return path.to_path_buf();
+        }
+        if s.eq_ignore_ascii_case("MovieBox-TUI") || s.eq_ignore_ascii_case("MovieBox") {
+            if let Some(parent) = path.parent() {
+                return parent.join("SumanMovies-TUI");
+            }
+            return PathBuf::from("SumanMovies-TUI");
+        }
     }
+    path.join("SumanMovies-TUI")
 }
 
 pub fn resolve_download_dir(custom_dir: Option<&Path>) -> PathBuf {
@@ -599,6 +599,27 @@ mod tests {
         assert_eq!(
             matched.unwrap().get("id").unwrap().as_str(),
             Some("movie_res_1")
+        );
+    }
+
+    #[test]
+    fn test_ensure_moviebox_subdir_migrates_legacy() {
+        let downloads = PathBuf::from("/home/user/Downloads");
+        assert_eq!(
+            ensure_moviebox_subdir(&downloads),
+            PathBuf::from("/home/user/Downloads/SumanMovies-TUI")
+        );
+
+        let legacy_mb = PathBuf::from("/home/user/Downloads/MovieBox-TUI");
+        assert_eq!(
+            ensure_moviebox_subdir(&legacy_mb),
+            PathBuf::from("/home/user/Downloads/SumanMovies-TUI")
+        );
+
+        let existing_sm = PathBuf::from("/home/user/Downloads/SumanMovies-TUI");
+        assert_eq!(
+            ensure_moviebox_subdir(&existing_sm),
+            PathBuf::from("/home/user/Downloads/SumanMovies-TUI")
         );
     }
 }

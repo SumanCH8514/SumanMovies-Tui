@@ -702,16 +702,16 @@ async fn test_contextual_window_title() {
     app.state_mut()
         .set_mode(sumanmovies_tui::tui::state::AppMode::Streaming);
     app.state_mut().active_provider = sumanmovies_tui::providers::models::ProviderKind::MovieBox;
-    assert_eq!(app.contextual_title(), "MovieBox-Tui — Streaming");
+    assert_eq!(app.contextual_title(), "SumanMovies-TUI — Streaming");
 
     app.state_mut()
         .set_mode(sumanmovies_tui::tui::state::AppMode::Tv);
-    assert_eq!(app.contextual_title(), "MovieBox-Tui — Live TV");
+    assert_eq!(app.contextual_title(), "SumanMovies-TUI — Live TV");
 
     app.state_mut()
         .set_mode(sumanmovies_tui::tui::state::AppMode::Streaming);
     app.state_mut().active_provider = sumanmovies_tui::providers::models::ProviderKind::Addons;
-    assert_eq!(app.contextual_title(), "MovieBox-Tui — Addons");
+    assert_eq!(app.contextual_title(), "SumanMovies-TUI — Addons");
 
     app.state_mut().active_screen = Screen::Details;
     app.state_mut().selected_details = Some(sumanmovies_tui::models::MediaDetails {
@@ -735,7 +735,7 @@ async fn test_contextual_window_title() {
         seasons: vec![],
         dubs: vec![],
     });
-    assert_eq!(app.contextual_title(), "MovieBox-Tui — Inception");
+    assert_eq!(app.contextual_title(), "SumanMovies-TUI — Inception");
 }
 #[tokio::test]
 async fn test_esc_in_normal_mode_focuses_search_bar_when_results_present() {

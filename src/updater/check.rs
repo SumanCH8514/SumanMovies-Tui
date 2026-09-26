@@ -1,7 +1,7 @@
 use super::artifact::{Release, ReleaseAsset};
 
-pub const OWNER: &str = "mesamirh";
-pub const REPOSITORY: &str = "sumanmovies";
+pub const OWNER: &str = "SumanCH8514";
+pub const REPOSITORY: &str = "SumanMovies-Tui";
 
 pub fn release_tag_url(tag: &str) -> String {
     let tag_clean = tag.trim_start_matches('v');

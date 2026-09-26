@@ -17,7 +17,7 @@ use tokio::io::AsyncWriteExt;
 const MAX_ATTEMPTS: usize = 4;
 const SEGMENT_THRESHOLD: u64 = 32 * 1024 * 1024;
 const MAX_SEGMENTS: usize = 8;
-pub const DEFAULT_STREAM_NAME: &str = "MovieBox-Tui_Stream";
+pub const DEFAULT_STREAM_NAME: &str = "SumanMovies-Tui_Stream";
 
 pub fn safe_file_stem(value: &str) -> String {
     let mut stem = value

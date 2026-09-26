@@ -328,6 +328,7 @@ impl App {
                 item.title.clone()
             }
         });
+        let media_title = history_item.as_ref().map(|item| item.display_playback_title());
 
         tokio::spawn(async move {
             let mut local_subtitle = subtitle.clone();
@@ -446,6 +447,7 @@ impl App {
                 resume_seconds,
                 tracker_ref,
                 max_height,
+                media_title.as_deref(),
             );
             if kind == crate::tui::state::PlayerKind::Iina
                 && crate::player::iina_is_app_fallback()
@@ -461,6 +463,7 @@ impl App {
                     &effective_link,
                     effective_subtitle.as_deref(),
                     &headers,
+                    media_title.as_deref(),
                 );
                 let mut spawned = None;
                 let mut last_err = None;
@@ -627,6 +630,7 @@ impl App {
                                                 &fallback_link,
                                                 fallback_sub.as_deref(),
                                                 &fallback_headers,
+                                                media_title.as_deref(),
                                             );
                                         fallback_cmd.stdin(std::process::Stdio::null());
                                         fallback_cmd.stdout(std::process::Stdio::piped());

@@ -227,10 +227,14 @@ impl App {
         state.vlc_path = config.vlc_path;
         state.mpv_path = config.mpv_path;
         state.iina_path = config.iina_path;
-        state.download_dir = config.download_dir.map(std::path::PathBuf::from);
+        state.download_dir = config.download_dir.map(|p| {
+            let pb = std::path::PathBuf::from(p);
+            crate::service::ensure_moviebox_subdir(&pb)
+        });
         state.installed_addons = crate::config::load_addons();
 
-        let env_theme = std::env::var("MOVIEBOX_THEME")
+        let env_theme = std::env::var("SUMANMOVIES_THEME")
+            .or_else(|_| std::env::var("MOVIEBOX_THEME"))
             .ok()
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty());

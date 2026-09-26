@@ -274,7 +274,7 @@ async fn test_settings_mouse_tab_and_row_clicks() {
             rows[0].x + 2,
             rows[0].y + 1
         ),
-        Some(1)
+        Some(0)
     );
     assert_eq!(
         settings_row_at(popup, SettingsCategory::General, rows[1].x + 2, rows[1].y),

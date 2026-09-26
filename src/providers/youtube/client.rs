@@ -392,7 +392,7 @@ impl YouTubeClient {
         releases.push(Release {
             provider: ProviderKind::YouTube,
             filename: format!("YouTube - {video_id} (Audio Only)"),
-            quality: Some("Audio".to_string()),
+            quality: Some("MP3".to_string()),
             codec: Some("M4A/Opus".to_string()),
             language: Some("Original".to_string()),
             size_bytes: audio_size,

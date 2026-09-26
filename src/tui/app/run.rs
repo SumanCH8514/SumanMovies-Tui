@@ -215,7 +215,16 @@ impl App {
             }
         }
 
-        if matches!(picker.protocol_type(), ProtocolType::Halfblocks) {
+        let no_halfblocks = std::env::var("SUMANMOVIES_NO_HALFBLOCKS")
+            .or_else(|_| std::env::var("MOVIEBOX_NO_HALFBLOCKS"))
+            .is_ok_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
+
+        if no_halfblocks
+            && matches!(
+                picker.protocol_type(),
+                ratatui_image::picker::ProtocolType::Halfblocks
+            )
+        {
             self.state.image_supported = false;
             self.state.image_picker = None;
             return;
@@ -250,13 +259,14 @@ impl App {
     }
 
     fn forced_protocol() -> Option<ForcedProtocol> {
-        match std::env::var("MOVIEBOX_IMAGE_PROTOCOL")
-            .unwrap_or_default()
-            .to_ascii_lowercase()
-            .as_str()
-        {
+        let val = std::env::var("SUMANMOVIES_IMAGE_PROTOCOL")
+            .or_else(|_| std::env::var("MOVIEBOX_IMAGE_PROTOCOL"))
+            .unwrap_or_default();
+        match val.to_ascii_lowercase().as_str() {
             "none" | "off" | "false" => Some(ForcedProtocol::None),
-
+            "halfblocks" => Some(ForcedProtocol::Type(
+                ratatui_image::picker::ProtocolType::Halfblocks,
+            )),
             "sixel" => Some(ForcedProtocol::Type(
                 ratatui_image::picker::ProtocolType::Sixel,
             )),
@@ -271,7 +281,9 @@ impl App {
     }
 
     fn cell_size_override() -> Option<ratatui_image::FontSize> {
-        let raw = std::env::var("MOVIEBOX_CELL_SIZE").ok()?;
+        let raw = std::env::var("SUMANMOVIES_CELL_SIZE")
+            .or_else(|_| std::env::var("MOVIEBOX_CELL_SIZE"))
+            .ok()?;
         let raw = raw.trim().to_ascii_lowercase();
         let (width, height) = raw.split_once(['x', '*'])?;
         let width: u16 = width.trim().parse().ok()?;
@@ -303,21 +315,21 @@ impl App {
                 crate::tui::state::AppMode::Streaming => {
                     if self.state.active_provider == crate::providers::models::ProviderKind::Addons
                     {
-                        "MovieBox-Tui — Addons".to_string()
+                        "SumanMovies-TUI — Addons".to_string()
                     } else {
-                        "MovieBox-Tui — Streaming".to_string()
+                        "SumanMovies-TUI — Streaming".to_string()
                     }
                 }
-                crate::tui::state::AppMode::Tv => "MovieBox-Tui — Live TV".to_string(),
+                crate::tui::state::AppMode::Tv => "SumanMovies-TUI — Live TV".to_string(),
             },
             Screen::Details => {
                 if let Some(details) = &self.state.selected_details {
                     let clean = crate::providers::moviebox::clean_moviebox_title(&details.title);
                     if !clean.is_empty() {
-                        return format!("MovieBox-Tui — {clean}");
+                        return format!("SumanMovies-TUI — {clean}");
                     }
                 }
-                "MovieBox-Tui — Details".to_string()
+                "SumanMovies-TUI — Details".to_string()
             }
         }
     }
@@ -1256,7 +1268,7 @@ impl App {
                         Span::raw("  "),
                         Span::styled("Homebrew Managed • Run: ", self.theme.text_dim),
                         Span::styled(
-                            "brew upgrade moviebox-tui",
+                            "brew upgrade sumanmovies-tui",
                             self.theme
                                 .shortcut
                                 .add_modifier(ratatui::style::Modifier::BOLD),
@@ -1269,7 +1281,7 @@ impl App {
                         Span::raw("  "),
                         Span::styled("Scoop Managed • Run: ", self.theme.text_dim),
                         Span::styled(
-                            "scoop update moviebox-tui",
+                            "scoop update sumanmovies-tui",
                             self.theme
                                 .shortcut
                                 .add_modifier(ratatui::style::Modifier::BOLD),
@@ -1298,7 +1310,7 @@ impl App {
                     text.push(Line::from(vec![
                         Span::raw("  "),
                         Span::styled(
-                            "Snap sandbox • Run: sudo snap refresh moviebox-tui",
+                            "Snap sandbox • Run: sudo snap refresh sumanmovies-tui",
                             self.theme.accent,
                         ),
                     ]));

@@ -115,11 +115,11 @@ impl App {
                         if env == crate::updater::apply::InstallationEnvironment::Homebrew =>
                     {
                         self.state
-                            .set_status_short("Run: brew upgrade moviebox-tui");
+                            .set_status_short("Run: brew upgrade sumanmovies-tui");
                         self.state.notify(
                             crate::tui::overlay::NotificationKind::Info,
                             "Homebrew Upgrade",
-                            "Run: brew upgrade moviebox-tui",
+                            "Run: brew upgrade sumanmovies-tui",
                         );
                         self.state.update_available = None;
                         return None;
@@ -128,11 +128,11 @@ impl App {
                         if env == crate::updater::apply::InstallationEnvironment::Scoop =>
                     {
                         self.state
-                            .set_status_short("Run: scoop update moviebox-tui");
+                            .set_status_short("Run: scoop update sumanmovies-tui");
                         self.state.notify(
                             crate::tui::overlay::NotificationKind::Info,
                             "Scoop Upgrade",
-                            "Run: scoop update moviebox-tui",
+                            "Run: scoop update sumanmovies-tui",
                         );
                         self.state.update_available = None;
                         return None;
