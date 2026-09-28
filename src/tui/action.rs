@@ -18,6 +18,8 @@ pub enum Action {
     TvPlaylistRemove(usize),
     TvReloadPlaylists,
     TvInputToggle(bool),
+    SelectTvPreset(usize),
+    SelectTvCategory(String),
     ShowAddonManager,
     AddonAddManifest(String),
     AddonToggleEnabled(usize),

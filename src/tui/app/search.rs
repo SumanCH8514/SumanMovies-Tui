@@ -526,10 +526,11 @@ impl App {
         for item in items {
             let id = item.id.value.clone();
             let clean_title = crate::providers::moviebox::clean_moviebox_title(&item.title);
-            let stype = if item.media_type == crate::models::MediaType::Series {
-                2
-            } else {
-                1
+            let stype = match item.media_type {
+                crate::models::MediaType::Series => 2,
+                crate::models::MediaType::Video => 4,
+                crate::models::MediaType::Music => 5,
+                _ => 1,
             };
             let release_year = item.year.clone().unwrap_or_default();
             let cover_url = item.poster_url.clone();

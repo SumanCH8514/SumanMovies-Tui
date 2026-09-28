@@ -619,14 +619,7 @@ impl App {
 
             Action::ShowBrowseMenu => {
                 let current_mode = self.state.mode();
-                if current_mode == crate::tui::state::AppMode::Tv {
-                    let ctrl_s = crate::tui::text::CTRL_S_STR;
-                    self.state.notify(
-                        NotificationKind::Info,
-                        "TV Mode",
-                        format!("Command /browse is available in Streaming Mode ({ctrl_s})."),
-                    );
-                } else if current_mode == crate::tui::state::AppMode::Streaming
+                if current_mode == crate::tui::state::AppMode::Streaming
                     && self.state.active_provider
                         != crate::providers::models::ProviderKind::MovieBox
                 {

@@ -85,6 +85,7 @@ pub fn build_help_columns(
     right.push(help_row("/settings", "Preferences & maintenance", theme));
     if state.is_tv_mode {
         right.push(help_row("/config", "Manage TV playlist sources", theme));
+        right.push(help_row("/browse", "Browse curated presets & categories", theme));
         right.push(help_row("/list", "Browse all TV channels", theme));
     } else if state.active_provider == crate::providers::models::ProviderKind::Addons {
         right.push(help_row("/config", "Manage Stremio addon manifests", theme));

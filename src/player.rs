@@ -143,6 +143,7 @@ pub fn command(
     tracker: Option<(&str, &str, usize, usize)>,
     max_height: Option<u64>,
     title: Option<&str>,
+    artwork: Option<&str>,
 ) -> Command {
     match kind {
         PlayerKind::Mpv => mpv_command(
@@ -155,6 +156,7 @@ pub fn command(
             tracker,
             max_height,
             title,
+            artwork,
         ),
         PlayerKind::Iina => iina_command(
             url,
@@ -165,6 +167,7 @@ pub fn command(
             tracker,
             max_height,
             title,
+            artwork,
         ),
         PlayerKind::Vlc => vlc_command(
             url,
@@ -341,18 +344,20 @@ pub fn android_intent_command_for_opener(
     headers: &[(String, String)],
     title: Option<&str>,
 ) -> Command {
+    let (clean_url, _) = split_ytdl_format(url);
+    let mime = if is_audio_only_url(url) { "audio/*" } else { "video/*" };
     match opener {
         AndroidOpener::TermuxOpen(path) => {
             let mut cmd = Command::new(path);
             cmd.arg("--chooser")
                 .arg("--content-type")
-                .arg("video/*")
-                .arg(url);
+                .arg(mime)
+                .arg(clean_url);
             cmd
         }
         AndroidOpener::TermuxOpenUrl(path) => {
             let mut cmd = Command::new(path);
-            cmd.arg(url);
+            cmd.arg(clean_url);
             cmd
         }
         AndroidOpener::TermuxAm(path) => {
@@ -361,9 +366,9 @@ pub fn android_intent_command_for_opener(
                 .arg("-a")
                 .arg("android.intent.action.VIEW")
                 .arg("-d")
-                .arg(url)
+                .arg(clean_url)
                 .arg("-t")
-                .arg("video/*");
+                .arg(mime);
             append_android_intent_extras(&mut cmd, subtitle, headers, title);
             cmd
         }
@@ -376,9 +381,9 @@ pub fn android_intent_command_for_opener(
                 .arg("-a")
                 .arg("android.intent.action.VIEW")
                 .arg("-d")
-                .arg(url)
+                .arg(clean_url)
                 .arg("-t")
-                .arg("video/*");
+                .arg(mime);
             append_android_intent_extras(&mut cmd, subtitle, headers, title);
             let current_path = std::env::var("PATH").unwrap_or_default();
             cmd.env("PATH", format!("/system/bin:/system/xbin:{current_path}"));
@@ -395,13 +400,15 @@ pub fn android_intent_commands(
     headers: &[(String, String)],
     title: Option<&str>,
 ) -> Vec<(AndroidOpener, Command)> {
+    let (clean_url, _) = split_ytdl_format(url);
+    let mime = if is_audio_only_url(url) { "audio/*" } else { "video/*" };
     let openers = android_openers();
     if openers.is_empty() {
         let mut cmd = Command::new("termux-open");
         cmd.arg("--chooser")
             .arg("--content-type")
-            .arg("video/*")
-            .arg(url);
+            .arg(mime)
+            .arg(clean_url);
         return vec![(AndroidOpener::TermuxOpen("termux-open".to_string()), cmd)];
     }
     openers
@@ -419,6 +426,8 @@ fn android_intent_command(
     headers: &[(String, String)],
     title: Option<&str>,
 ) -> Command {
+    let (clean_url, _) = split_ytdl_format(url);
+    let mime = if is_audio_only_url(url) { "audio/*" } else { "video/*" };
     let commands = android_intent_commands(url, subtitle, headers, title);
     commands
         .into_iter()
@@ -428,15 +437,44 @@ fn android_intent_command(
             let mut cmd = Command::new("termux-open");
             cmd.arg("--chooser")
                 .arg("--content-type")
-                .arg("video/*")
-                .arg(url);
+                .arg(mime)
+                .arg(clean_url);
             cmd
         })
 }
 
+pub fn split_ytdl_format(url: &str) -> (&str, Option<&str>) {
+    if let Some(idx) = url.find("#ytdl-format=") {
+        (&url[..idx], Some(&url[idx + 13..]))
+    } else {
+        (url, None)
+    }
+}
+
 pub fn is_dash_url(url: &str) -> bool {
     let lower = url.to_ascii_lowercase();
-    lower.contains(".mpd") || lower.contains("/dash/") || lower.contains("#ytdl-format=")
+    (lower.contains(".mpd") || lower.contains("/dash/"))
+        && !lower.contains("youtube.com")
+        && !lower.contains("youtu.be")
+        && !lower.contains("#ytdl-format=")
+}
+
+pub fn is_audio_only_url(url: &str) -> bool {
+    let lower = url.to_ascii_lowercase();
+    if let Some(frag) = lower.split("#ytdl-format=").nth(1) {
+        frag.starts_with("bestaudio")
+            || frag.starts_with("ba")
+            || (frag.contains("audio") && !frag.contains("video"))
+    } else {
+        let clean = url.split('?').next().unwrap_or(url);
+        clean.ends_with(".mp3")
+            || clean.ends_with(".m4a")
+            || clean.ends_with(".aac")
+            || clean.ends_with(".flac")
+            || clean.ends_with(".ogg")
+            || clean.ends_with(".opus")
+            || clean.ends_with(".wav")
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -450,7 +488,9 @@ fn mpv_command(
     tracker: Option<(&str, &str, usize, usize)>,
     max_height: Option<u64>,
     title: Option<&str>,
+    artwork: Option<&str>,
 ) -> Command {
+    let (clean_url, ytdl_format) = split_ytdl_format(url);
     let fallback = if cfg!(target_os = "windows") {
         "mpv.exe"
     } else {
@@ -492,10 +532,52 @@ fn mpv_command(
     if !iina {
         command.arg("--idle=no").arg("--keep-open=no");
     }
-    if !is_dash_url(url) && !url.contains("youtube.com") && !url.contains("youtu.be") {
+
+    let is_yt = clean_url.contains("youtube.com") || clean_url.contains("youtu.be");
+    if !is_dash_url(clean_url) && !is_yt {
         command.arg(format!("{prefix}ytdl=no"));
     }
-    if let Some(height) = max_height.filter(|&h| h > 0) {
+
+    let audio_only = is_audio_only_url(url);
+    let effective_artwork = artwork
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(String::from)
+        .or_else(|| {
+            if is_yt {
+                crate::providers::youtube::parser::extract_youtube_video_id(clean_url)
+                    .map(|vid| format!("https://i.ytimg.com/vi/{vid}/hqdefault.jpg"))
+            } else {
+                None
+            }
+        });
+
+    if audio_only {
+        // Audio-only mode: only audio should play with artwork!
+        command.arg(format!("{prefix}force-window=yes"));
+        // Prevent mpv ytdl_hook from exposing video streams as editions
+        command.arg(format!("{prefix}script-opts=ytdl_hook-all_formats=no"));
+        command.arg(format!("{prefix}audio-display=external-first"));
+        command.arg(format!("{prefix}image-display-duration=inf"));
+        if let Some(art) = &effective_artwork {
+            command.arg(format!("{prefix}cover-art-file={art}"));
+        }
+        if is_yt {
+            command.arg(format!("{prefix}ytdl=yes"));
+            command.arg(format!("{prefix}ytdl-format=bestaudio/best"));
+        }
+    } else if is_yt {
+        command.arg(format!("{prefix}ytdl=yes"));
+        if let Some(fmt) = ytdl_format {
+            command.arg(format!("{prefix}ytdl-format={fmt}"));
+        } else if let Some(height) = max_height.filter(|&h| h > 0) {
+            command.arg(format!(
+                "{prefix}ytdl-format=bestvideo[height<={height}]+bestaudio/best[height<={height}]/bestvideo+bestaudio/best"
+            ));
+        } else {
+            command.arg(format!("{prefix}ytdl-format=bestvideo+bestaudio/best"));
+        }
+    } else if let Some(height) = max_height.filter(|&h| h > 0) {
         command.arg(format!(
             "{prefix}ytdl-format=bestvideo[height<={height}]+bestaudio/best[height<={height}]/bestvideo+bestaudio/best"
         ));
@@ -551,11 +633,11 @@ fn mpv_command(
     }
 
     if executable.starts_with("flatpak run ")
-        && (url.starts_with('/') || url.starts_with("file://"))
+        && (clean_url.starts_with('/') || clean_url.starts_with("file://"))
     {
-        command.arg("@@").arg(url).arg("@@");
+        command.arg("@@").arg(clean_url).arg("@@");
     } else {
-        command.arg(url);
+        command.arg(clean_url);
     }
     command
 }
@@ -640,8 +722,10 @@ fn iina_command(
     tracker: Option<(&str, &str, usize, usize)>,
     max_height: Option<u64>,
     title: Option<&str>,
+    artwork: Option<&str>,
 ) -> Command {
     let resolution = iina_resolution();
+    let (clean_url, _) = split_ytdl_format(url);
     let mut command = match resolution {
         Some(IinaResolution::Cli(executable)) => {
             let mut c = Command::new(executable);
@@ -650,7 +734,7 @@ fn iina_command(
         }
         Some(IinaResolution::AppFallback) => {
             let mut c = Command::new("open");
-            c.arg("-a").arg("IINA").arg(url);
+            c.arg("-a").arg("IINA").arg(clean_url);
             return c;
         }
         None => Command::new("iina"),
@@ -665,6 +749,7 @@ fn iina_command(
         tracker,
         max_height,
         title,
+        artwork,
     );
     for arg in mpv.get_args() {
         let s = arg.to_string_lossy();
@@ -696,6 +781,7 @@ fn iina_command(
     tracker: Option<(&str, &str, usize, usize)>,
     max_height: Option<u64>,
     title: Option<&str>,
+    artwork: Option<&str>,
 ) -> Command {
     mpv_command(
         url,
@@ -707,6 +793,7 @@ fn iina_command(
         tracker,
         max_height,
         title,
+        artwork,
     )
 }
 
@@ -719,6 +806,7 @@ fn vlc_command(
     max_height: Option<u64>,
     title: Option<&str>,
 ) -> Command {
+    let (clean_url, _) = split_ytdl_format(url);
     let fallback = if cfg!(target_os = "windows") {
         "vlc.exe"
     } else {
@@ -740,6 +828,9 @@ fn vlc_command(
     command.arg("--file-caching=3000");
     command.arg("--http-reconnect");
     command.arg("--adaptive-logic=predictive");
+    if is_audio_only_url(url) {
+        command.arg("--no-video");
+    }
     if let Some(height) = max_height.filter(|&h| h > 0) {
         command.arg(format!("--adaptive-maxheight={height}"));
     }
@@ -762,11 +853,11 @@ fn vlc_command(
     }
 
     if executable.starts_with("flatpak run ")
-        && (url.starts_with('/') || url.starts_with("file://"))
+        && (clean_url.starts_with('/') || clean_url.starts_with("file://"))
     {
-        command.arg("@@").arg(url).arg("@@");
+        command.arg("@@").arg(clean_url).arg("@@");
     } else {
-        command.arg(url);
+        command.arg(clean_url);
     }
     command
 }
@@ -1648,6 +1739,7 @@ mod tests {
             None,
             None,
             Some("Jawan (2023)"),
+            None,
         );
         let args = command
             .get_args()
@@ -1750,6 +1842,7 @@ mod tests {
             None,
             &headers,
             false,
+            None,
             None,
             None,
             None,
@@ -1859,6 +1952,7 @@ mod tests {
             None,
             &headers,
             false,
+            None,
             None,
             None,
             None,
@@ -2034,6 +2128,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         );
         let args: Vec<String> = cmd
             .get_args()
@@ -2101,5 +2196,86 @@ mod tests {
             args.last().map(String::as_str),
             Some("http://127.0.0.1:4567/proxy/manifest.mpd")
         );
+    }
+
+    #[test]
+    fn test_mpv_audio_only_youtube_stream_configures_artwork_and_no_video_editions() {
+        let cmd = command(
+            PlayerKind::Mpv,
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ#ytdl-format=bestaudio/best",
+            None,
+            &[],
+            None,
+            None,
+            None,
+            None,
+            Some("Never Gonna Give You Up"),
+            Some("https://i.ytimg.com/vi/dQw4w9WgXcQ/maxresdefault.jpg"),
+        );
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+
+        assert!(args.contains(&"--force-window=yes".to_string()));
+        assert!(args.contains(&"--script-opts=ytdl_hook-all_formats=no".to_string()));
+        assert!(args.contains(&"--audio-display=external-first".to_string()));
+        assert!(args.contains(&"--image-display-duration=inf".to_string()));
+        assert!(args.contains(&"--cover-art-file=https://i.ytimg.com/vi/dQw4w9WgXcQ/maxresdefault.jpg".to_string()));
+        assert!(args.contains(&"--ytdl=yes".to_string()));
+        assert!(args.contains(&"--ytdl-format=bestaudio/best".to_string()));
+        assert_eq!(
+            args.last().map(String::as_str),
+            Some("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+        );
+    }
+
+    #[test]
+    fn test_vlc_audio_only_stream_sets_no_video() {
+        let cmd = command(
+            PlayerKind::Vlc,
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ#ytdl-format=bestaudio/best",
+            None,
+            &[],
+            None,
+            None,
+            None,
+            None,
+            Some("Rick Roll"),
+            None,
+        );
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+
+        assert!(args.contains(&"--no-video".to_string()));
+        assert_eq!(
+            args.last().map(String::as_str),
+            Some("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+        );
+    }
+
+    #[test]
+    fn test_android_intent_audio_only_stream_mime() {
+        let cmd = command(
+            PlayerKind::AndroidIntent,
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ#ytdl-format=bestaudio/best",
+            None,
+            &[],
+            None,
+            None,
+            None,
+            None,
+            Some("Rick Roll"),
+            None,
+        );
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+
+        assert!(args.contains(&"audio/*".to_string()));
+        assert!(!args.contains(&"video/*".to_string()));
     }
 }

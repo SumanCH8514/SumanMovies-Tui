@@ -11,8 +11,9 @@ rustflags = ["-C", "target-feature=+crt-static"]
 rustflags = ["-C", "relocation-model=pic", "-C", "link-arg=-pie"]
 
 [env]
-PATH = { value = "C:/Program Files (x86)/Dev-Cpp/MinGW64/bin;$PATH", relative = false }
-CC_x86_64_pc_windows_gnu = { value = "C:/Program Files (x86)/Dev-Cpp/MinGW64/bin/gcc.exe", force = true }
+PATH = { value = "C:/Users/suman/AppData/Local/Microsoft/WinGet/Packages/BrechtSanders.WinLibs.POSIX.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe/mingw64/bin;$PATH", relative = false }
+CC_x86_64_pc_windows_gnu = { value = "C:/Users/suman/AppData/Local/Microsoft/WinGet/Packages/BrechtSanders.WinLibs.POSIX.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe/mingw64/bin/gcc.exe", force = true }
+AR_x86_64_pc_windows_gnu = { value = "C:/Users/suman/AppData/Local/Microsoft/WinGet/Packages/BrechtSanders.WinLibs.POSIX.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe/mingw64/bin/ar.exe", force = true }
 CFLAGS_x86_64_pc_windows_gnu = { value = "-std=c11 -D_WIN32_WINNT=0x0601 -DERROR_COMMITMENT_MINIMUM=0x1234", force = true }
 
 

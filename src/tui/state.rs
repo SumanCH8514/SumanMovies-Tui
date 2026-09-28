@@ -930,8 +930,7 @@ impl AppState {
     }
 
     pub fn landing_deck_visible(&self) -> bool {
-        !self.is_tv_mode
-            && !(self.input_mode == InputMode::Editing && !self.search_suggestions.is_empty())
+        !(self.input_mode == InputMode::Editing && !self.search_suggestions.is_empty())
     }
 
     pub fn landing_deck_items_count(&self) -> usize {
@@ -1178,6 +1177,13 @@ pub fn step_list_selection(state: &mut ListState, total_items: usize, step: isiz
 pub enum TvManagerRow {
     Playlist(usize),
     AddPlaylist,
+    BrowsePresets,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TvBrowseItem {
+    Category(String, usize),
+    Preset(usize, &'static crate::providers::tv::models::TvCuratedPreset),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1188,12 +1194,38 @@ pub enum AddonManagerRow {
 
 impl AppState {
     pub fn tv_manager_rows(&self) -> Vec<TvManagerRow> {
-        let mut rows = Vec::with_capacity(self.tv_playlists.len() + 1);
+        let mut rows = Vec::with_capacity(self.tv_playlists.len() + 2);
         for index in 0..self.tv_playlists.len() {
             rows.push(TvManagerRow::Playlist(index));
         }
         rows.push(TvManagerRow::AddPlaylist);
+        rows.push(TvManagerRow::BrowsePresets);
         rows
+    }
+
+    pub fn tv_browse_items(&self) -> Vec<TvBrowseItem> {
+        let mut items = Vec::new();
+        if !self.tv_channels.is_empty() {
+            items.push(TvBrowseItem::Category("All Channels".to_string(), self.tv_channels.len()));
+
+            let mut groups_count: std::collections::BTreeMap<String, usize> =
+                std::collections::BTreeMap::new();
+            for ch in &self.tv_channels {
+                let g = ch.group.trim();
+                if !g.is_empty() {
+                    *groups_count.entry(g.to_string()).or_default() += 1;
+                }
+            }
+            for (group, count) in groups_count {
+                items.push(TvBrowseItem::Category(group, count));
+            }
+        }
+
+        for (idx, preset) in crate::providers::tv::models::TvCuratedPreset::ALL.iter().enumerate() {
+            items.push(TvBrowseItem::Preset(idx, preset));
+        }
+
+        items
     }
 
     pub fn step_tv_manager_selected(&mut self, step: isize) {

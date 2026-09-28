@@ -71,10 +71,11 @@ impl SearchResult {
         Self {
             id: item.id.value,
             title: item.title,
-            stype: if item.media_type == MediaType::Series {
-                2
-            } else {
-                1
+            stype: match item.media_type {
+                MediaType::Series => 2,
+                MediaType::Video => 4,
+                MediaType::Music => 5,
+                _ => 1,
             },
             release_year: item.year.unwrap_or_default(),
             cover_url: item.poster_url,

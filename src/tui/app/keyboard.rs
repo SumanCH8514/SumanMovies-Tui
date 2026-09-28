@@ -226,7 +226,9 @@ impl App {
         if self.state.show_browse_popup {
             let is_addon =
                 self.state.active_provider == crate::providers::models::ProviderKind::Addons;
-            let total_count = if is_addon {
+            let total_count = if self.state.is_tv_mode {
+                self.state.tv_browse_items().len()
+            } else if is_addon {
                 crate::providers::addons::models::curated_catalog_presets(
                     &self.state.installed_addons,
                 )
@@ -280,7 +282,21 @@ impl App {
                 }
                 KeyCode::Enter => {
                     let index = self.state.browse_list_state.selected().unwrap_or(0);
-                    if is_addon {
+                    if self.state.is_tv_mode {
+                        let tv_items = self.state.tv_browse_items();
+                        if let Some(item) = tv_items.get(index) {
+                            match item {
+                                crate::tui::state::TvBrowseItem::Category(cat, _) => {
+                                    self.action_sender
+                                        .send(Action::SelectTvCategory(cat.clone()))
+                                        .ok();
+                                }
+                                crate::tui::state::TvBrowseItem::Preset(idx, _) => {
+                                    self.action_sender.send(Action::SelectTvPreset(*idx)).ok();
+                                }
+                            }
+                        }
+                    } else if is_addon {
                         let targets = crate::providers::addons::models::curated_catalog_presets(
                             &self.state.installed_addons,
                         );

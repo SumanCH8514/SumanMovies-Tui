@@ -95,6 +95,8 @@ pub struct RequestContext {
 pub enum MediaType {
     Movie,
     Series,
+    Video,
+    Music,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

@@ -399,6 +399,11 @@ impl App {
                     );
                 }
             }
+        } else {
+            let default_preset =
+                crate::providers::tv::models::TvCuratedPreset::ALL[0].url.to_string();
+            self.state.tv_playlists.push(default_preset);
+            self.save_tv_playlists();
         }
     }
 
@@ -446,6 +451,10 @@ impl App {
             }
             TvManagerRow::AddPlaylist => {
                 self.action_sender.send(Action::TvInputToggle(false)).ok();
+            }
+            TvManagerRow::BrowsePresets => {
+                self.state.tv_config_popup = false;
+                self.action_sender.send(Action::ShowBrowseMenu).ok();
             }
         }
     }

@@ -346,6 +346,14 @@ impl App {
             }
         });
         let media_title = history_item.as_ref().map(|item| item.display_playback_title());
+        let artwork_url = history_item
+            .as_ref()
+            .and_then(|item| item.cover_url.clone())
+            .or_else(|| self.state.selected_details.as_ref().and_then(|d| d.poster_url.clone()))
+            .or_else(|| {
+                crate::providers::youtube::parser::extract_youtube_video_id(&link)
+                    .map(|vid| format!("https://i.ytimg.com/vi/{vid}/hqdefault.jpg"))
+            });
 
         tokio::spawn(async move {
             let mut local_subtitle = subtitle.clone();
@@ -385,14 +393,15 @@ impl App {
                 .as_ref()
                 .map(|(p, s, se, ep)| (p.as_str(), s.as_str(), *se, *ep));
 
+            let is_youtube = link.contains("youtube.com") || link.contains("youtu.be");
             let is_dash = crate::player::is_dash_url(&link);
-            let needs_proxy = is_dash
+            let needs_proxy = !is_youtube && (is_dash
                 || (matches!(
                     kind,
                     crate::tui::state::PlayerKind::Vlc | crate::tui::state::PlayerKind::AndroidIntent
                 ) && headers.iter().any(|(name, _)| {
                     !name.eq_ignore_ascii_case("referer") && !name.eq_ignore_ascii_case("user-agent")
-                }));
+                })));
 
             let (effective_link, effective_subtitle) = if needs_proxy {
                 match crate::proxy::spawn_sidecar(&link, &headers, subtitle.as_deref(), max_height) {
@@ -461,6 +470,44 @@ impl App {
                     cmd.spawn()
                 };
             let is_android = matches!(kind, crate::tui::state::PlayerKind::AndroidIntent);
+            let mut local_artwork = None;
+            if let Some(ref art_url) = artwork_url {
+                let trimmed = art_url.trim();
+                if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+                    use std::hash::{Hash, Hasher};
+                    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+                    trimmed.hash(&mut hasher);
+                    let art_hash = hasher.finish();
+                    let ext = if trimmed.contains(".png") {
+                        "png"
+                    } else if trimmed.contains(".webp") {
+                        "webp"
+                    } else {
+                        "jpg"
+                    };
+                    let temp_art =
+                        std::env::temp_dir().join(format!("sumanmovies_art_{art_hash:016x}.{ext}"));
+                    if temp_art.exists() {
+                        local_artwork = Some(temp_art.to_string_lossy().into_owned());
+                    } else {
+                        let client = reqwest::Client::builder()
+                            .timeout(std::time::Duration::from_secs(6))
+                            .build()
+                            .unwrap_or_default();
+                        if let Ok(resp) = client.get(trimmed).send().await {
+                            if let Ok(bytes) = resp.bytes().await {
+                                if tokio::fs::write(&temp_art, &bytes).await.is_ok() {
+                                    local_artwork = Some(temp_art.to_string_lossy().into_owned());
+                                }
+                            }
+                        }
+                    }
+                } else if !trimmed.is_empty() {
+                    local_artwork = Some(trimmed.to_string());
+                }
+            }
+            let effective_artwork = local_artwork.as_deref().or(artwork_url.as_deref());
+
             let command = crate::tui::player::command(
                 kind,
                 &effective_link,
@@ -471,6 +518,7 @@ impl App {
                 tracker_ref,
                 max_height,
                 media_title.as_deref(),
+                effective_artwork,
             );
             if kind == crate::tui::state::PlayerKind::Iina
                 && crate::player::iina_is_app_fallback()

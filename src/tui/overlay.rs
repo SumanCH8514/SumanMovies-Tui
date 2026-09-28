@@ -384,7 +384,26 @@ pub fn picker_with_lines_at<'a>(
 
 pub fn browse_category_badge_text(label: &str) -> &'static str {
     let lower = label.to_ascii_lowercase();
-    if lower.contains("movie")
+    if lower.contains("news") {
+        "[NEWS]"
+    } else if lower.contains("sport") {
+        "[SPORTS]"
+    } else if lower.contains("music") {
+        "[MUSIC]"
+    } else if lower.contains("kid") || lower.contains("animation") || lower.contains("cartoon") {
+        "[KIDS]"
+    } else if lower.contains("doc") {
+        "[DOCS]"
+    } else if lower.contains("india") || lower.contains("hindi") {
+        "[INDIA]"
+    } else if lower.contains("united states") || lower.contains("usa") {
+        "[USA]"
+    } else if lower.contains("united kingdom") || lower.contains("uk") || lower.contains("british") {
+        "[UK]"
+    } else if lower.contains("channel") || lower.contains("live tv") {
+        "[LIVE TV]"
+    } else if lower.contains("movie")
+        || lower.contains("cinema")
         || lower.contains("top rated (all-time)")
         || lower.contains("top rated (recent")
     {
@@ -402,7 +421,53 @@ pub fn browse_category_badge_text(label: &str) -> &'static str {
 
 pub fn browse_category_badge<'a>(label: &str, theme: &'a Theme) -> (Span<'a>, &'static str) {
     let lower = label.to_ascii_lowercase();
-    if lower.contains("movie")
+    if lower.contains("news") {
+        (
+            Span::styled("[NEWS]", theme.rating.add_modifier(Modifier::BOLD)),
+            "     ",
+        )
+    } else if lower.contains("sport") {
+        (
+            Span::styled("[SPORTS]", theme.success.add_modifier(Modifier::BOLD)),
+            "   ",
+        )
+    } else if lower.contains("music") {
+        (
+            Span::styled("[MUSIC]", theme.flamingo.add_modifier(Modifier::BOLD)),
+            "    ",
+        )
+    } else if lower.contains("kid") || lower.contains("animation") || lower.contains("cartoon") {
+        (
+            Span::styled("[KIDS]", theme.rosewater.add_modifier(Modifier::BOLD)),
+            "     ",
+        )
+    } else if lower.contains("doc") {
+        (
+            Span::styled("[DOCS]", theme.lavender.add_modifier(Modifier::BOLD)),
+            "     ",
+        )
+    } else if lower.contains("india") || lower.contains("hindi") {
+        (
+            Span::styled("[INDIA]", theme.maroon.add_modifier(Modifier::BOLD)),
+            "    ",
+        )
+    } else if lower.contains("united states") || lower.contains("usa") {
+        (
+            Span::styled("[USA]", theme.sapphire.add_modifier(Modifier::BOLD)),
+            "      ",
+        )
+    } else if lower.contains("united kingdom") || lower.contains("uk") || lower.contains("british") {
+        (
+            Span::styled("[UK]", theme.error.add_modifier(Modifier::BOLD)),
+            "       ",
+        )
+    } else if lower.contains("channel") || lower.contains("live tv") {
+        (
+            Span::styled("[LIVE TV]", theme.accent.add_modifier(Modifier::BOLD)),
+            "  ",
+        )
+    } else if lower.contains("movie")
+        || lower.contains("cinema")
         || lower.contains("top rated (all-time)")
         || lower.contains("top rated (recent")
     {

@@ -419,7 +419,9 @@ impl App {
             | Action::TvPlaylistRemove(..)
             | Action::TvReloadPlaylists
             | Action::TvInputToggle(..)
-            | Action::TvChannelsLoaded(..) => {
+            | Action::TvChannelsLoaded(..)
+            | Action::SelectTvPreset(..)
+            | Action::SelectTvCategory(..) => {
                 self.handle_tv(action).await;
             }
 

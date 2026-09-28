@@ -50,7 +50,13 @@ impl SlashCommand {
                     "Configure TV playlists or Addons"
                 }
             }
-            Self::Browse => "Curated, rated & most-watched views",
+            Self::Browse => {
+                if state.is_tv_mode {
+                    "Browse curated presets & TV categories"
+                } else {
+                    "Curated, rated & most-watched views"
+                }
+            }
             Self::History => "Watch history",
             Self::Favorites => "Starred titles",
             Self::Clear => "Clear search results and return to landing",
@@ -67,7 +73,11 @@ impl SlashCommand {
                 state.is_tv_mode
                     || state.active_provider == crate::providers::models::ProviderKind::Addons
             }
-            Self::Browse | Self::History => state.streaming_enabled && !state.is_tv_mode,
+            Self::Browse => {
+                (state.streaming_enabled && !state.is_tv_mode)
+                    || (state.tv_enabled && state.is_tv_mode)
+            }
+            Self::History => state.streaming_enabled && !state.is_tv_mode,
             Self::Favorites => state.favorites_available(),
             Self::List => state.tv_enabled && state.is_tv_mode,
             Self::Clear | Self::Help | Self::Exit => true,
@@ -289,6 +299,10 @@ mod tests {
         assert_eq!(
             SlashCommand::description_for("/config", &tv_state),
             Some("Manage TV playlist sources")
+        );
+        assert_eq!(
+            SlashCommand::description_for("/browse", &tv_state),
+            Some("Browse curated presets & TV categories")
         );
         let addons_state = AppState {
             active_provider: crate::providers::models::ProviderKind::Addons,

@@ -3,8 +3,8 @@ use crate::providers::models::{
     SourceMirror,
 };
 use crate::providers::youtube::parser::{
-    extract_youtube_video_id, format_duration_display, parse_upload_year, select_best_thumbnail,
-    YtDlpPlaylistSearchOutput, YtDlpVideoDetails,
+    detect_youtube_media_type, extract_youtube_video_id, format_duration_display,
+    parse_upload_year, select_best_thumbnail, YtDlpPlaylistSearchOutput, YtDlpVideoDetails,
 };
 use std::collections::BTreeMap;
 use std::process::Stdio;
@@ -71,13 +71,14 @@ impl YouTubeClient {
                     format!("https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"),
                 )
             };
+            let media_type = detect_youtube_media_type(&title, None, None);
             return Ok(vec![CatalogItem {
                 id: ProviderMediaId {
                     provider: ProviderKind::YouTube,
                     value: video_id,
                 },
                 title,
-                media_type: MediaType::Movie,
+                media_type,
                 year: None,
                 poster_url: Some(poster),
                 season_count: None,
@@ -125,13 +126,19 @@ impl YouTubeClient {
                 let year = parse_upload_year(entry.upload_date.as_deref());
                 let poster_url = Some(select_best_thumbnail(entry.thumbnails.as_deref(), &id));
 
+                let media_type = detect_youtube_media_type(
+                    &title,
+                    None,
+                    entry.channel.as_deref().or(entry.uploader.as_deref()),
+                );
+
                 items.push(CatalogItem {
                     id: ProviderMediaId {
                         provider: ProviderKind::YouTube,
                         value: id,
                     },
                     title,
-                    media_type: MediaType::Movie,
+                    media_type,
                     year,
                     poster_url,
                     season_count: None,
@@ -213,6 +220,7 @@ impl YouTubeClient {
             let director = details.channel.or(details.uploader);
             let description = details.description;
             let genres = details.categories.unwrap_or_default();
+            let media_type = detect_youtube_media_type(&title, Some(&genres), director.as_deref());
 
             Ok(MediaDetails {
                 id: ProviderMediaId {
@@ -220,7 +228,7 @@ impl YouTubeClient {
                     value: video_id,
                 },
                 title,
-                media_type: MediaType::Movie,
+                media_type,
                 year,
                 description,
                 tagline: None,
@@ -236,13 +244,14 @@ impl YouTubeClient {
                 dubs: Vec::new(),
             })
         } else if let Some((o_title, o_author, o_thumb)) = Self::fetch_oembed(&video_id).await {
+            let media_type = detect_youtube_media_type(&o_title, None, Some(&o_author));
             Ok(MediaDetails {
                 id: ProviderMediaId {
                     provider: ProviderKind::YouTube,
                     value: video_id.clone(),
                 },
                 title: o_title,
-                media_type: MediaType::Movie,
+                media_type,
                 year: None,
                 description: Some(format!("Channel: {o_author}\nWatch directly with yt-dlp stream acceleration.")),
                 tagline: None,
@@ -265,7 +274,7 @@ impl YouTubeClient {
                     value: video_id.clone(),
                 },
                 title: format!("YouTube Video ({video_id})"),
-                media_type: MediaType::Movie,
+                media_type: MediaType::Video,
                 year: None,
                 description: Some("Watch directly with yt-dlp stream acceleration.".to_string()),
                 tagline: None,

@@ -1282,3 +1282,59 @@ async fn test_landing_deck_header_renders_without_star_or_bracket() {
     assert!(!text.contains("★"));
     assert!(!text.contains("- *  Favorites"));
 }
+
+#[tokio::test]
+async fn test_tv_curated_presets_and_browsing_flow() {
+    let mut app = App::new();
+    app.handle_action(Action::SwitchToTvMode).await;
+    assert!(app.state().is_tv_mode);
+    assert!(app.state().landing_deck_visible());
+
+    // Verify /browse command is available with specialized TV description
+    assert_eq!(
+        sumanmovies_tui::tui::commands::SlashCommand::description_for("/browse", app.state()),
+        Some("Browse curated presets & TV categories")
+    );
+
+    // Verify curated presets catalog items
+    let browse_items = app.state().tv_browse_items();
+    assert!(!browse_items.is_empty());
+    assert!(browse_items.iter().any(|item| matches!(
+        item,
+        sumanmovies_tui::tui::state::TvBrowseItem::Preset(_, preset) if preset.id == "news"
+    )));
+    assert!(browse_items.iter().any(|item| matches!(
+        item,
+        sumanmovies_tui::tui::state::TvBrowseItem::Preset(_, preset) if preset.id == "in"
+    )));
+
+    // Select preset 0 (Global News)
+    app.handle_action(Action::SelectTvPreset(0)).await;
+    assert!(!app.state().tv_playlists.is_empty());
+
+    // Add channels and verify category filtering
+    let channels = vec![
+        sumanmovies_tui::providers::tv::Channel {
+            id: "1".to_string(),
+            name: "BBC News".to_string(),
+            logo: "".to_string(),
+            group: "News".to_string(),
+            stream_url: "https://example.com/bbc.m3u8".to_string(),
+        },
+        sumanmovies_tui::providers::tv::Channel {
+            id: "2".to_string(),
+            name: "Sky Cinema".to_string(),
+            logo: "".to_string(),
+            group: "Movies".to_string(),
+            stream_url: "https://example.com/sky.m3u8".to_string(),
+        },
+    ];
+    app.handle_action(Action::TvChannelsLoaded(channels, 0)).await;
+    assert_eq!(app.state().tv_channels.len(), 2);
+
+    // Filter by category News
+    app.handle_action(Action::SelectTvCategory("News".to_string())).await;
+    assert_eq!(app.state().search_results.len(), 1);
+    assert_eq!(app.state().search_results[0].title, "BBC News");
+}
+

@@ -153,13 +153,61 @@ pub fn parse_upload_year(upload_date: Option<&str>) -> Option<String> {
     None
 }
 
+pub fn detect_youtube_media_type(
+    title: &str,
+    categories: Option<&[String]>,
+    channel: Option<&str>,
+) -> crate::providers::models::MediaType {
+    if let Some(cats) = categories {
+        if cats.iter().any(|c| c.eq_ignore_ascii_case("Music")) {
+            return crate::providers::models::MediaType::Music;
+        }
+    }
+    let lower_title = title.to_ascii_lowercase();
+    if lower_title.contains("official audio")
+        || lower_title.contains("official music")
+        || lower_title.contains("lyric video")
+        || lower_title.contains("lyrics video")
+        || lower_title.contains("(audio)")
+        || lower_title.contains("[audio]")
+        || lower_title.contains("full album")
+        || lower_title.contains("original soundtrack")
+        || lower_title.contains("ost")
+    {
+        return crate::providers::models::MediaType::Music;
+    }
+    if let Some(ch) = channel {
+        let lower_ch = ch.to_ascii_lowercase();
+        if lower_ch.ends_with(" - topic")
+            || lower_ch.contains("vevo")
+            || lower_ch.contains("records")
+            || lower_ch.contains("music")
+        {
+            return crate::providers::models::MediaType::Music;
+        }
+    }
+    crate::providers::models::MediaType::Video
+}
+
 pub fn select_best_thumbnail(thumbnails: Option<&[YtDlpThumbnail]>, fallback_id: &str) -> String {
     if let Some(thumbs) = thumbnails {
         if let Some(best) = thumbs
             .iter()
-            .filter_map(|t| t.url.as_deref())
-            .filter(|u| !u.is_empty())
-            .last()
+            .filter(|t| {
+                t.url.as_ref().map_or(false, |u| {
+                    !u.is_empty() && !u.contains("/sb/") && !u.contains("mhtml")
+                })
+            })
+            .max_by_key(|t| {
+                let w = t.width.unwrap_or(0);
+                let h = t.height.unwrap_or(0);
+                if w > 0 && h > 0 {
+                    w * h
+                } else {
+                    1
+                }
+            })
+            .and_then(|t| t.url.as_deref())
         {
             return best.to_string();
         }
@@ -208,5 +256,57 @@ mod tests {
         assert_eq!(parse_upload_year(Some("20240518")), Some("2024".to_string()));
         assert_eq!(parse_upload_year(Some("2009")), Some("2009".to_string()));
         assert_eq!(parse_upload_year(None), None);
+    }
+
+    #[test]
+    fn test_detect_youtube_media_type() {
+        use crate::providers::models::MediaType;
+
+        assert_eq!(
+            detect_youtube_media_type("Alan Walker - Faded (Official Music Video)", None, None),
+            MediaType::Music
+        );
+        assert_eq!(
+            detect_youtube_media_type("Taylor Swift - Fortnight (feat. Post Malone) (Official Audio)", None, None),
+            MediaType::Music
+        );
+        assert_eq!(
+            detect_youtube_media_type("Song Name", Some(&["Music".to_string()]), None),
+            MediaType::Music
+        );
+        assert_eq!(
+            detect_youtube_media_type("Track", None, Some("Artist - Topic")),
+            MediaType::Music
+        );
+        assert_eq!(
+            detect_youtube_media_type("Rust Programming Tutorial 2026", None, Some("Tech With Tim")),
+            MediaType::Video
+        );
+    }
+
+    #[test]
+    fn test_select_best_thumbnail() {
+        let thumbs = vec![
+            YtDlpThumbnail {
+                url: Some("https://i.ytimg.com/vi/test/low.jpg".to_string()),
+                width: Some(360),
+                height: Some(202),
+            },
+            YtDlpThumbnail {
+                url: Some("https://i.ytimg.com/sb/storyboard.mhtml".to_string()),
+                width: Some(1920),
+                height: Some(1080),
+            },
+            YtDlpThumbnail {
+                url: Some("https://i.ytimg.com/vi/test/hq720.jpg".to_string()),
+                width: Some(720),
+                height: Some(404),
+            },
+        ];
+        let best = select_best_thumbnail(Some(&thumbs), "test");
+        assert_eq!(best, "https://i.ytimg.com/vi/test/hq720.jpg");
+
+        let fallback = select_best_thumbnail(None, "abc123xyz");
+        assert_eq!(fallback, "https://i.ytimg.com/vi/abc123xyz/hqdefault.jpg");
     }
 }

@@ -322,10 +322,11 @@ impl App {
                         continue;
                     }
 
-                    let stype = if item.media_type == crate::models::MediaType::Series {
-                        2
-                    } else {
-                        1
+                    let stype = match item.media_type {
+                        crate::models::MediaType::Series => 2,
+                        crate::models::MediaType::Video => 4,
+                        crate::models::MediaType::Music => 5,
+                        _ => 1,
                     };
                     let release_year = item.year.clone().unwrap_or_default();
                     let cover_url = item.poster_url.clone();

@@ -452,7 +452,15 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &mut AppState, theme: &Theme) 
         .unwrap_or("N/A");
     let is_series = details.is_series() && !state.available_seasons.is_empty();
     let has_languages = details.has_languages();
-    let type_str = if is_series { "Series" } else { "Movie" };
+    let type_str = if is_series {
+        "Series"
+    } else if details.media_type == crate::providers::models::MediaType::Music {
+        "Music"
+    } else if details.media_type == crate::providers::models::MediaType::Video {
+        "Video"
+    } else {
+        "Movie"
+    };
 
     let genres = if !details.genres.is_empty() {
         details.genres.join(", ")
@@ -511,7 +519,14 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &mut AppState, theme: &Theme) 
                 ((area_w_px / font_w as f32).round() as u16).max(1)
             })
             .unwrap_or_else(|| ((inner_area.height as f32 * (4.0 / 3.0)).round() as u16).max(6));
-        width_for_height.clamp(12, 22)
+        let max_w = if details.media_type == crate::providers::models::MediaType::Video
+            || details.media_type == crate::providers::models::MediaType::Music
+        {
+            inner_area.width.saturating_sub(40).clamp(24, 38)
+        } else {
+            22
+        };
+        width_for_height.clamp(12, max_w)
     } else {
         0
     };

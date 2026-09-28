@@ -455,7 +455,14 @@ pub(crate) fn render_landing_deck(frame: &mut Frame, area: Rect, state: &AppStat
         Vec::new()
     };
 
-    let presets: &[(&str, &str)] = if state.active_provider == crate::providers::models::ProviderKind::Addons {
+    let presets: &[(&str, &str)] = if state.is_tv_mode {
+        &[
+            ("Global News", "World news, headlines & live reports (BBC, CNN, Sky...)"),
+            ("Movies & Cinema", "Classic movies, indie cinema & 24/7 feature films"),
+            ("Sports Live", "Motorsports, combat sports, outdoor & athletic leagues"),
+            ("India (National & Regional)", "Doordarshan, regional news & Indian streams"),
+        ]
+    } else if state.active_provider == crate::providers::models::ProviderKind::Addons {
         &[
             ("Top Movies", "Cinemeta Curated Catalog"),
             ("Top Series", "Popular & Episodic TV"),
@@ -1876,6 +1883,10 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &mut AppState, theme: &Theme) 
 
                 let mut type_tag = if state.is_tv_mode || res.stype == 3 {
                     "TV Channel".to_string()
+                } else if res.stype == 5 {
+                    "Music".to_string()
+                } else if res.stype == 4 {
+                    "Video".to_string()
                 } else if res.stype == 1 {
                     "Movie".to_string()
                 } else if res.stype == 2 {
@@ -2260,10 +2271,29 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &mut AppState, theme: &Theme) 
             let add_item = ratatui::widgets::ListItem::new(ratatui::text::Line::from(vec![
                 ratatui::text::Span::raw("  "),
                 ratatui::text::Span::styled("+ ", add_prefix_style),
-                ratatui::text::Span::styled("Add playlist", add_style),
+                ratatui::text::Span::styled("Add custom playlist URL or file", add_style),
                 ratatui::text::Span::raw("  "),
             ]));
             items.push(add_item);
+
+            let is_presets_selected = state.tv_manager_selected == state.tv_playlists.len() + 1;
+            let presets_style = if is_presets_selected {
+                theme.text.add_modifier(ratatui::style::Modifier::BOLD)
+            } else {
+                theme.accent
+            };
+            let presets_prefix_style = if is_presets_selected {
+                theme.text.add_modifier(ratatui::style::Modifier::BOLD)
+            } else {
+                theme.accent
+            };
+            let presets_item = ratatui::widgets::ListItem::new(ratatui::text::Line::from(vec![
+                ratatui::text::Span::raw("  "),
+                ratatui::text::Span::styled("★ ", presets_prefix_style),
+                ratatui::text::Span::styled("Browse Curated Presets Catalog (/browse)", presets_style),
+                ratatui::text::Span::raw("  "),
+            ]));
+            items.push(presets_item);
             let list = ratatui::widgets::List::new(items)
                 .highlight_style(crate::tui::overlay::selection_style(
                     theme,
@@ -2372,18 +2402,30 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &mut AppState, theme: &Theme) 
     }
 
     if state.show_browse_popup {
-        let raw_labels: Vec<String> =
-            if state.active_provider == crate::providers::models::ProviderKind::Addons {
-                crate::providers::addons::models::curated_catalog_presets(&state.installed_addons)
-                    .into_iter()
-                    .map(|target| target.label)
-                    .collect()
-            } else {
-                crate::tui::state::BrowsePreset::ALL
-                    .iter()
-                    .map(|preset| preset.label().to_string())
-                    .collect()
-            };
+        let raw_labels: Vec<String> = if state.is_tv_mode {
+            state
+                .tv_browse_items()
+                .iter()
+                .map(|item| match item {
+                    crate::tui::state::TvBrowseItem::Category(name, count) => {
+                        format!("{name} ({count})")
+                    }
+                    crate::tui::state::TvBrowseItem::Preset(_, preset) => {
+                        format!("{}: {}", preset.name, preset.description)
+                    }
+                })
+                .collect()
+        } else if state.active_provider == crate::providers::models::ProviderKind::Addons {
+            crate::providers::addons::models::curated_catalog_presets(&state.installed_addons)
+                .into_iter()
+                .map(|target| target.label)
+                .collect()
+        } else {
+            crate::tui::state::BrowsePreset::ALL
+                .iter()
+                .map(|preset| preset.label().to_string())
+                .collect()
+        };
 
         let raw_items: Vec<String> = raw_labels
             .iter()

@@ -230,7 +230,20 @@ impl App {
         if self.state.show_browse_popup {
             let is_addon =
                 self.state.active_provider == crate::providers::models::ProviderKind::Addons;
-            let raw_labels: Vec<String> = if is_addon {
+            let raw_labels: Vec<String> = if self.state.is_tv_mode {
+                self.state
+                    .tv_browse_items()
+                    .iter()
+                    .map(|item| match item {
+                        crate::tui::state::TvBrowseItem::Category(name, count) => {
+                            format!("{name} ({count})")
+                        }
+                        crate::tui::state::TvBrowseItem::Preset(_, preset) => {
+                            format!("{}: {}", preset.name, preset.description)
+                        }
+                    })
+                    .collect()
+            } else if is_addon {
                 crate::providers::addons::models::curated_catalog_presets(
                     &self.state.installed_addons,
                 )
@@ -246,21 +259,8 @@ impl App {
             let browse_items: Vec<String> = raw_labels
                 .iter()
                 .map(|label| {
-                    let badge_str = if label.to_ascii_lowercase().contains("movie")
-                        || label.to_ascii_lowercase().contains("top rated (all-time)")
-                        || label.to_ascii_lowercase().contains("top rated (recent")
-                    {
-                        "[MOVIES]   "
-                    } else if label.to_ascii_lowercase().contains("series")
-                        || label.to_ascii_lowercase().contains("airing")
-                        || label.to_ascii_lowercase().contains("show")
-                        || label.to_ascii_lowercase().contains("tv")
-                    {
-                        "[SERIES]   "
-                    } else {
-                        "[DISCOVER] "
-                    };
-                    format!("  {badge_str}{label}  ")
+                    let badge_str = crate::tui::overlay::browse_category_badge_text(label);
+                    format!("  {badge_str}   {label}  ")
                 })
                 .collect();
             let layout = crate::tui::overlay::browse_picker_layout(area, &browse_items, 36);
@@ -276,7 +276,21 @@ impl App {
                     self.state.browse_list_state.select(Some(clicked_idx));
                     self.state.show_browse_popup = false;
                     self.state.browse_list_state.select(None);
-                    if is_addon {
+                    if self.state.is_tv_mode {
+                        let tv_items = self.state.tv_browse_items();
+                        if let Some(item) = tv_items.get(clicked_idx) {
+                            match item {
+                                crate::tui::state::TvBrowseItem::Category(cat, _) => {
+                                    self.action_sender
+                                        .send(Action::SelectTvCategory(cat.clone()))
+                                        .ok();
+                                }
+                                crate::tui::state::TvBrowseItem::Preset(idx, _) => {
+                                    self.action_sender.send(Action::SelectTvPreset(*idx)).ok();
+                                }
+                            }
+                        }
+                    } else if is_addon {
                         let targets = crate::providers::addons::models::curated_catalog_presets(
                             &self.state.installed_addons,
                         );
@@ -438,6 +452,10 @@ impl App {
                             match r {
                                 crate::tui::state::TvManagerRow::AddPlaylist => {
                                     self.action_sender.send(Action::TvInputToggle(false)).ok();
+                                }
+                                crate::tui::state::TvManagerRow::BrowsePresets => {
+                                    self.state.tv_config_popup = false;
+                                    self.action_sender.send(Action::ShowBrowseMenu).ok();
                                 }
                                 crate::tui::state::TvManagerRow::Playlist(_) => {}
                             }
@@ -737,7 +755,17 @@ impl App {
                         && row >= discover_card_area.top()
                         && row < discover_card_area.bottom()
                     {
-                        if self.state.active_provider
+                        if self.state.is_tv_mode {
+                            let rel_row =
+                                (row - discover_card_area.top()).saturating_sub(1) as usize;
+                            if rel_row < 4 {
+                                self.action_sender
+                                    .send(Action::SelectTvPreset(rel_row))
+                                    .ok();
+                            } else {
+                                self.action_sender.send(Action::ShowBrowseMenu).ok();
+                            }
+                        } else if self.state.active_provider
                             == crate::providers::models::ProviderKind::Addons
                         {
                             self.action_sender.send(Action::ShowBrowseMenu).ok();

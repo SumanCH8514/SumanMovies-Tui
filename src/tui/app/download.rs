@@ -41,6 +41,11 @@ impl App {
             .as_ref()
             .map(|details| details.title.as_str())
             .unwrap_or(crate::download::DEFAULT_STREAM_NAME);
+        let year = self
+            .state
+            .selected_details
+            .as_ref()
+            .and_then(|d| d.year.as_deref());
         let clean_title = crate::providers::moviebox::clean_moviebox_title(raw_title);
         let is_series = self
             .state
@@ -52,22 +57,54 @@ impl App {
         let episode = self.state.selected_episode;
         let safe_title = crate::download::safe_file_stem(clean_title);
 
-        let extension = link
-            .split('#')
-            .next()
-            .unwrap_or(&link)
-            .split('?')
-            .next()
-            .and_then(|path| path.rsplit('.').next())
-            .filter(|ext| {
-                let lower = ext.to_ascii_lowercase();
-                matches!(lower.as_str(), "mp4" | "mkv" | "webm" | "ts")
-            })
-            .unwrap_or("mp4")
-            .to_ascii_lowercase();
+        let is_youtube = link.contains("youtube.com") || link.contains("youtu.be");
+        let is_audio = crate::player::is_audio_only_url(&link)
+            || self
+                .state
+                .selected_details
+                .as_ref()
+                .map_or(false, |d| d.media_type == crate::providers::models::MediaType::Music);
+
+        let release_quality = self
+            .get_selected_release()
+            .and_then(|r| r.quality.clone());
+        let quality_tag = resolve_quality_label(release_quality.as_deref(), max_height, is_audio);
+
+        let extension = if is_audio {
+            "mp3".to_string()
+        } else {
+            link.split('#')
+                .next()
+                .unwrap_or(&link)
+                .split('?')
+                .next()
+                .and_then(|path| path.rsplit('.').next())
+                .filter(|ext| {
+                    let lower = ext.to_ascii_lowercase();
+                    matches!(lower.as_str(), "mp4" | "mkv" | "webm" | "ts")
+                })
+                .unwrap_or("mp4")
+                .to_ascii_lowercase()
+        };
+
+        let base_name = build_download_base_name(
+            raw_title,
+            year,
+            is_series,
+            season,
+            episode,
+            is_youtube,
+            is_audio,
+            &quality_tag,
+        );
 
         let base_dir = self.resolve_download_base_dir();
-        let (target_dir, base_name) = if is_series {
+        let (target_dir, _) = if is_audio {
+            (
+                base_dir.join("Music").join(&safe_title),
+                safe_title.clone(),
+            )
+        } else if is_series {
             (
                 base_dir
                     .join("Series")
@@ -165,7 +202,8 @@ impl App {
             || link.contains("/dash/")
             || link.contains("youtube.com")
             || link.contains("youtu.be")
-            || link.contains("#ytdl-format=");
+            || link.contains("#ytdl-format=")
+            || is_audio;
 
         self.request_tasks.cancel_download();
         let validation_base_dir = base_dir.clone();
@@ -292,14 +330,29 @@ impl App {
                     .arg(format_spec)
                     .arg("--newline")
                     .arg("--part")
-                    .arg("-o")
-                    .arg(&destination)
-                    .arg("--force-overwrites")
-                    .arg("--http-chunk-size")
-                    .arg("95K")
-                    .arg("--concurrent-fragments")
-                    .arg("8")
-                    .arg("--fragment-retries")
+                    .arg("--force-overwrites");
+
+                if is_audio {
+                    cmd.arg("-x")
+                        .arg("--audio-format")
+                        .arg("mp3")
+                        .arg("--audio-quality")
+                        .arg("0");
+                    let output_template = target_dir.join(format!("{base_name}.%(ext)s"));
+                    cmd.arg("-o").arg(&output_template);
+                } else {
+                    cmd.arg("-o").arg(&destination);
+                }
+
+                let is_yt = clean_link.contains("youtube.com") || clean_link.contains("youtu.be");
+                if !is_yt && !is_audio {
+                    cmd.arg("--http-chunk-size")
+                        .arg("95K")
+                        .arg("--concurrent-fragments")
+                        .arg("8");
+                }
+
+                cmd.arg("--fragment-retries")
                     .arg("10")
                     .arg("--retries")
                     .arg("5")
@@ -395,12 +448,17 @@ impl App {
                                                     .ok();
                                                 last_send = std::time::Instant::now();
                                             }
-                                        } else if line.contains("[Merger]") || line.contains("[ffmpeg]") {
+                                        } else if line.contains("[Merger]") || line.contains("[ffmpeg]") || line.contains("[ExtractAudio]") {
                                             max_progress = max_progress.max(99.0);
+                                            let msg = if is_audio {
+                                                "Converting audio to MP3...".to_string()
+                                            } else {
+                                                "Merging audio & video...".to_string()
+                                            };
                                             sender
                                                 .send(Action::UpdateDownload(
                                                     Some(max_progress),
-                                                    Some("Merging audio & video...".to_string()),
+                                                    Some(msg),
                                                 ))
                                                 .ok();
                                             last_send = std::time::Instant::now();
@@ -781,7 +839,7 @@ impl App {
                         .join("Series")
                         .join(&safe_title)
                         .join(format!("Season {season}"));
-                    let base_name = format!("{safe_title} - S{season:02}E{episode:02}");
+                    let base_name = format!("{safe_title} S{season:02}_E{episode:02}");
 
                     if is_media_already_downloaded(&target_dir, &base_name) {
                         self.state.notify(
@@ -1008,7 +1066,7 @@ fn subtitle_language_from_url(url: &str) -> Option<&'static str> {
 }
 
 fn is_media_already_downloaded(target_dir: &std::path::Path, base_name: &str) -> bool {
-    let extensions = ["mp4", "mkv", "webm", "ts"];
+    let extensions = ["mp4", "mkv", "webm", "ts", "mp3", "m4a"];
     for ext in extensions {
         let final_file = target_dir.join(format!("{base_name}.{ext}"));
         if final_file.exists() {
@@ -1017,7 +1075,23 @@ fn is_media_already_downloaded(target_dir: &std::path::Path, base_name: &str) ->
             let part_0 = target_dir.join(format!("{base_name}.{ext}.part.0"));
             if !part_json.exists() && !part_file.exists() && !part_0.exists() {
                 if let Ok(metadata) = std::fs::metadata(&final_file) {
-                    if metadata.len() > 1024 * 1024 {
+                    if metadata.len() > 1024 * 1024 || (ext == "mp3" && metadata.len() > 50 * 1024) {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    if let Ok(entries) = std::fs::read_dir(target_dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if name.starts_with(base_name)
+                && !name.ends_with(".part")
+                && !name.ends_with(".part.json")
+                && !name.ends_with(".part.0")
+            {
+                if let Ok(metadata) = entry.metadata() {
+                    if metadata.is_file() && metadata.len() > 50 * 1024 {
                         return true;
                     }
                 }
@@ -1025,6 +1099,82 @@ fn is_media_already_downloaded(target_dir: &std::path::Path, base_name: &str) ->
         }
     }
     false
+}
+
+pub(crate) fn resolve_quality_label(
+    release_quality: Option<&str>,
+    max_height: Option<u64>,
+    is_audio: bool,
+) -> String {
+    if is_audio {
+        return "MP3".to_string();
+    }
+    if let Some(q) = release_quality {
+        let trimmed = q.trim();
+        if !trimmed.is_empty()
+            && !trimmed.eq_ignore_ascii_case("multi")
+            && !trimmed.eq_ignore_ascii_case("multi-res")
+            && !trimmed.eq_ignore_ascii_case("auto/yt-dlp")
+        {
+            let lower = trimmed.to_ascii_lowercase();
+            if lower.ends_with('p') || lower.ends_with('k') || lower == "mp3" {
+                return trimmed.to_string();
+            } else if lower.chars().all(|c| c.is_ascii_digit()) {
+                return format!("{trimmed}p");
+            } else {
+                return trimmed.to_string();
+            }
+        }
+    }
+    if let Some(h) = max_height.filter(|&h| h > 0) {
+        return format!("{h}p");
+    }
+    "1080p".to_string()
+}
+
+pub(crate) fn build_download_base_name(
+    raw_title: &str,
+    year: Option<&str>,
+    is_series: bool,
+    season: usize,
+    episode: usize,
+    is_youtube: bool,
+    is_audio: bool,
+    quality: &str,
+) -> String {
+    let clean_title = crate::providers::moviebox::clean_moviebox_title(raw_title);
+    let safe_title = crate::download::safe_file_stem(clean_title);
+
+    if is_series {
+        // if series: Seriesname S01_E01 - quality(1080p/720p) - @SumanOnline_com.mp4
+        format!("{safe_title} S{season:02}_E{episode:02} - {quality} - @SumanOnline_com")
+    } else if is_youtube || is_audio {
+        // if yt: filename quality(1080p/720p) - @SumanOnline_com.mp4
+        format!("{safe_title} {quality} - @SumanOnline_com")
+    } else {
+        // if movie: moviename (year) quality(1080p/720p) - @SumanOnline_com.mp4
+        let has_year_in_title = if let Some(pos) = safe_title.rfind('(') {
+            let inside = safe_title[pos + 1..].trim_end_matches(')').trim();
+            inside.len() == 4 && inside.chars().all(|c| c.is_ascii_digit())
+        } else {
+            false
+        };
+
+        let title_with_year = if !has_year_in_title {
+            if let Some(y) = year
+                .map(str::trim)
+                .filter(|y| y.len() == 4 && y.chars().all(|c| c.is_ascii_digit()))
+            {
+                format!("{safe_title} ({y})")
+            } else {
+                safe_title
+            }
+        } else {
+            safe_title
+        };
+
+        format!("{title_with_year} {quality} - @SumanOnline_com")
+    }
 }
 
 fn normalize_unc(p: std::path::PathBuf) -> std::path::PathBuf {
@@ -1477,44 +1627,109 @@ mod tests {
     fn test_download_directory_and_filename_conventions() {
         let base_dir = std::path::PathBuf::from("/tmp/MovieBox-TUI");
 
-        let movie_title = "Ek Deewane Ki Deewaniyat";
-        let movie_target = base_dir.join("Movies").join(movie_title);
-        let movie_file = movie_target.join(format!("{movie_title}.mp4"));
-        let movie_sub = movie_target.join(format!("{movie_title}.en.srt"));
+        // Movie pattern: moviename (year) quality(1080p/720p) - @SumanOnline_com.mp4
+        let movie_raw = "Inception";
+        let movie_name = build_download_base_name(
+            movie_raw,
+            Some("2010"),
+            false,
+            0,
+            0,
+            false,
+            false,
+            "1080p",
+        );
+        assert_eq!(movie_name, "Inception (2010) 1080p - @SumanOnline_com");
 
-        let expected_movie_file = base_dir
-            .join("Movies")
-            .join(movie_title)
-            .join(format!("{movie_title}.mp4"));
-        let expected_movie_sub = base_dir
-            .join("Movies")
-            .join(movie_title)
-            .join(format!("{movie_title}.en.srt"));
-        assert_eq!(movie_file, expected_movie_file);
-        assert_eq!(movie_sub, expected_movie_sub);
+        let safe_title = crate::download::safe_file_stem(movie_raw);
+        let movie_target = base_dir.join("Movies").join(safe_title);
+        let movie_file = movie_target.join(format!("{movie_name}.mp4"));
+        assert_eq!(
+            movie_file,
+            base_dir
+                .join("Movies")
+                .join("Inception")
+                .join("Inception (2010) 1080p - @SumanOnline_com.mp4")
+        );
 
-        let series_title = "Breaking Bad";
-        let season: usize = 1;
-        let episode: usize = 1;
+        // Movie with year already in title: doesn't duplicate (year)
+        let movie_with_year = build_download_base_name(
+            "Avatar (2009)",
+            Some("2009"),
+            false,
+            0,
+            0,
+            false,
+            false,
+            "720p",
+        );
+        assert_eq!(movie_with_year, "Avatar (2009) 720p - @SumanOnline_com");
+
+        // Series pattern: Seriesname S01_E01 - quality(1080p/720p) - @SumanOnline_com.mp4
+        let series_raw = "Breaking Bad";
+        let series_name = build_download_base_name(
+            series_raw,
+            Some("2008"),
+            true,
+            1,
+            1,
+            false,
+            false,
+            "1080p",
+        );
+        assert_eq!(series_name, "Breaking Bad S01_E01 - 1080p - @SumanOnline_com");
+
+        let series_safe = crate::download::safe_file_stem(series_raw);
         let series_target = base_dir
             .join("Series")
-            .join(series_title)
-            .join(format!("Season {season}"));
-        let base_name = format!("{series_title} - S{season:02}E{episode:02}");
-        let series_file = series_target.join(format!("{base_name}.mp4"));
-        let series_sub = series_target.join(format!("{base_name}.en.srt"));
+            .join(&series_safe)
+            .join("Season 1");
+        let series_file = series_target.join(format!("{series_name}.mp4"));
+        assert_eq!(
+            series_file,
+            base_dir
+                .join("Series")
+                .join("Breaking Bad")
+                .join("Season 1")
+                .join("Breaking Bad S01_E01 - 1080p - @SumanOnline_com.mp4")
+        );
 
-        let expected_series_file = base_dir
-            .join("Series")
-            .join(series_title)
-            .join(format!("Season {season}"))
-            .join(format!("{base_name}.mp4"));
-        let expected_series_sub = base_dir
-            .join("Series")
-            .join(series_title)
-            .join(format!("Season {season}"))
-            .join(format!("{base_name}.en.srt"));
-        assert_eq!(series_file, expected_series_file);
-        assert_eq!(series_sub, expected_series_sub);
+        // YouTube video pattern: filename quality(1080p/720p) - @SumanOnline_com.mp4
+        let yt_raw = "Awesome Video";
+        let yt_name = build_download_base_name(
+            yt_raw,
+            Some("2024"),
+            false,
+            0,
+            0,
+            true,
+            false,
+            "1080p",
+        );
+        assert_eq!(yt_name, "Awesome Video 1080p - @SumanOnline_com");
+
+        // YouTube audio pattern: filename MP3 - @SumanOnline_com.mp3
+        let yt_audio_name = build_download_base_name(
+            "Alvida Alvida",
+            Some("2026"),
+            false,
+            0,
+            0,
+            true,
+            true,
+            "MP3",
+        );
+        assert_eq!(yt_audio_name, "Alvida Alvida MP3 - @SumanOnline_com");
+
+        let music_target = base_dir.join("Music").join("Alvida Alvida");
+        let music_file = music_target.join(format!("{yt_audio_name}.mp3"));
+        assert_eq!(
+            music_file,
+            base_dir
+                .join("Music")
+                .join("Alvida Alvida")
+                .join("Alvida Alvida MP3 - @SumanOnline_com.mp3")
+        );
     }
 }
+

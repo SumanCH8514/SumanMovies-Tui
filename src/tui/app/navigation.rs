@@ -796,14 +796,18 @@ impl App {
                                 self.open_favorite(idx);
                             }
                             crate::tui::state::HomeDeckTab::Discover => {
-                                let preset = match idx {
-                                    0 => crate::tui::state::BrowsePreset::Trending,
-                                    1 => crate::tui::state::BrowsePreset::TopRatedAllTime,
-                                    2 => crate::tui::state::BrowsePreset::TopRatedRecent,
-                                    3 => crate::tui::state::BrowsePreset::MostWatched,
-                                    _ => crate::tui::state::BrowsePreset::Trending,
-                                };
-                                self.action_sender.send(Action::SelectBrowse(preset)).ok();
+                                if self.state.is_tv_mode {
+                                    self.action_sender.send(Action::SelectTvPreset(idx)).ok();
+                                } else {
+                                    let preset = match idx {
+                                        0 => crate::tui::state::BrowsePreset::Trending,
+                                        1 => crate::tui::state::BrowsePreset::TopRatedAllTime,
+                                        2 => crate::tui::state::BrowsePreset::TopRatedRecent,
+                                        3 => crate::tui::state::BrowsePreset::MostWatched,
+                                        _ => crate::tui::state::BrowsePreset::Trending,
+                                    };
+                                    self.action_sender.send(Action::SelectBrowse(preset)).ok();
+                                }
                             }
                         }
                     }

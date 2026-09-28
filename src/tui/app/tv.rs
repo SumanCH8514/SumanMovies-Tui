@@ -71,7 +71,7 @@ impl App {
                     self.load_tv_playlists_from_config();
                     self.reload_tv_playlists();
                     if self.state.tv_playlists.is_empty() {
-                        self.action_sender.send(Action::ShowTvConfig).ok();
+                        self.state.set_status_default("No playlists active. Select a Curated Preset below or press /browse.");
                     }
                     self.persist_config();
                 }
@@ -149,9 +149,9 @@ impl App {
                     });
                 if self.state.tv_channels.is_empty() {
                     let status = if failed > 0 {
-                        format!("No channels. {failed} failed. Add playlist (/config).")
+                        format!("No channels. {failed} failed. Browse presets (/browse) or add playlist (/config).")
                     } else {
-                        "No channels. Add playlist (/config).".to_string()
+                        "No channels. Browse presets (/browse) or add playlist (/config).".to_string()
                     };
                     self.state.set_status_long(status);
                 } else {
@@ -161,6 +161,40 @@ impl App {
                         status.push_str(&format!(" {failed} failed."));
                     }
                     self.state.set_status_long(status);
+                }
+            }
+
+            Action::SelectTvPreset(index) => {
+                self.state.show_browse_popup = false;
+                self.state.browse_list_state.select(None);
+                if let Some(preset) = crate::providers::tv::models::TvCuratedPreset::ALL.get(index) {
+                    let url = preset.url.to_string();
+                    if !self.state.tv_playlists.contains(&url) {
+                        self.state.tv_playlists.push(url);
+                        self.save_tv_playlists();
+                        self.state.set_status_default(format!("Added preset '{}'. Loading channels...", preset.name));
+                        self.reload_tv_playlists();
+                    } else {
+                        self.state.search_query = preset.category.to_string().into();
+                        let lower = preset.category.to_lowercase();
+                        self.apply_tv_search_results(&preset.category, &lower);
+                        self.state.set_status_default(format!("Preset '{}' active.", preset.name));
+                    }
+                }
+            }
+
+            Action::SelectTvCategory(category) => {
+                self.state.show_browse_popup = false;
+                self.state.browse_list_state.select(None);
+                if category == "All Channels" || category.is_empty() {
+                    self.state.search_query = "/list".to_string().into();
+                    self.apply_tv_search_results("/list", "/list");
+                    self.state.set_status_default("Showing all channels.");
+                } else {
+                    self.state.search_query = category.clone().into();
+                    let lower = category.to_lowercase();
+                    self.apply_tv_search_results(&category, &lower);
+                    self.state.set_status_default(format!("Filtered by category: {category}"));
                 }
             }
             _ => return None,
