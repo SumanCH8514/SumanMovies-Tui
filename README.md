@@ -26,13 +26,13 @@ Whether you want to binge a TV season in 4K HDR, search anime, extract YouTube a
 
 ```text
  ┌────────────────────────────────────────────────────────────────────────────────────────┐
- │  SUMANMOVIES ─ Popular Trending                                      [Provider: 4KHDHub]│
+ │  SUMANMOVIES ─ Popular Trending                                     [Provider: 4KHDHub]│
  ├────────────────────────────────────────────────────────────────────────────────────────┤
  │  [ 1 ] Dune: Part Two (2024)                    2160p UHD | HDR10+ | Dolby Atmos       │
  │  [ 2 ] Oppenheimer (2023)                       1080p BluRay | Multi-Audio | DDP 5.1   │
  │  [ 3 ] Interstellar (2014)                      4K Remux | IMAX Edition | DTS-HD MA    │
  │  [ 4 ] Shogun - Season 1 (2024)                 Complete S01 (Episodes 1-10) [4K]      │
- │  [ 5 ] Arcane - Season 2 (2024)                 Web-DL 1080p | Dual Audio [Eng/Jap]   │
+ │  [ 5 ] Arcane - Season 2 (2024)                 Web-DL 1080p | Dual Audio [Eng/Jap]    │
  ├────────────────────────────────────────────────────────────────────────────────────────┤
  │  [Enter] Play  •  [d] Download  •  [Ctrl+P] Switch Provider  •  [/settings] Hub        │
  └────────────────────────────────────────────────────────────────────────────────────────┘
