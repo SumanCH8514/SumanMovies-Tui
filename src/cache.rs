@@ -276,7 +276,45 @@ pub fn get_provider_stream_cache_typed(
 ) -> Option<Vec<Release>> {
     let path = get_provider_stream_path(provider, subject_id, season, episode);
     let releases: Vec<Release> = get_typed_cache(&path, STREAM_CACHE_EXPIRY_SECS)?;
-    (!releases.is_empty()).then_some(releases)
+    if releases.is_empty() {
+        return None;
+    }
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    let min_expiry = releases
+        .iter()
+        .flat_map(|r| &r.mirrors)
+        .flat_map(|mirror| &mirror.headers)
+        .filter(|(name, _)| {
+            name.eq_ignore_ascii_case("cookie") || name.eq_ignore_ascii_case("edge-cache-cookie")
+        })
+        .flat_map(|(_, val)| val.split(';'))
+        .filter_map(|part| {
+            let trimmed = part.trim();
+            if let Some(policy_raw) = trimmed.strip_prefix("CloudFront-Policy=") {
+                cf_policy_date_less_than(policy_raw)
+            } else if let Some(pos) = trimmed.find(":t=") {
+                let rest = &trimmed[pos + 3..];
+                let num_str: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+                num_str.parse::<u64>().ok()
+            } else {
+                None
+            }
+        })
+        .min();
+
+    if let Some(expiry) = min_expiry {
+        if now + 60 >= expiry {
+            let _ = fs::remove_file(&path);
+            return None;
+        }
+    }
+
+    Some(releases)
 }
 
 pub fn set_provider_stream_cache_typed(
@@ -299,18 +337,28 @@ fn stream_cache_ttl_secs(releases: &[Release]) -> u64 {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
-    let min_cf_expiry = releases
+    let min_cookie_expiry = releases
         .iter()
         .flat_map(|r| &r.mirrors)
         .flat_map(|mirror| &mirror.headers)
-        .filter(|(name, _)| name.eq_ignore_ascii_case("cookie"))
+        .filter(|(name, _)| {
+            name.eq_ignore_ascii_case("cookie") || name.eq_ignore_ascii_case("edge-cache-cookie")
+        })
         .flat_map(|(_, val)| val.split(';'))
         .filter_map(|part| {
-            let policy_raw = part.trim().strip_prefix("CloudFront-Policy=")?;
-            cf_policy_date_less_than(policy_raw)
+            let trimmed = part.trim();
+            if let Some(policy_raw) = trimmed.strip_prefix("CloudFront-Policy=") {
+                cf_policy_date_less_than(policy_raw)
+            } else if let Some(pos) = trimmed.find(":t=") {
+                let rest = &trimmed[pos + 3..];
+                let num_str: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+                num_str.parse::<u64>().ok()
+            } else {
+                None
+            }
         })
         .min();
-    let cf_remaining = min_cf_expiry
+    let cf_remaining = min_cookie_expiry
         .and_then(|exp| exp.checked_sub(now))
         .unwrap_or(STREAM_CACHE_EXPIRY_SECS);
     cf_remaining.clamp(60, STREAM_CACHE_EXPIRY_SECS)

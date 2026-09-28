@@ -20,6 +20,8 @@ pub struct WatchHistoryItem {
     pub progress_seconds: u64,
     #[serde(default)]
     pub completed: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stream_filename: Option<String>,
 }
 
 impl WatchHistoryItem {
@@ -59,6 +61,7 @@ impl WatchHistoryItem {
             duration_seconds,
             progress_seconds: 0,
             completed: false,
+            stream_filename: None,
         }
     }
 
@@ -217,6 +220,8 @@ pub struct PendingPlaybackState {
     pub stype: Option<i64>,
     #[serde(default)]
     pub release_year: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stream_filename: Option<String>,
 }
 
 impl PendingPlaybackState {
@@ -242,6 +247,7 @@ impl PendingPlaybackState {
             cover_url: item.cover_url.clone(),
             stype: Some(item.stype),
             release_year: Some(item.release_year.clone()),
+            stream_filename: item.stream_filename.clone(),
         }
     }
 }
@@ -486,11 +492,22 @@ impl HistoryManager {
         }
         self.save();
     }
-    pub fn record_start(&mut self, item: &WatchHistoryItem, start_pos: u64) {
+    pub fn record_start(
+        &mut self,
+        item: &WatchHistoryItem,
+        start_pos: u64,
+        stream_filename: Option<&str>,
+    ) {
         let mut new_item = item.clone();
+        if let Some(filename) = stream_filename {
+            new_item.stream_filename = Some(filename.to_string());
+        }
         if let Some(existing) = self.recent.iter().find(|i| Self::is_same_show(i, item)) {
             if new_item.cover_url.is_none() {
                 new_item.cover_url = existing.cover_url.clone();
+            }
+            if new_item.stream_filename.is_none() {
+                new_item.stream_filename = existing.stream_filename.clone();
             }
             if existing.season == new_item.season && existing.episode == new_item.episode {
                 new_item.progress_seconds = existing.progress_seconds.max(start_pos);
@@ -641,6 +658,9 @@ impl HistoryManager {
                 existing.duration_seconds = state.duration_seconds;
                 existing.completed = state.completed;
                 existing.timestamp = state.timestamp;
+                if let Some(fn_str) = state.stream_filename {
+                    existing.stream_filename = Some(fn_str);
+                }
                 if !existing.completed {
                     self.watched.remove(&key);
                 }
@@ -670,6 +690,9 @@ impl HistoryManager {
                     existing_series.duration_seconds = state.duration_seconds;
                     existing_series.completed = state.completed;
                     existing_series.timestamp = state.timestamp;
+                    if let Some(fn_str) = state.stream_filename {
+                        existing_series.stream_filename = Some(fn_str);
+                    }
                     if !existing_series.completed {
                         self.watched.remove(&key);
                     }
@@ -695,6 +718,7 @@ impl HistoryManager {
                     duration_seconds: state.duration_seconds,
                     progress_seconds: state.progress_seconds,
                     completed: state.completed,
+                    stream_filename: state.stream_filename,
                 };
                 if new_item.completed {
                     self.watched.insert(key);
@@ -740,6 +764,7 @@ mod tests {
             duration_seconds: Some(3600),
             progress_seconds: 1800,
             completed: false,
+            stream_filename: None,
         }
     }
 
@@ -805,6 +830,7 @@ mod tests {
             cover_url: None,
             stype: None,
             release_year: None,
+            stream_filename: None,
         };
         std::fs::write(&state_file, serde_json::to_string(&state).unwrap()).unwrap();
 

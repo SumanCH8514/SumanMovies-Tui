@@ -30,6 +30,7 @@ fn dummy_history_item(
         duration_seconds: duration,
         progress_seconds: progress,
         completed,
+        stream_filename: None,
     }
 }
 
@@ -314,6 +315,7 @@ fn test_reconciliation_from_lua_tracker_state_files() {
         cover_url: None,
         stype: None,
         release_year: None,
+        stream_filename: None,
     };
     let state_file_1 = temp_dir.path().join("moviebox_show_alpha_1_1.json");
     std::fs::write(&state_file_1, serde_json::to_string(&state1).unwrap()).unwrap();
@@ -331,6 +333,7 @@ fn test_reconciliation_from_lua_tracker_state_files() {
         cover_url: None,
         stype: None,
         release_year: None,
+        stream_filename: None,
     };
     let state_file_2 = temp_dir.path().join("moviebox_show_alpha_1_2.json");
     std::fs::write(&state_file_2, serde_json::to_string(&state2).unwrap()).unwrap();
@@ -523,6 +526,7 @@ fn test_reconciliation_self_heals_unseen_items_with_metadata() {
         cover_url: Some("https://example.com/inception.jpg".to_string()),
         stype: Some(1),
         release_year: Some("2010".to_string()),
+        stream_filename: None,
     };
     std::fs::write(&state_file, serde_json::to_string(&state).unwrap()).unwrap();
 
@@ -559,18 +563,18 @@ fn test_record_start_registers_history_immediately() {
         false,
     );
 
-    manager.record_start(&item, 120);
+    manager.record_start(&item, 120, None);
     assert_eq!(manager.recent.len(), 1);
     let first = manager.recent.first().unwrap();
     assert_eq!(first.subject_id, "interstellar");
     assert_eq!(first.progress_seconds, 120);
     assert!(!first.completed);
 
-    manager.record_start(&item, 60);
+    manager.record_start(&item, 60, None);
     let second = manager.recent.first().unwrap();
     assert_eq!(second.progress_seconds, 120);
 
-    manager.record_start(&item, 500);
+    manager.record_start(&item, 500, None);
     let third = manager.recent.first().unwrap();
     assert_eq!(third.progress_seconds, 500);
 }

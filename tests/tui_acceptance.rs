@@ -1083,6 +1083,7 @@ async fn test_home_deck_tab_switching() {
             duration_seconds: Some(3000),
             completed: false,
             timestamp: 100,
+            stream_filename: None,
         });
     app.state_mut()
         .favorites
@@ -1201,6 +1202,7 @@ async fn test_home_deck_continue_watching_resume() {
             duration_seconds: Some(3000),
             completed: false,
             timestamp: 200,
+            stream_filename: None,
         });
 
     app.state_mut().favorites_focus = true;
@@ -1246,6 +1248,7 @@ async fn test_landing_deck_header_renders_without_star_or_bracket() {
             duration_seconds: Some(3000),
             completed: false,
             timestamp: 100,
+            stream_filename: None,
         });
     app.state_mut()
         .favorites

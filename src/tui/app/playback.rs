@@ -223,6 +223,7 @@ impl App {
             duration_seconds: None,
             progress_seconds: 0,
             completed: false,
+            stream_filename: None,
         })
     }
 
@@ -273,29 +274,45 @@ impl App {
                 item.episode,
             )
         });
+
+        let selected_stream_filename = self
+            .get_selected_release()
+            .and_then(|r| r.mirrors.first().map(|m| m.label.clone()))
+            .or_else(|| {
+                self.get_selected_link()
+                    .and_then(|u| u.split('/').last().map(|s| s.to_string()))
+            });
+
         if let Some(item) = &history_item {
-            self.state
-                .history
-                .record_start(item, resume_seconds.unwrap_or(0));
+            self.state.history.record_start(
+                item,
+                resume_seconds.unwrap_or(0),
+                selected_stream_filename.as_deref(),
+            );
         }
 
-        if let (Some((p, s, se, ep)), Some(item)) = (&tracker_opts, &history_item) {
-            if let Some(state_path) = crate::player::tracker::state_file_path(p, s, *se, *ep) {
-                let initial_state = crate::history::PendingPlaybackState::from_item(
-                    item,
-                    resume_seconds.unwrap_or(0),
-                    item.duration_seconds,
-                    false,
-                );
-                if let Ok(serialized) = serde_json::to_string(&initial_state) {
-                    tokio::task::spawn_blocking(move || {
-                        if let Err(e) = std::fs::write(&state_path, serialized) {
-                            log::warn!(
-                                "failed to write initial playback state to {}: {e}",
-                                crate::logging::sanitize_path(&state_path)
-                            );
-                        }
-                    });
+        if matches!(kind, crate::tui::state::PlayerKind::Mpv) {
+            if let (Some((p, s, se, ep)), Some(item)) = (&tracker_opts, &history_item) {
+                if let Some(state_path) = crate::player::tracker::state_file_path(p, s, *se, *ep) {
+                    let mut initial_state = crate::history::PendingPlaybackState::from_item(
+                        item,
+                        resume_seconds.unwrap_or(0),
+                        item.duration_seconds,
+                        false,
+                    );
+                    if initial_state.stream_filename.is_none() {
+                        initial_state.stream_filename = selected_stream_filename.clone();
+                    }
+                    if let Ok(serialized) = serde_json::to_string(&initial_state) {
+                        tokio::task::spawn_blocking(move || {
+                            if let Err(e) = std::fs::write(&state_path, serialized) {
+                                log::warn!(
+                                    "failed to write initial playback state to {}: {e}",
+                                    crate::logging::sanitize_path(&state_path)
+                                );
+                            }
+                        });
+                    }
                 }
             }
         }
@@ -368,15 +385,17 @@ impl App {
                 .as_ref()
                 .map(|(p, s, se, ep)| (p.as_str(), s.as_str(), *se, *ep));
 
-            let needs_proxy = matches!(
-                kind,
-                crate::tui::state::PlayerKind::Vlc | crate::tui::state::PlayerKind::AndroidIntent
-            ) && headers.iter().any(|(name, _)| {
-                !name.eq_ignore_ascii_case("referer") && !name.eq_ignore_ascii_case("user-agent")
-            });
+            let is_dash = crate::player::is_dash_url(&link);
+            let needs_proxy = is_dash
+                || (matches!(
+                    kind,
+                    crate::tui::state::PlayerKind::Vlc | crate::tui::state::PlayerKind::AndroidIntent
+                ) && headers.iter().any(|(name, _)| {
+                    !name.eq_ignore_ascii_case("referer") && !name.eq_ignore_ascii_case("user-agent")
+                }));
 
             let (effective_link, effective_subtitle) = if needs_proxy {
-                match crate::proxy::spawn_sidecar(&link, &headers, subtitle.as_deref()) {
+                match crate::proxy::spawn_sidecar(&link, &headers, subtitle.as_deref(), max_height) {
                     Ok(local_url) => {
                         let sub_url =
                             if matches!(kind, crate::tui::state::PlayerKind::AndroidIntent) {
@@ -424,17 +443,21 @@ impl App {
                     } else {
                         cmd.stdout(std::process::Stdio::null());
                     }
-                    cmd.stderr(std::process::Stdio::piped());
-                    #[cfg(unix)]
+                    let log_file = std::env::temp_dir().join(format!(
+                        "sumanmovies_player_{}.log",
+                        kind.config_key()
+                    ));
+                    if let Ok(file) = std::fs::OpenOptions::new()
+                        .create(true)
+                        .write(true)
+                        .truncate(true)
+                        .open(&log_file)
                     {
-                        use std::os::unix::process::CommandExt;
-                        cmd.process_group(0);
+                        cmd.stderr(std::process::Stdio::from(file));
+                    } else {
+                        cmd.stderr(std::process::Stdio::null());
                     }
-                    #[cfg(windows)]
-                    {
-                        use std::os::windows::process::CommandExt;
-                        cmd.creation_flags(0x0000_0200);
-                    }
+                    crate::player::configure_detached_process(&mut cmd);
                     cmd.spawn()
                 };
             let is_android = matches!(kind, crate::tui::state::PlayerKind::AndroidIntent);
@@ -1047,8 +1070,6 @@ impl App {
             }
             Action::MarkWatched(item) => {
                 self.state.history.mark_watched(*item);
-                let history = self.state.history.clone();
-                tokio::task::spawn_blocking(move || history.save());
             }
             Action::UpdateProgress {
                 item,

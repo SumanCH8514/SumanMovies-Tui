@@ -1746,10 +1746,23 @@ impl App {
                 self.state.is_loading = false;
                 self.state.is_fetching_streams = false;
                 self.state.has_streams_settled = true;
-                self.state.stream_error = None;
-                self.state
-                    .resource_list_state
-                    .select(if count > 0 { Some(0) } else { None });
+                let mut default_idx = if count > 0 { Some(0) } else { None };
+                if let Some(subject_id) = &self.state.active_subject_id {
+                    let prov = context.provider.cache_key();
+                    let se = self.state.selected_season;
+                    let ep = self.state.selected_episode;
+                    if let Some(hist_item) = self.state.history.get_item(prov, subject_id, se, ep, None) {
+                        if let Some(saved_name) = &hist_item.stream_filename {
+                            if let Some(matched_pos) = self.state.selected_resources.iter().position(|r| {
+                                r.mirrors.iter().any(|m| m.label == *saved_name || m.resolver_url.contains(saved_name.as_str()))
+                                    || r.filename == *saved_name
+                            }) {
+                                default_idx = Some(matched_pos);
+                            }
+                        }
+                    }
+                }
+                self.state.resource_list_state.select(default_idx);
                 self.state
                     .set_status_default(format!("{} streams available.", count));
 

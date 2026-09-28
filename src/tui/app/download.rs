@@ -254,6 +254,13 @@ impl App {
                     return;
                 };
 
+                if crate::player::find_in_path("ffmpeg").is_none() {
+                    sender
+                        .send(Action::DownloadFailed(ffmpeg_missing_guidance()))
+                        .ok();
+                    return;
+                }
+
                 let mut cmd = tokio::process::Command::new(ytdlp_bin);
                 for (k, v) in &headers {
                     let clean_k: String = k
@@ -288,6 +295,16 @@ impl App {
                     .arg("-o")
                     .arg(&destination)
                     .arg("--force-overwrites")
+                    .arg("--http-chunk-size")
+                    .arg("95K")
+                    .arg("--concurrent-fragments")
+                    .arg("8")
+                    .arg("--fragment-retries")
+                    .arg("10")
+                    .arg("--retries")
+                    .arg("5")
+                    .arg("--socket-timeout")
+                    .arg("30")
                     .arg(&clean_link);
                 #[cfg(target_os = "windows")]
                 {
@@ -309,12 +326,22 @@ impl App {
                     }
                 };
 
+                let stderr_lines = std::sync::Arc::new(tokio::sync::Mutex::new(std::collections::VecDeque::new()));
                 if let Some(stderr) = child.stderr.take() {
+                    let lines_buf = std::sync::Arc::clone(&stderr_lines);
                     tokio::spawn(async move {
                         use tokio::io::AsyncBufReadExt;
                         let mut reader = tokio::io::BufReader::new(stderr).lines();
                         while let Ok(Some(line)) = reader.next_line().await {
                             log::debug!("yt-dlp stderr: {line}");
+                            let trimmed = line.trim();
+                            if !trimmed.is_empty() {
+                                let mut lock = lines_buf.lock().await;
+                                if lock.len() >= 10 {
+                                    lock.pop_front();
+                                }
+                                lock.push_back(trimmed.to_string());
+                            }
                         }
                     });
                 }
@@ -404,11 +431,20 @@ impl App {
                                 ))
                                 .ok();
                         } else {
-                            sender
-                                .send(Action::DownloadFailed(format!(
-                                    "yt-dlp exited with status {s}"
-                                )))
-                                .ok();
+                            let err_detail = {
+                                let lock = stderr_lines.lock().await;
+                                lock.iter()
+                                    .rev()
+                                    .find(|l| l.contains("ERROR:") || l.contains("error:"))
+                                    .cloned()
+                                    .or_else(|| lock.back().cloned())
+                            };
+                            let msg = if let Some(detail) = err_detail {
+                                format!("yt-dlp failed ({s}): {detail}")
+                            } else {
+                                format!("yt-dlp exited with status {s}")
+                            };
+                            sender.send(Action::DownloadFailed(msg)).ok();
                         }
                     }
                     Err(err) => {
@@ -1039,6 +1075,22 @@ pub(crate) fn yt_dlp_missing_guidance() -> String {
         "DASH streams require yt-dlp & ffmpeg.".to_string()
     }
 }
+
+pub(crate) fn ffmpeg_missing_guidance() -> String {
+    if crate::updater::artifact::is_termux_environment() {
+        "DASH streams require ffmpeg to merge video and audio.\nRun: pkg install ffmpeg".to_string()
+    } else if cfg!(target_os = "macos") {
+        "DASH streams require ffmpeg to merge video and audio.\nRun: brew install ffmpeg".to_string()
+    } else if cfg!(target_os = "windows") {
+        "DASH streams require ffmpeg to merge video and audio.\nRun: winget install Gyan.FFmpeg"
+            .to_string()
+    } else if cfg!(target_os = "linux") {
+        "DASH streams require ffmpeg to merge video and audio.\nInstall via system package manager"
+            .to_string()
+    } else {
+        "DASH streams require ffmpeg to merge video and audio.".to_string()
+    }
+}
 pub(crate) fn ytdlp_format_selector(max_height: Option<u64>) -> String {
     if let Some(height) = max_height.filter(|&h| h > 0) {
         format!(
@@ -1240,6 +1292,16 @@ mod tests {
         assert!(guidance.contains("brew install yt-dlp ffmpeg"));
         #[cfg(target_os = "windows")]
         assert!(guidance.contains("winget install yt-dlp.yt-dlp Gyan.FFmpeg"));
+    }
+
+    #[test]
+    fn test_ffmpeg_missing_guidance_contains_platform_hint() {
+        let guidance = super::ffmpeg_missing_guidance();
+        assert!(guidance.contains("DASH streams require ffmpeg"));
+        #[cfg(target_os = "macos")]
+        assert!(guidance.contains("brew install ffmpeg"));
+        #[cfg(target_os = "windows")]
+        assert!(guidance.contains("winget install Gyan.FFmpeg"));
     }
 
     #[tokio::test]

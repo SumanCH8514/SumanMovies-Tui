@@ -2578,6 +2578,7 @@ name = "sumanmovies-tui"
 version = "1.0.5"
 dependencies = [
  "base64 0.23.1",
+ "bytes",
  "crossterm",
  "dirs",
  "flate2",

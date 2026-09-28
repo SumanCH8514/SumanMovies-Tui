@@ -53,11 +53,23 @@ impl PlayerKind {
     }
 }
 
+pub fn has_active_display_server() -> bool {
+    std::env::var("DISPLAY")
+        .map(|v| !v.trim().is_empty())
+        .unwrap_or(false)
+        || std::env::var("WAYLAND_DISPLAY")
+            .map(|v| !v.trim().is_empty())
+            .unwrap_or(false)
+}
+
 pub fn detect() -> Vec<PlayerKind> {
     let mut players = Vec::new();
 
     let is_termux = crate::updater::artifact::is_termux_environment();
-    if is_termux && !android_openers().is_empty() {
+    let has_display = has_active_display_server();
+
+    // If on Termux/Android without an active X11/Wayland display server, prioritize external Android players
+    if is_termux && !has_display && !android_openers().is_empty() {
         players.push(PlayerKind::AndroidIntent);
     }
 
@@ -74,7 +86,7 @@ pub fn detect() -> Vec<PlayerKind> {
         players.push(PlayerKind::Vlc);
     }
 
-    if !is_termux && !android_openers().is_empty() {
+    if (!is_termux || has_display) && !android_openers().is_empty() && !players.contains(&PlayerKind::AndroidIntent) {
         players.push(PlayerKind::AndroidIntent);
     }
 
@@ -422,6 +434,11 @@ fn android_intent_command(
         })
 }
 
+pub fn is_dash_url(url: &str) -> bool {
+    let lower = url.to_ascii_lowercase();
+    lower.contains(".mpd") || lower.contains("/dash/") || lower.contains("#ytdl-format=")
+}
+
 #[allow(clippy::too_many_arguments)]
 fn mpv_command(
     url: &str,
@@ -452,9 +469,11 @@ fn mpv_command(
     }
     command.arg(format!("{prefix}geometry=50%:50%"));
     command.arg(format!("{prefix}cache=yes"));
+    command.arg(format!("{prefix}cache-secs=120"));
     command.arg(format!("{prefix}cache-pause=yes"));
-    command.arg(format!("{prefix}cache-pause-wait=8"));
-    command.arg(format!("{prefix}cache-pause-initial=yes"));
+    command.arg(format!("{prefix}cache-pause-wait=3"));
+    command.arg(format!("{prefix}cache-pause-initial=no"));
+    command.arg(format!("{prefix}hwdec=auto-safe"));
     let (max_bytes, back_bytes) =
         if cfg!(target_os = "android") || crate::updater::artifact::is_termux_environment() {
             ("128M", "50M")
@@ -465,13 +484,16 @@ fn mpv_command(
     command.arg(format!("{prefix}demuxer-max-back-bytes={back_bytes}"));
     command.arg(format!("{prefix}demuxer-readahead-secs=120"));
     command.arg(format!("{prefix}demuxer-lavf-buffersize=1048576"));
-    command.arg(format!("{prefix}stream-buffer-size=512k"));
+    command.arg(format!("{prefix}stream-buffer-size=4M"));
     command.arg(format!("{prefix}force-seekable=yes"));
     command.arg(format!(
         "{prefix}stream-lavf-o=reconnect=1,reconnect_streamed=1,reconnect_delay_max=5"
     ));
     if !iina {
         command.arg("--idle=no").arg("--keep-open=no");
+    }
+    if !is_dash_url(url) && !url.contains("youtube.com") && !url.contains("youtu.be") {
+        command.arg(format!("{prefix}ytdl=no"));
     }
     if let Some(height) = max_height.filter(|&h| h > 0) {
         command.arg(format!(
@@ -590,21 +612,19 @@ fn probe_iina_resolution() -> Option<IinaResolution> {
 }
 
 #[cfg(target_os = "macos")]
-static IINA_CACHED: std::sync::RwLock<Option<IinaResolution>> = std::sync::RwLock::new(None);
+static IINA_CACHED: std::sync::RwLock<Option<Option<IinaResolution>>> = std::sync::RwLock::new(None);
 
 #[cfg(target_os = "macos")]
 fn iina_resolution() -> Option<IinaResolution> {
     if let Ok(guard) = IINA_CACHED.read() {
-        if let Some(res) = &*guard {
-            return Some(res.clone());
+        if let Some(cached) = &*guard {
+            return cached.clone();
         }
     }
 
     let detected = probe_iina_resolution();
-    if let Some(res) = &detected {
-        if let Ok(mut guard) = IINA_CACHED.write() {
-            *guard = Some(res.clone());
-        }
+    if let Ok(mut guard) = IINA_CACHED.write() {
+        *guard = Some(detected.clone());
     }
     detected
 }
@@ -716,8 +736,10 @@ fn vlc_command(
             .arg(format!("--height={height}"));
     }
     command.arg("--play-and-exit");
-    command.arg("--network-caching=10000");
-    command.arg("--adaptive-logic=nearoptimal");
+    command.arg("--network-caching=3000");
+    command.arg("--file-caching=3000");
+    command.arg("--http-reconnect");
+    command.arg("--adaptive-logic=predictive");
     if let Some(height) = max_height.filter(|&h| h > 0) {
         command.arg(format!("--adaptive-maxheight={height}"));
     }
@@ -1311,44 +1333,49 @@ fn probe_vlc() -> Option<String> {
     )
 }
 
-static MPV_CACHED: std::sync::RwLock<Option<String>> = std::sync::RwLock::new(None);
-static VLC_CACHED: std::sync::RwLock<Option<String>> = std::sync::RwLock::new(None);
+static MPV_CACHED: std::sync::RwLock<Option<Option<String>>> = std::sync::RwLock::new(None);
+static VLC_CACHED: std::sync::RwLock<Option<Option<String>>> = std::sync::RwLock::new(None);
 
 fn mpv_executable() -> Option<String> {
     if let Ok(guard) = MPV_CACHED.read() {
-        if let Some(path) = &*guard {
-            if path.starts_with("flatpak run ") || Path::new(path).is_file() {
-                return Some(path.clone());
+        if let Some(cached) = &*guard {
+            if let Some(path) = cached {
+                if path.starts_with("flatpak run ") || Path::new(path).is_file() {
+                    return Some(path.clone());
+                }
+            } else {
+                return None;
             }
         }
     }
 
     let detected = probe_mpv();
-    if let Some(path) = &detected {
-        if let Ok(mut guard) = MPV_CACHED.write() {
-            *guard = Some(path.clone());
-        }
+    if let Ok(mut guard) = MPV_CACHED.write() {
+        *guard = Some(detected.clone());
     }
     detected
 }
 
 fn vlc_executable() -> Option<String> {
     if let Ok(guard) = VLC_CACHED.read() {
-        if let Some(path) = &*guard {
-            if path.starts_with("flatpak run ") || Path::new(path).is_file() {
-                return Some(path.clone());
+        if let Some(cached) = &*guard {
+            if let Some(path) = cached {
+                if path.starts_with("flatpak run ") || Path::new(path).is_file() {
+                    return Some(path.clone());
+                }
+            } else {
+                return None;
             }
         }
     }
 
     let detected = probe_vlc();
-    if let Some(path) = &detected {
-        if let Ok(mut guard) = VLC_CACHED.write() {
-            *guard = Some(path.clone());
-        }
+    if let Ok(mut guard) = VLC_CACHED.write() {
+        *guard = Some(detected.clone());
     }
     detected
 }
+
 pub fn clear_cached_player_executables() {
     if let Ok(mut guard) = MPV_CACHED.write() {
         *guard = None;
@@ -1359,6 +1386,27 @@ pub fn clear_cached_player_executables() {
     #[cfg(target_os = "macos")]
     if let Ok(mut guard) = IINA_CACHED.write() {
         *guard = None;
+    }
+}
+
+pub fn configure_detached_process(cmd: &mut Command) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        unsafe {
+            cmd.pre_exec(|| {
+                libc::setsid();
+                libc::signal(libc::SIGHUP, libc::SIG_IGN);
+                Ok(())
+            });
+        }
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const DETACHED_PROCESS: u32 = 0x0000_0008;
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+        cmd.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
     }
 }
 
@@ -1636,6 +1684,10 @@ mod tests {
         assert!(args.contains(&"--width=1280".into()));
         assert!(args.contains(&"--height=720".into()));
         assert!(args.contains(&"--play-and-exit".into()));
+        assert!(args.contains(&"--network-caching=3000".into()));
+        assert!(args.contains(&"--file-caching=3000".into()));
+        assert!(args.contains(&"--http-reconnect".into()));
+        assert!(args.contains(&"--adaptive-logic=predictive".into()));
         assert!(args.contains(&"--start-time=42".into()));
         assert!(args.contains(&"--http-referrer=https://example.test/".into()));
         assert!(args.contains(&"--http-user-agent=MovieBox-Test".into()));
@@ -1968,7 +2020,7 @@ mod tests {
     #[test]
     fn test_mpv_command_headers_and_arguments_assembly() {
         let headers = vec![
-            ("User-Agent".to_string(), "MovieBox-Tui/0.1.23".to_string()),
+            ("User-Agent".to_string(), "SumanMovies-Tui/0.1.23".to_string()),
             ("Referer".to_string(), "https://upstream.cdn/".to_string()),
             ("Origin".to_string(), "https://upstream.cdn".to_string()),
         ];
@@ -1992,13 +2044,15 @@ mod tests {
         assert!(args.contains(&"--start=120".to_string()));
         assert!(args.contains(&"--autofit=1920x1080".to_string()));
         assert!(args.contains(&"--cache=yes".to_string()));
+        assert!(args.contains(&"--cache-secs=120".to_string()));
         assert!(args.contains(&"--cache-pause=yes".to_string()));
-        assert!(args.contains(&"--cache-pause-wait=8".to_string()));
-        assert!(args.contains(&"--cache-pause-initial=yes".to_string()));
+        assert!(args.contains(&"--cache-pause-wait=3".to_string()));
+        assert!(args.contains(&"--cache-pause-initial=no".to_string()));
+        assert!(args.contains(&"--hwdec=auto-safe".to_string()));
         assert!(args.contains(&"--demuxer-max-bytes=256M".to_string()));
         assert!(args.contains(&"--demuxer-readahead-secs=120".to_string()));
         assert!(args.contains(&"--demuxer-lavf-buffersize=1048576".to_string()));
-        assert!(args.contains(&"--stream-buffer-size=512k".to_string()));
+        assert!(args.contains(&"--stream-buffer-size=4M".to_string()));
         assert!(args.contains(&"--force-seekable=yes".to_string()));
         assert!(args.contains(
             &"--stream-lavf-o=reconnect=1,reconnect_streamed=1,reconnect_delay_max=5".to_string()
@@ -2036,8 +2090,10 @@ mod tests {
             .map(|a| a.to_string_lossy().into_owned())
             .collect();
 
-        assert!(args.contains(&"--network-caching=10000".to_string()));
-        assert!(args.contains(&"--adaptive-logic=nearoptimal".to_string()));
+        assert!(args.contains(&"--network-caching=3000".to_string()));
+        assert!(args.contains(&"--file-caching=3000".to_string()));
+        assert!(args.contains(&"--http-reconnect".to_string()));
+        assert!(args.contains(&"--adaptive-logic=predictive".to_string()));
         assert!(args.contains(&"--http-user-agent=VLC-Agent".to_string()));
         assert!(args.contains(&"--http-referrer=https://cdn.example.com".to_string()));
         assert!(!args.iter().any(|a| a.contains("CloudFront-Signature")));

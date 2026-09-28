@@ -461,6 +461,7 @@ async fn test_series_details_resumes_watch_history() {
             timestamp: 1000,
             release_year: "2008".to_string(),
             cover_url: None,
+            stream_filename: None,
         });
     app.state_mut().active_details_request = 1;
 

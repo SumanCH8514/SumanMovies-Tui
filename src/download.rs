@@ -11,8 +11,9 @@ use std::{
     },
     time::{Duration, Instant},
 };
+use std::io::SeekFrom;
 use thiserror::Error;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 
 const MAX_ATTEMPTS: usize = 4;
 const SEGMENT_THRESHOLD: u64 = 32 * 1024 * 1024;
@@ -133,6 +134,7 @@ struct ResumeMetadata {
     last_modified: Option<String>,
     total: Option<u64>,
     segments: Option<usize>,
+    segment_progress: Option<Vec<u64>>,
 }
 
 pub async fn download<F>(
@@ -203,14 +205,17 @@ where
         {
             let total = response.content_length().unwrap_or_default();
             let segments = segment_count(total);
-            let current_metadata = ResumeMetadata {
+            let mut current_metadata = ResumeMetadata {
                 etag: header_string(&response, ETAG),
                 last_modified: header_string(&response, LAST_MODIFIED),
                 total: Some(total),
                 segments: Some(segments),
+                segment_progress: None,
             };
             if !metadata_matches(&metadata, &current_metadata) {
                 remove_segment_files(destination).await;
+            } else {
+                current_metadata.segment_progress = metadata.segment_progress;
             }
             write_metadata(&metadata_path, &current_metadata).await?;
             drop(response);
@@ -275,6 +280,7 @@ where
         metadata.last_modified = header_string(&response, LAST_MODIFIED).or(metadata.last_modified);
         metadata.total = response_total.or(metadata.total);
         metadata.segments = None;
+        metadata.segment_progress = None;
         write_metadata(&metadata_path, &metadata).await?;
 
         let raw_file = tokio::fs::OpenOptions::new()
@@ -378,20 +384,33 @@ where
         .ok_or_else(|| DownloadError::InvalidRange("segment total missing".into()))?;
     let segments = metadata.segments.unwrap_or_else(|| segment_count(total));
     let ranges = segment_ranges(total, segments);
-    let mut initial = 0;
 
-    for (index, (start, end)) in ranges.iter().copied().enumerate() {
-        let path = segment_path(destination, index);
-        let expected = end - start + 1;
-        let length = file_len(&path).await;
-        if length > expected {
-            truncate(&path).await?;
+    let partial = sidecar_path(destination, "part");
+
+    // Pre-allocate the .part file to the exact total size
+    let raw_file = tokio::fs::OpenOptions::new()
+        .create(true)
+        .read(true)
+        .write(true)
+        .truncate(false)
+        .open(&partial)
+        .await?;
+    raw_file.set_len(total).await?;
+    drop(raw_file);
+
+    let initial_progress: Vec<u64> = if let Some(ref saved) = metadata.segment_progress {
+        if saved.len() == segments {
+            saved.clone()
         } else {
-            initial += length;
+            vec![0u64; segments]
         }
-    }
-
+    } else {
+        vec![0u64; segments]
+    };
+    let initial: u64 = initial_progress.iter().sum();
     let downloaded = Arc::new(AtomicU64::new(initial));
+    let trackers = Arc::new(tokio::sync::RwLock::new(initial_progress.clone()));
+
     let (progress_sender, mut progress_receiver) = tokio::sync::mpsc::channel::<(u64, usize)>(64);
     let mut tasks = tokio::task::JoinSet::new();
     let validator = metadata.etag.clone().or(metadata.last_modified.clone());
@@ -399,21 +418,26 @@ where
     for (index, (start, end)) in ranges.iter().copied().enumerate() {
         let client = client.clone();
         let url = url.to_string();
-        let path = segment_path(destination, index);
+        let partial_path = partial.clone();
         let cancel = cancel.clone();
         let progress_sender = progress_sender.clone();
         let validator = validator.clone();
+        let existing = initial_progress[index];
+        let trackers_clone = Arc::clone(&trackers);
         tasks.spawn(async move {
             download_segment(
                 &client,
                 &url,
-                &path,
+                &partial_path,
                 start,
                 end,
                 total,
+                existing,
                 validator,
                 cancel,
                 progress_sender,
+                trackers_clone,
+                index,
             )
             .await
         });
@@ -450,16 +474,25 @@ where
                     Some(Ok(Ok(()))) => finished += 1,
                     Some(Ok(Err(DownloadError::Paused))) => {
                         tasks.abort_all();
+                        let mut paused_meta = metadata;
+                        paused_meta.segment_progress = Some(trackers.read().await.clone());
+                        let _ = write_metadata(metadata_path, &paused_meta).await;
                         return Ok(DownloadOutcome::Paused {
                             bytes: downloaded.load(Ordering::Relaxed),
                         });
                     }
                     Some(Ok(Err(error))) => {
                         tasks.abort_all();
+                        let mut paused_meta = metadata;
+                        paused_meta.segment_progress = Some(trackers.read().await.clone());
+                        let _ = write_metadata(metadata_path, &paused_meta).await;
                         return Err(error);
                     }
                     Some(Err(error)) => {
                         tasks.abort_all();
+                        let mut paused_meta = metadata;
+                        paused_meta.segment_progress = Some(trackers.read().await.clone());
+                        let _ = write_metadata(metadata_path, &paused_meta).await;
                         return Err(DownloadError::InvalidRange(format!(
                             "download worker stopped: {error}"
                         )));
@@ -471,51 +504,23 @@ where
     }
 
     if cancel.load(Ordering::Relaxed) {
+        let mut paused_meta = metadata;
+        paused_meta.segment_progress = Some(trackers.read().await.clone());
+        let _ = write_metadata(metadata_path, &paused_meta).await;
         return Ok(DownloadOutcome::Paused {
             bytes: downloaded.load(Ordering::Relaxed),
         });
     }
 
-    let assembly = sidecar_path(destination, "assembling");
-    let mut output = tokio::fs::File::create(&assembly).await?;
-    let mut copy_buffer = vec![0u8; 256 * 1024];
-    for index in 0..segments {
-        let path = segment_path(destination, index);
-        let mut part = tokio::fs::File::open(&path).await?;
-        loop {
-            let n = tokio::io::AsyncReadExt::read(&mut part, &mut copy_buffer).await?;
-            if n == 0 {
-                break;
-            }
-            tokio::io::AsyncWriteExt::write_all(&mut output, &copy_buffer[..n]).await?;
-        }
-    }
-    output.flush().await?;
-    output.sync_data().await?;
-    drop(output);
-    if file_len(&assembly).await != total {
+    if file_len(&partial).await != total {
         return Err(DownloadError::Incomplete {
-            downloaded: file_len(&assembly).await,
+            downloaded: file_len(&partial).await,
             expected: total,
         });
     }
-    if destination.exists() {
-        let _ = tokio::fs::remove_file(destination).await;
-    }
-    if let Err(e) = tokio::fs::rename(&assembly, destination).await {
-        let _ = tokio::fs::remove_file(destination).await;
-        tokio::fs::rename(&assembly, destination)
-            .await
-            .map_err(|e2| {
-                DownloadError::File(std::io::Error::other(format!(
-                    "failed to move assembled file to destination: {e} ({e2})"
-                )))
-            })?;
-    }
-    for index in 0..segments {
-        let _ = tokio::fs::remove_file(segment_path(destination, index)).await;
-    }
-    let _ = tokio::fs::remove_file(metadata_path).await;
+
+    finalize(&partial, metadata_path, destination).await?;
+
     report(DownloadProgress {
         downloaded: total,
         total: Some(total),
@@ -538,9 +543,12 @@ async fn download_segment(
     start: u64,
     end: u64,
     total: u64,
+    existing: u64,
     validator: Option<String>,
     cancel: Arc<AtomicBool>,
     progress: tokio::sync::mpsc::Sender<(u64, usize)>,
+    trackers: Arc<tokio::sync::RwLock<Vec<u64>>>,
+    index: usize,
 ) -> Result<(), DownloadError> {
     let expected = end - start + 1;
     let mut last_error = None;
@@ -549,11 +557,14 @@ async fn download_segment(
         if cancel.load(Ordering::Relaxed) {
             return Err(DownloadError::Paused);
         }
-        let existing = file_len(path).await.min(expected);
-        if existing == expected {
+        let current_existing = {
+            let read = trackers.read().await;
+            read[index].max(existing).min(expected)
+        };
+        if current_existing == expected {
             return Ok(());
         }
-        let requested_start = start + existing;
+        let requested_start = start + current_existing;
         let mut request = client
             .get(url)
             .header(RANGE, format!("bytes={requested_start}-{end}"));
@@ -592,22 +603,26 @@ async fn download_segment(
             )));
         }
 
-        let raw_file = tokio::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
+        let mut raw_file = tokio::fs::OpenOptions::new()
+            .write(true)
             .open(path)
             .await?;
+        raw_file.seek(SeekFrom::Start(requested_start)).await?;
+
         let mut file = tokio::io::BufWriter::with_capacity(256 * 1024, raw_file);
         let mut response = response;
-        let mut written = existing;
+        let mut written = current_existing;
         let mut unbatched_bytes = 0u64;
         let mut last_progress_send = Instant::now();
+
         loop {
             if cancel.load(Ordering::Relaxed) {
                 if unbatched_bytes > 0 {
                     let _ = progress.send((unbatched_bytes, attempt)).await;
                 }
                 file.flush().await?;
+                let mut lock = trackers.write().await;
+                lock[index] = written;
                 return Err(DownloadError::Paused);
             }
             match tokio::time::timeout(Duration::from_secs(30), response.chunk()).await {
@@ -623,6 +638,8 @@ async fn download_segment(
                         let _ = progress.send((unbatched_bytes, attempt)).await;
                         unbatched_bytes = 0;
                         last_progress_send = Instant::now();
+                        let mut lock = trackers.write().await;
+                        lock[index] = written;
                     }
                     if written == expected {
                         if unbatched_bytes > 0 {
@@ -630,6 +647,8 @@ async fn download_segment(
                         }
                         file.flush().await?;
                         file.get_mut().sync_data().await?;
+                        let mut lock = trackers.write().await;
+                        lock[index] = written;
                         return Ok(());
                     }
                 }
@@ -638,6 +657,8 @@ async fn download_segment(
                         let _ = progress.send((unbatched_bytes, attempt)).await;
                     }
                     file.flush().await?;
+                    let mut lock = trackers.write().await;
+                    lock[index] = written;
                     last_error = Some(DownloadError::Incomplete {
                         downloaded: written,
                         expected,
@@ -649,6 +670,8 @@ async fn download_segment(
                         let _ = progress.send((unbatched_bytes, attempt)).await;
                     }
                     file.flush().await?;
+                    let mut lock = trackers.write().await;
+                    lock[index] = written;
                     last_error = Some(DownloadError::Network(error));
                     break;
                 }
@@ -657,6 +680,8 @@ async fn download_segment(
                         let _ = progress.send((unbatched_bytes, attempt)).await;
                     }
                     file.flush().await?;
+                    let mut lock = trackers.write().await;
+                    lock[index] = written;
                     last_error = Some(DownloadError::InvalidRange("read timeout".into()));
                     break;
                 }
@@ -665,8 +690,12 @@ async fn download_segment(
         retry_delay(attempt).await;
     }
 
+    let downloaded = {
+        let read = trackers.read().await;
+        read[index]
+    };
     Err(last_error.unwrap_or(DownloadError::Incomplete {
-        downloaded: file_len(path).await,
+        downloaded,
         expected,
     }))
 }

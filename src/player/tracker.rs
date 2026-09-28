@@ -15,10 +15,13 @@ options.read_options(opts, "moviebox")
 local last_pos = 0
 local last_dur = 0
 local has_completed = false
+local is_paused = false
+local last_written_pos = -1
 local meta_title = ""
 local meta_cover = ""
 local meta_stype = 0
 local meta_year = ""
+local meta_filename = ""
 local seed_read = false
 
 local function read_seed_meta()
@@ -34,6 +37,7 @@ local function read_seed_meta()
     local st = content:match('"stype":%s*(%d+)')
     if st then meta_stype = tonumber(st) or 0 end
     meta_year = content:match('"release_year":%s*"([^"]-)"') or ""
+    meta_filename = content:match('"stream_filename":%s*"([^"]-)"') or ""
 end
 
 mp.observe_property("time-pos", "number", function(name, val)
@@ -46,6 +50,10 @@ mp.observe_property("duration", "number", function(name, val)
     if val then
         last_dur = val
     end
+end)
+
+mp.observe_property("pause", "bool", function(name, val)
+    is_paused = (val == true)
 end)
 
 local function write_state(force_completed)
@@ -77,6 +85,9 @@ local function write_state(force_completed)
             meta_year
         )
     end
+    if meta_filename ~= "" then
+        meta_json = meta_json .. string.format(',"stream_filename":%q', meta_filename)
+    end
 
     local json = string.format(
         '{"provider":%q,"subject_id":%q,"season":%d,"episode":%d,"progress_seconds":%d,"duration_seconds":%s,"completed":%s,"timestamp":%d%s}',
@@ -99,6 +110,7 @@ local function write_state(force_completed)
         f:close()
         os.remove(opts.state_file)
         os.rename(tmp_file, opts.state_file)
+        last_written_pos = last_pos
     end
 end
 
@@ -113,7 +125,9 @@ mp.register_event("shutdown", function()
 end)
 
 mp.add_periodic_timer(5, function()
-    write_state(false)
+    if not is_paused and math.abs(last_pos - last_written_pos) >= 1.0 then
+        write_state(false)
+    end
 end)
 "#;
 

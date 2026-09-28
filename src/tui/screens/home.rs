@@ -3492,6 +3492,7 @@ mod tests {
             duration_seconds: Some(3000),
             completed: false,
             timestamp: 100,
+            stream_filename: None,
         });
         state.favorites.items.push(crate::favorites::FavoriteItem {
             provider: "moviebox".to_string(),
@@ -4096,6 +4097,7 @@ mod tests {
             duration_seconds: Some(3000),
             completed: false,
             timestamp: 100,
+            stream_filename: None,
         });
         state.favorites.items.push(crate::favorites::FavoriteItem {
             provider: "moviebox".to_string(),
@@ -4148,6 +4150,7 @@ mod tests {
             duration_seconds: Some(3000),
             completed: false,
             timestamp: 100,
+            stream_filename: None,
         });
         state.favorites.items.push(crate::favorites::FavoriteItem {
             provider: "moviebox".to_string(),

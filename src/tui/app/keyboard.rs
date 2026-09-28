@@ -1372,8 +1372,9 @@ mod tests {
             duration_seconds: Some(500),
             completed: false,
             timestamp: 1000,
+            stream_filename: None,
         };
-        app.state.history.record_start(&item, 50);
+        app.state.history.record_start(&item, 50, None);
         app.state.search_results.push(item.to_search_result());
         app.state.search_list_state.select(Some(0));
         assert_eq!(app.state.search_results.len(), 1);

@@ -81,11 +81,19 @@ impl App {
                                 let count = cached.len();
                                 self.state.selected_resources = cached.clone();
                                 self.state.is_loading = false;
-                                self.state.resource_list_state.select(if count > 0 {
-                                    Some(0)
-                                } else {
-                                    None
-                                });
+                                let mut default_idx = if count > 0 { Some(0) } else { None };
+                                let prov = self.state.active_provider.cache_key();
+                                if let Some(hist_item) = self.state.history.get_item(prov, &subject_id, se, ep, None) {
+                                    if let Some(saved_name) = &hist_item.stream_filename {
+                                        if let Some(matched_pos) = cached.iter().position(|r| {
+                                            r.mirrors.iter().any(|m| m.label == *saved_name || m.resolver_url.contains(saved_name.as_str()))
+                                                || r.filename == *saved_name
+                                        }) {
+                                            default_idx = Some(matched_pos);
+                                        }
+                                    }
+                                }
+                                self.state.resource_list_state.select(default_idx);
                                 self.state.set_status_default(format!(
                                     "Resolved {} direct stream sources (cached).",
                                     count
