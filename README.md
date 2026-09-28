@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🎬 SumanMovies
+# 🎬 SumanMovies-TUI
 
 **A high-performance, keyboard-driven Terminal UI (TUI) for discovering, streaming, and downloading movies, TV series, anime, 4K UHD releases, and live TV directly from your command line.**
 
@@ -20,9 +20,9 @@
 
 ## 📖 Overview
 
-**SumanMovies** eliminates heavy ad-supported streaming websites, tracking cookies, and clunky browser players in favor of a sleek, ultra-responsive terminal environment. Powered by **Rust**, **Ratatui**, and **Tokio**, SumanMovies aggregates high-speed stream links across multiple providers, displays real-time high-resolution artwork posters, and delegates hardware-accelerated playback directly to local players like `mpv`, `IINA`, and `VLC`.
+**SumanMovies-TUI** eliminates heavy ad-supported streaming websites, tracking cookies, and clunky browser players in favor of a sleek, ultra-responsive terminal environment. Powered by **Rust**, **Ratatui**, and **Tokio**, SumanMovies-TUI aggregates high-speed stream links across multiple providers, displays real-time high-resolution artwork posters, and delegates hardware-accelerated playback directly to local players like `mpv`, `IINA`, and `VLC`.
 
-Whether you want to binge a TV season in 4K HDR, search anime, extract YouTube audio/video streams, browse Asian dramas, or stream live IPTV sports channels — SumanMovies delivers a fluid, keyboard-centric experience.
+Whether you want to binge a TV season in 4K HDR, search anime, extract YouTube audio/video streams, browse Asian dramas, or stream live IPTV sports channels — SumanMovies-TUI delivers a fluid, keyboard-centric experience.
 
 ```text
  ┌────────────────────────────────────────────────────────────────────────────────────────┐
@@ -352,4 +352,4 @@ Crafted with ❤️ by **Suman**.
 - **Repository**: [SumanMovies-Tui](https://github.com/SumanCH8514/SumanMovies-Tui)
 - **NPM Package**: [sumanmovies](https://www.npmjs.com/package/sumanmovies)
 
-If you enjoy using SumanMovies, consider giving it a ⭐ on [GitHub](https://github.com/SumanCH8514/SumanMovies-Tui)!
+If you enjoy using SumanMovies-TUI, consider giving it a ⭐ on [GitHub](https://github.com/SumanCH8514/SumanMovies-Tui)!
