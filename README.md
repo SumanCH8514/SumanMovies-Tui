@@ -93,7 +93,7 @@ cd SumanMovies-Tui
 cargo build --release
 
 # Run
-./target/release/moviebox-tui
+./target/release/sumanmovies-tui
 ```
 
 ---

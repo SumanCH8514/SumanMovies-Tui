@@ -11,6 +11,7 @@ CUSTOM_DIR=""
 FORCE=0
 DRY_RUN=0
 NO_MODIFY_PATH=0
+NO_DEPS=0
 UNINSTALL=0
 
 while [ $# -gt 0 ]; do
@@ -51,6 +52,10 @@ while [ $# -gt 0 ]; do
             NO_MODIFY_PATH=1
             shift
             ;;
+        --no-deps)
+            NO_DEPS=1
+            shift
+            ;;
         --uninstall)
             UNINSTALL=1
             shift
@@ -69,6 +74,7 @@ OPTIONS:
     -f, --force            Reinstall even if already at the latest version
         --dry-run          Perform preflight checks without writing files
         --no-modify-path   Do not modify shell profile configuration
+        --no-deps          Do not install prerequisites (mpv, yt-dlp, ffmpeg)
         --uninstall        Uninstall SumanMovies-TUI from your system
     -h, --help             Show this help message
 EOF
@@ -449,7 +455,7 @@ if [ -z "$TARGET_VERSION" ]; then
     exit 1
 fi
 
-log_success "[1/4] Environment ready ($PLATFORM_NAME • $TARGET_VERSION)"
+log_success "[1/5] Environment ready ($PLATFORM_NAME • $TARGET_VERSION)"
 
 if [ -n "$CUSTOM_DIR" ]; then
     INSTALL_DIR="$CUSTOM_DIR"
@@ -501,6 +507,103 @@ if [ "$DRY_RUN" -eq 1 ]; then
     exit 0
 fi
 
+install_prerequisites() {
+    if [ "$NO_DEPS" -eq 1 ]; then
+        return 0
+    fi
+
+    local need_mpv=0
+    local need_ytdlp=0
+    local need_ffmpeg=0
+
+    if ! command -v mpv >/dev/null 2>&1 && [ ! -f "$HOME/.local/share/flatpak/exports/bin/io.mpv.Mpv" ] && [ ! -f "/var/lib/flatpak/exports/bin/io.mpv.Mpv" ]; then
+        need_mpv=1
+    fi
+    if ! command -v yt-dlp >/dev/null 2>&1 && [ ! -f "$INSTALL_DIR/yt-dlp" ]; then
+        need_ytdlp=1
+    fi
+    if ! command -v ffmpeg >/dev/null 2>&1; then
+        need_ffmpeg=1
+    fi
+
+    if [ "$need_mpv" -eq 0 ] && [ "$need_ytdlp" -eq 0 ] && [ "$need_ffmpeg" -eq 0 ]; then
+        return 0
+    fi
+
+    local sudo_cmd=""
+    if [ "$(id -u)" -ne 0 ]; then
+        if command -v sudo >/dev/null 2>&1; then
+            sudo_cmd="sudo"
+        fi
+    fi
+
+    if [ "$IS_TERMUX" -eq 1 ]; then
+        pkg install -y mpv yt-dlp ffmpeg termux-tools termux-am >/dev/null 2>&1 || true
+    elif [ "$OS" = "Darwin" ]; then
+        if command -v brew >/dev/null 2>&1; then
+            local brew_pkgs=()
+            [ "$need_mpv" -eq 1 ] && brew_pkgs+=("mpv")
+            [ "$need_ytdlp" -eq 1 ] && brew_pkgs+=("yt-dlp")
+            [ "$need_ffmpeg" -eq 1 ] && brew_pkgs+=("ffmpeg")
+            if [ "${#brew_pkgs[@]}" -gt 0 ]; then
+                brew install "${brew_pkgs[@]}" >/dev/null 2>&1 || true
+            fi
+        fi
+    elif command -v apt-get >/dev/null 2>&1; then
+        local apt_pkgs=()
+        [ "$need_mpv" -eq 1 ] && apt_pkgs+=("mpv")
+        [ "$need_ytdlp" -eq 1 ] && apt_pkgs+=("yt-dlp")
+        [ "$need_ffmpeg" -eq 1 ] && apt_pkgs+=("ffmpeg")
+        if [ "${#apt_pkgs[@]}" -gt 0 ]; then
+            $sudo_cmd apt-get update -qq >/dev/null 2>&1 || true
+            $sudo_cmd apt-get install -y -qq "${apt_pkgs[@]}" >/dev/null 2>&1 || true
+        fi
+    elif command -v pacman >/dev/null 2>&1; then
+        local pac_pkgs=()
+        [ "$need_mpv" -eq 1 ] && pac_pkgs+=("mpv")
+        [ "$need_ytdlp" -eq 1 ] && pac_pkgs+=("yt-dlp")
+        [ "$need_ffmpeg" -eq 1 ] && pac_pkgs+=("ffmpeg")
+        if [ "${#pac_pkgs[@]}" -gt 0 ]; then
+            $sudo_cmd pacman -S --noconfirm --needed "${pac_pkgs[@]}" >/dev/null 2>&1 || true
+        fi
+    elif command -v dnf >/dev/null 2>&1; then
+        local dnf_pkgs=()
+        [ "$need_mpv" -eq 1 ] && dnf_pkgs+=("mpv")
+        [ "$need_ytdlp" -eq 1 ] && dnf_pkgs+=("yt-dlp")
+        [ "$need_ffmpeg" -eq 1 ] && dnf_pkgs+=("ffmpeg")
+        if [ "${#dnf_pkgs[@]}" -gt 0 ]; then
+            $sudo_cmd dnf install -y "${dnf_pkgs[@]}" >/dev/null 2>&1 || true
+        fi
+    elif command -v zypper >/dev/null 2>&1; then
+        local zyp_pkgs=()
+        [ "$need_mpv" -eq 1 ] && zyp_pkgs+=("mpv")
+        [ "$need_ytdlp" -eq 1 ] && zyp_pkgs+=("yt-dlp")
+        [ "$need_ffmpeg" -eq 1 ] && zyp_pkgs+=("ffmpeg")
+        if [ "${#zyp_pkgs[@]}" -gt 0 ]; then
+            $sudo_cmd zypper --non-interactive in "${zyp_pkgs[@]}" >/dev/null 2>&1 || true
+        fi
+    elif command -v apk >/dev/null 2>&1; then
+        local apk_pkgs=()
+        [ "$need_mpv" -eq 1 ] && apk_pkgs+=("mpv")
+        [ "$need_ytdlp" -eq 1 ] && apk_pkgs+=("yt-dlp")
+        [ "$need_ffmpeg" -eq 1 ] && apk_pkgs+=("ffmpeg")
+        if [ "${#apk_pkgs[@]}" -gt 0 ]; then
+            $sudo_cmd apk add "${apk_pkgs[@]}" >/dev/null 2>&1 || true
+        fi
+    fi
+
+    # Zero-sudo user-level fallback for yt-dlp if still missing:
+    if ! command -v yt-dlp >/dev/null 2>&1 && [ ! -f "$INSTALL_DIR/yt-dlp" ]; then
+        curl -fsSL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o "$INSTALL_DIR/yt-dlp" >/dev/null 2>&1 || true
+        chmod 755 "$INSTALL_DIR/yt-dlp" 2>/dev/null || true
+    fi
+
+    return 0
+}
+
+run_spinner "[2/5] Configuring prerequisites (mpv, yt-dlp, ffmpeg)" install_prerequisites || true
+log_success "[2/5] Prerequisites checked & configured"
+
 TMP_DIR=$(mktemp -d)
 
 URL="https://github.com/$REPO/releases/download/$TARGET_VERSION/$FILE"
@@ -520,8 +623,8 @@ download_files() {
     curl -fsSL "$CHECKSUM_URL" -o "$TMP_DIR/SHA256SUMS"
 }
 
-run_spinner "[2/4] Downloading $FILE" download_files || exit 1
-log_success "[2/4] Downloaded $FILE"
+run_spinner "[3/5] Downloading $FILE" download_files || exit 1
+log_success "[3/5] Downloaded $FILE"
 
 verify_checksum() {
     local expected_sha
@@ -544,8 +647,8 @@ verify_checksum() {
     [ "$actual_sha" = "$expected_sha" ]
 }
 
-run_spinner "[3/4] Verifying SHA256 checksum" verify_checksum || exit 1
-log_success "[3/4] Cryptographic checksum verified"
+run_spinner "[4/5] Verifying SHA256 checksum" verify_checksum || exit 1
+log_success "[4/5] Cryptographic checksum verified"
 
 mkdir -p "$INSTALL_DIR" 2>/dev/null || true
 if [ ! -w "$INSTALL_DIR" ] && [ ! -w "$(dirname "$INSTALL_DIR")" ]; then
@@ -586,8 +689,8 @@ install_binary() {
     fi
 }
 
-run_spinner "[4/4] Installing binary to $INSTALL_DIR" install_binary || exit 1
-log_success "[4/4] Binary installed to $APP_PATH"
+run_spinner "[5/5] Installing binary to $INSTALL_DIR" install_binary || exit 1
+log_success "[5/5] Binary installed to $APP_PATH"
 
 if [ "$DRY_RUN" -eq 0 ]; then
     if ! smoke_output=$("$APP_PATH" --version 2>&1); then
@@ -670,12 +773,28 @@ printf "\n"
 printf "  %b✔ SumanMovies-Tui %s successfully installed!%b\n\n" "$C_GREEN" "$TARGET_VERSION" "$C_RESET"
 printf "  %b•%b %bBinary:%b  %b%s%b\n" "$C_MUTED" "$C_RESET" "$C_MUTED" "$C_RESET" "$C_TEXT" "$APP_PATH" "$C_RESET"
 
+YTDLP_DETECTED=0
+if command -v yt-dlp >/dev/null 2>&1 || [ -f "$INSTALL_DIR/yt-dlp" ]; then
+    YTDLP_DETECTED=1
+fi
+FFMPEG_DETECTED=0
+if command -v ffmpeg >/dev/null 2>&1; then
+    FFMPEG_DETECTED=1
+fi
+
 if [ -n "$PLAYER_DETECTED" ]; then
     printf "  %b•%b %bPlayer:%b  %b%s (ready)%b\n" "$C_MUTED" "$C_RESET" "$C_MUTED" "$C_RESET" "$C_GREEN" "$PLAYER_DETECTED" "$C_RESET"
 elif [ "$IS_TERMUX" -eq 1 ]; then
     printf "  %b•%b %bPlayer:%b  %bNone detected (run 'pkg install -y termux-tools termux-am')%b\n" "$C_MUTED" "$C_RESET" "$C_MUTED" "$C_RESET" "$C_SAPPHIRE" "$C_RESET"
 else
     printf "  %b•%b %bPlayer:%b  %bNone detected (mpv, VLC, or IINA recommended)%b\n" "$C_MUTED" "$C_RESET" "$C_MUTED" "$C_RESET" "$C_SAPPHIRE" "$C_RESET"
+fi
+
+if [ "$YTDLP_DETECTED" -eq 1 ]; then
+    printf "  %b•%b %bEngine:%b  %byt-dlp (ready)%b\n" "$C_MUTED" "$C_RESET" "$C_MUTED" "$C_RESET" "$C_GREEN" "$C_RESET"
+fi
+if [ "$FFMPEG_DETECTED" -eq 1 ]; then
+    printf "  %b•%b %bCodec:%b   %bffmpeg (ready)%b\n" "$C_MUTED" "$C_RESET" "$C_MUTED" "$C_RESET" "$C_GREEN" "$C_RESET"
 fi
 
 if [ -n "$SHELL_MODIFIED" ]; then
