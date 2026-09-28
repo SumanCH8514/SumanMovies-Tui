@@ -12,7 +12,7 @@
 
 <br/>
 
-[Overview](#-overview) • [Key Features](#-key-features) • [Installation](#-installation) • [Prerequisites](#-prerequisites) • [Controls & Shortcuts](#-controls--shortcuts) • [Providers & Modes](#-providers--content-modes) • [Themes](#-theme-engine) • [Configuration](#-configuration--environment) • [Documentation](#-documentation) • [License](#-license)
+[Overview](#-overview) • [Key Features](#-key-features) • [Installation](#-installation) • [Prerequisites](#-prerequisites) • [Controls & Shortcuts](#-controls--shortcuts) • [Providers & Modes](#-providers--content-modes) • [Themes](#-theme-engine) • [Configuration](#-configuration--environment) • [Documentation](#-complete-documentation) • [License](#-license)
 
 ---
 
@@ -321,20 +321,54 @@ SumanMovies/
 
 ---
 
-## 📚 Documentation
+## 📚 Complete Documentation
 
-Detailed technical guides and reference documentation are available in the [`docs/`](docs/) directory:
+SumanMovies-TUI includes a comprehensive **mdBook** documentation suite located in the [`docs/`](docs/) directory. Below is the complete index of technical guides and architecture references:
 
-- 📖 [Getting Started & Installation Guide](docs/installation.md)
-- 🎮 [Comprehensive Keyboard Controls & Navigation](docs/controls.md)
-- ⚙️ [Configuration Guide & Settings Hub](docs/config.md)
-- 🍿 [Content Providers & Scraping Engine](docs/providers.md)
-- ⚡ [Hardware Media Players & Flag Reference](docs/players.md)
-- 📥 [Batch Multi-Segment Downloader](docs/downloads.md)
-- 📺 [Live TV & IPTV Setup Guide](docs/tv-mode.md)
-- 🔌 [Stremio Addon Extensibility](docs/addons-mode.md)
-- 🏗️ [System Architecture & Internals](docs/architecture.md)
-- 💻 [Cross-Platform Operations (Linux, macOS, Windows, Termux)](docs/cross-platform.md)
+### 🚀 Getting Started & Configuration
+
+| Guide | Description |
+| :--- | :--- |
+| 📖 [Documentation Overview](docs/README.md) | Introduction, prerequisite quick install matrix, and document map |
+| 📦 [Installation Guide](docs/installation.md) | Step-by-step package setup, pre-built binary verification, and paths |
+| 🎮 [Controls & Navigation](docs/controls.md) | Complete keybindings, Vim movement, search filtering, and slash commands |
+| ⚙️ [Configuration Guide](docs/config.md) | `config.json` schema, Settings Hub (`Ctrl+S`), and environment variables |
+
+### 🍿 Features, Modes & Providers
+
+| Guide | Description |
+| :--- | :--- |
+| 🌐 [Content Providers](docs/providers.md) | MovieBox, 4KHDHub, YouTube, Dramachi, and BDIX mirror scrapers |
+| ⚡ [Hardware Media Players](docs/players.md) | `mpv`, `IINA`, and `VLC` flag mappings, sidecar proxy, and tracking |
+| 📥 [Batch Downloader](docs/downloads.md) | Multi-connection chunked downloads, HTTP range resume, and folder structure |
+| 📺 [Live TV & IPTV](docs/tv-mode.md) | M3U / M3U8 playlist manager, channel parsing, and live streaming |
+| 🔌 [Stremio Addons](docs/addons-mode.md) | Installing community HTTP addon manifests, catalogs, and streams |
+
+### 🏗️ Architecture & Internals
+
+| Guide | Description |
+| :--- | :--- |
+| 🏛️ [System Architecture](docs/architecture.md) | Subsystem diagrams, Tokio async event loop, and task cancellation |
+| 🧩 [Module Breakdown](docs/modules.md) | Crate topology, module responsibilities, and call boundaries |
+| 💾 [Caching Strategy](docs/cache.md) | Binary disk caching, TTL policies, and LRU memory management |
+| 📝 [Logging System](docs/logging.md) | File logging, rotation, panic backtraces, and tracing diagnostics |
+| 🌐 [Cross-Platform Operations](docs/cross-platform.md) | Platform compatibility matrix across Linux, macOS, Windows, and Termux |
+
+### 🛠️ Reference, QA & Maintenance
+
+| Guide | Description |
+| :--- | :--- |
+| 🧪 [Testing Suite](docs/testing.md) | Unit tests, live provider integration tests, and verification gates |
+| 🔍 [Debugging Guide](docs/debugging.md) | Troubleshooting playback errors, terminal graphics glitches, and proxies |
+| ⚠️ [Known Issues](docs/known-issues.md) | Tracked terminal quirks, hardware acceleration workarounds, and caveats |
+| 📋 [Release Checklist](docs/release-checklist.md) | Multi-target cross-compilation, checksum signing, and release workflow |
+| 🤝 [Contributing Guidelines](CONTRIBUTING.md) | Development workflow, coding style, and pull request procedures |
+| 📜 [Changelog](CHANGELOG.md) | Detailed version history, breaking changes, and roadmap updates |
+
+> 💡 **View Documentation Locally**: You can build and view the full interactive documentation book in your browser by running:
+> ```bash
+> mdbook serve
+> ```
 
 ---
 
