@@ -42,13 +42,13 @@ OPTIONS:
     -Uninstall           Uninstall SumanMovies-TUI from your system
     -Help                Show this help message
 "@
-    exit 0
+    return
 }
 
 function Write-Step { param([string]$Message) Write-Host "  > " -ForegroundColor Cyan -NoNewline; Write-Host $Message }
 function Write-Success { param([string]$Message) Write-Host "  + " -ForegroundColor Green -NoNewline; Write-Host $Message }
 function Write-Warn { param([string]$Message) Write-Host "  ! " -ForegroundColor Yellow -NoNewline; Write-Host $Message }
-function Write-Err { param([string]$Message) Write-Host "  x " -ForegroundColor Red -NoNewline; Write-Host $Message; exit 1 }
+function Write-Err { param([string]$Message) Write-Host "  x " -ForegroundColor Red -NoNewline; Write-Host $Message; throw $Message }
 
 if ($Version -and $Version[0] -ne "v") {
     $Version = "v$Version"
@@ -164,15 +164,26 @@ function Do-Uninstall {
     $Found = $false
     $TargetDirs = @(
         $DefaultInstallDir,
-        "$env:LOCALAPPDATA\SumanMovies-Tui"
+        "$env:LOCALAPPDATA\Programs\SumanMovies-Tui\bin",
+        "$env:LOCALAPPDATA\Programs\SumanMovies-Tui",
+        "$env:LOCALAPPDATA\Programs\MovieBox-Tui\bin",
+        "$env:LOCALAPPDATA\Programs\MovieBox-Tui",
+        "$env:LOCALAPPDATA\SumanMovies-Tui\bin",
+        "$env:LOCALAPPDATA\SumanMovies-Tui",
+        "$env:USERPROFILE\.local\bin"
     )
+    if ($InstallDir) {
+        $TargetDirs = @($InstallDir) + $TargetDirs
+    }
+
+    $BinaryNames = @($BinName, "sumanmovies-tui.exe", "sumanmovies.exe", "moviebox-tui.exe")
 
     foreach ($Dir in $TargetDirs) {
-        foreach ($Name in @($BinName, "sumanmovies-tui.exe")) {
+        foreach ($Name in $BinaryNames) {
             $Exe = Join-Path $Dir $Name
             if (Test-Path $Exe) {
                 try {
-                    $RunningProcesses = Get-Process -Name "sumanmovies-tui","sumanmovies" -ErrorAction SilentlyContinue
+                    $RunningProcesses = Get-Process -Name "sumanmovies-tui","sumanmovies","moviebox-tui","moviebox" -ErrorAction SilentlyContinue
                     if ($RunningProcesses) {
                         $RunningProcesses | Stop-Process -Force
                         Start-Sleep -Seconds 1
@@ -188,7 +199,13 @@ function Do-Uninstall {
     }
 
     if ($Found) {
-        $Removed = Remove-FromUserPath -Directories @($DefaultInstallDir, "$env:LOCALAPPDATA\SumanMovies-Tui\bin")
+        $Removed = Remove-FromUserPath -Directories @(
+            $DefaultInstallDir,
+            "$env:LOCALAPPDATA\Programs\SumanMovies-Tui\bin",
+            "$env:LOCALAPPDATA\Programs\MovieBox-Tui\bin",
+            "$env:LOCALAPPDATA\SumanMovies-Tui\bin",
+            "$env:LOCALAPPDATA\MovieBox-Tui\bin"
+        )
         Write-Success "$AppName was successfully uninstalled."
         if ($Removed) {
             Write-Success "Removed stale entry from User PATH."
@@ -196,11 +213,12 @@ function Do-Uninstall {
     } else {
         Write-Warn "No installed binary of $BinName was found."
     }
-    exit 0
+    return
 }
 
 if ($Uninstall) {
     Do-Uninstall
+    return
 }
 
 Print-Header
@@ -254,8 +272,31 @@ if (Test-Path $ExePath) {
         if ($CurrentVerOutput -match "sumanmovies-tui\s+([\d\.]+)") {
             $CurrentVer = "v" + $matches[1]
             if ($CurrentVer -eq $TargetVersion -and (-not $Force)) {
-                Write-Success "SumanMovies-TUI $TargetVersion is already installed at $ExePath. Use -Force to reinstall."
-                exit 0
+                $isInteractive = [Environment]::UserInteractive -and -not [Console]::IsInputRedirected
+                if ($isInteractive) {
+                    Write-Host ""
+                    Write-Host "  ! SumanMovies-TUI $TargetVersion is already installed at:" -ForegroundColor Yellow
+                    Write-Host "    $ExePath" -ForegroundColor White
+                    Write-Host ""
+                    Write-Host "  Choose an action:" -ForegroundColor Cyan
+                    Write-Host "    [1] Reinstall / Repair" -ForegroundColor White
+                    Write-Host "    [2] Uninstall SumanMovies-TUI" -ForegroundColor White
+                    Write-Host "    [3] Cancel & Exit" -ForegroundColor White
+                    Write-Host ""
+                    $choice = Read-Host "  Select an option [1-3] (Default: 1)"
+                    if ($choice -eq "2") {
+                        Do-Uninstall
+                        return
+                    } elseif ($choice -eq "3") {
+                        Write-Success "No changes made. Exiting."
+                        return
+                    }
+                    Write-Host ""
+                    Write-Step "Proceeding with reinstall..."
+                } else {
+                    Write-Success "SumanMovies-TUI $TargetVersion is already installed at $ExePath. Use -Force to reinstall."
+                    return
+                }
             }
         }
     } catch {}
@@ -265,7 +306,7 @@ if ($DryRun) {
     Write-Success "[Dry Run] Target package: $ArchiveName"
     Write-Success "[Dry Run] Target install directory: $ExePath"
     Write-Success "[Dry Run] All preflight checks passed."
-    exit 0
+    return
 }
 
 function Install-Prerequisites {
