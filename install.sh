@@ -2,7 +2,7 @@
 set -euo pipefail
 
 APP_NAME="SumanMovies-Tui"
-BIN_NAME="sumanmovies-tui"
+BIN_NAME="sumanmovies"
 REPO="SumanCH8514/SumanMovies-Tui"
 DEFAULT_INSTALL_DIR="$HOME/.local/bin"
 
@@ -334,8 +334,10 @@ do_uninstall() {
     
     local found=0
     local target_paths=(
-        "$HOME/.local/bin/$BIN_NAME"
-        "/usr/local/bin/$BIN_NAME"
+        "$HOME/.local/bin/sumanmovies"
+        "$HOME/.local/bin/sumanmovies-tui"
+        "/usr/local/bin/sumanmovies"
+        "/usr/local/bin/sumanmovies-tui"
     )
     if [ -n "${PREFIX:-}" ]; then
         target_paths+=("$PREFIX/bin/$BIN_NAME")
@@ -554,13 +556,34 @@ fi
 
 install_binary() {
     tar -xzf "$TMP_DIR/$FILE" -C "$TMP_DIR"
-    if [ ! -f "$TMP_DIR/$BIN_NAME" ]; then
+    local installed=0
+
+    # Install primary 'sumanmovies' binary
+    if [ -f "$TMP_DIR/sumanmovies" ]; then
+        rm -f "$INSTALL_DIR/sumanmovies"
+        cp "$TMP_DIR/sumanmovies" "$INSTALL_DIR/sumanmovies"
+        chmod 755 "$INSTALL_DIR/sumanmovies"
+        installed=1
+    fi
+
+    # Install 'sumanmovies-tui' binary
+    if [ -f "$TMP_DIR/sumanmovies-tui" ]; then
+        rm -f "$INSTALL_DIR/sumanmovies-tui"
+        cp "$TMP_DIR/sumanmovies-tui" "$INSTALL_DIR/sumanmovies-tui"
+        chmod 755 "$INSTALL_DIR/sumanmovies-tui"
+        installed=1
+    fi
+
+    if [ "$installed" -eq 0 ]; then
         return 1
     fi
 
-    rm -f "$APP_PATH"
-    cp "$TMP_DIR/$BIN_NAME" "$APP_PATH"
-    chmod 755 "$APP_PATH"
+    # Ensure mutual symlink so both 'sumanmovies' and 'sumanmovies-tui' commands always work
+    if [ -f "$INSTALL_DIR/sumanmovies" ] && [ ! -f "$INSTALL_DIR/sumanmovies-tui" ]; then
+        ln -sf "$INSTALL_DIR/sumanmovies" "$INSTALL_DIR/sumanmovies-tui" 2>/dev/null || true
+    elif [ -f "$INSTALL_DIR/sumanmovies-tui" ] && [ ! -f "$INSTALL_DIR/sumanmovies" ]; then
+        ln -sf "$INSTALL_DIR/sumanmovies-tui" "$INSTALL_DIR/sumanmovies" 2>/dev/null || true
+    fi
 }
 
 run_spinner "[4/4] Installing binary to $INSTALL_DIR" install_binary || exit 1
@@ -578,40 +601,49 @@ if [ "$DRY_RUN" -eq 0 ]; then
     fi
 fi
 SHELL_MODIFIED=""
-if [ "$NO_MODIFY_PATH" -eq 0 ]; then
-    if ! echo "$PATH" | tr ':' '\n' | grep -Fqx "$INSTALL_DIR"; then
-        CURRENT_SHELL=$(basename "${SHELL:-bash}")
-        RC_FILE=""
-        case "$CURRENT_SHELL" in
-            zsh)
-                RC_FILE="$HOME/.zshrc"
-                ;;
-            bash)
-                if [ -f "$HOME/.bashrc" ]; then
-                    RC_FILE="$HOME/.bashrc"
-                elif [ -f "$HOME/.bash_profile" ]; then
-                    RC_FILE="$HOME/.bash_profile"
-                else
-                    RC_FILE="$HOME/.bashrc"
-                fi
-                ;;
-            fish)
-                RC_FILE="$HOME/.config/fish/config.fish"
-                ;;
-        esac
+PATH_IN_SESSION=1
+if ! echo "$PATH" | tr ':' '\n' | grep -Fqx "$INSTALL_DIR"; then
+    PATH_IN_SESSION=0
+fi
 
-        if [ -n "$RC_FILE" ]; then
-            mkdir -p "$(dirname "$RC_FILE")"
-            if [ -f "$RC_FILE" ] && grep -Fq -- "$INSTALL_DIR" "$RC_FILE"; then
-                :
+if [ "$NO_MODIFY_PATH" -eq 0 ] && [ "$PATH_IN_SESSION" -eq 0 ]; then
+    CURRENT_SHELL=$(basename "${SHELL:-bash}")
+    RC_FILE=""
+    case "$CURRENT_SHELL" in
+        zsh)
+            RC_FILE="$HOME/.zshrc"
+            ;;
+        bash)
+            if [ -f "$HOME/.bashrc" ]; then
+                RC_FILE="$HOME/.bashrc"
+            elif [ -f "$HOME/.bash_profile" ]; then
+                RC_FILE="$HOME/.bash_profile"
             else
-                if [ "$CURRENT_SHELL" = "fish" ]; then
-                    printf "\nfish_add_path %s\n" "$INSTALL_DIR" >> "$RC_FILE"
-                else
-                    printf "\nexport PATH=\"%s:\$PATH\"\n" "$INSTALL_DIR" >> "$RC_FILE"
-                fi
-                SHELL_MODIFIED="$RC_FILE"
+                RC_FILE="$HOME/.bashrc"
             fi
+            ;;
+        fish)
+            RC_FILE="$HOME/.config/fish/config.fish"
+            ;;
+    esac
+
+    if [ -n "$RC_FILE" ]; then
+        mkdir -p "$(dirname "$RC_FILE")"
+        if [ -f "$RC_FILE" ] && grep -Fq -- "$INSTALL_DIR" "$RC_FILE"; then
+            :
+        else
+            if [ "$CURRENT_SHELL" = "fish" ]; then
+                printf "\nfish_add_path %s\n" "$INSTALL_DIR" >> "$RC_FILE"
+            else
+                printf "\nexport PATH=\"%s:\$PATH\"\n" "$INSTALL_DIR" >> "$RC_FILE"
+            fi
+            SHELL_MODIFIED="$RC_FILE"
+        fi
+    fi
+
+    if [ "$CURRENT_SHELL" = "bash" ] || [ "$CURRENT_SHELL" = "sh" ]; then
+        if [ -f "$HOME/.profile" ] && ! grep -Fq -- "$INSTALL_DIR" "$HOME/.profile"; then
+            printf "\nexport PATH=\"%s:\$PATH\"\n" "$INSTALL_DIR" >> "$HOME/.profile"
         fi
     fi
 fi
@@ -651,8 +683,20 @@ if [ -n "$SHELL_MODIFIED" ]; then
 fi
 
 printf "\n"
-printf "  %bTo start streaming:%b\n" "$C_TEXT" "$C_RESET"
-printf "    %b$ sumanmovies%b\n\n" "$C_GREEN" "$C_RESET"
+if [ "$PATH_IN_SESSION" -eq 1 ]; then
+    printf "  %bTo start streaming:%b\n" "$C_TEXT" "$C_RESET"
+    printf "    %b$ sumanmovies%b\n\n" "$C_GREEN" "$C_RESET"
+else
+    printf "  %bTo start streaming now:%b\n" "$C_TEXT" "$C_RESET"
+    printf "    %b$ %s/sumanmovies%b\n\n" "$C_GREEN" "$INSTALL_DIR" "$C_RESET"
+    printf "  %bTo use '$ sumanmovies' directly in this terminal, reload your profile:%b\n" "$C_MUTED" "$C_RESET"
+    if [ -n "$SHELL_MODIFIED" ]; then
+        printf "    %b$ source %s && sumanmovies%b\n\n" "$C_BOLD" "$SHELL_MODIFIED" "$C_RESET"
+    else
+        printf "    %b$ source ~/.bashrc && sumanmovies%b\n\n" "$C_BOLD" "$C_RESET"
+    fi
+    printf "  %b(Or restart your terminal session)%b\n\n" "$C_MUTED" "$C_RESET"
+fi
 
 if [ -z "$PLAYER_DETECTED" ]; then
     if [ "$IS_TERMUX" -eq 1 ]; then
@@ -663,8 +707,4 @@ if [ -z "$PLAYER_DETECTED" ]; then
     fi
 elif [ "$IS_TERMUX" -eq 1 ]; then
     printf "  %bℹ%b Streams will open in your default Android video player (VLC, MX Player, or Just Player).\n\n" "$C_SAPPHIRE" "$C_RESET"
-fi
-
-if [ -n "$SHELL_MODIFIED" ]; then
-    printf "  %bℹ%b Run %b'source %s'%b or restart your terminal to reload PATH.\n\n" "$C_SAPPHIRE" "$C_RESET" "$C_BOLD" "$SHELL_MODIFIED" "$C_RESET"
 fi
