@@ -247,9 +247,9 @@ SumanMovies ships with 9 hand-crafted color palettes designed for maximum readab
 
 Configuration is stored in a clean, human-readable JSON file:
 
-- **Linux / Android**: `~/.config/moviebox-tui/config.json`
-- **macOS**: `~/Library/Application Support/moviebox-tui/config.json`
-- **Windows**: `%APPDATA%\moviebox-tui\config.json`
+- **Linux / Android**: `~/.config/sumanmovies-tui/config.json`
+- **macOS**: `~/Library/Application Support/sumanmovies-tui/config.json`
+- **Windows**: `%APPDATA%\SumanMovies-Tui\config.json`
 
 ### Example `config.json`
 ```json

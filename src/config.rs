@@ -55,10 +55,72 @@ impl Default for Config {
     }
 }
 
-pub const APP_NAME: &str = "moviebox-tui";
+#[cfg(target_os = "windows")]
+pub const APP_NAME: &str = "SumanMovies-Tui";
+#[cfg(not(target_os = "windows"))]
+pub const APP_NAME: &str = "sumanmovies-tui";
+
+pub const LEGACY_APP_NAME: &str = "moviebox-tui";
+
+pub fn migrate_legacy_directories() {
+    // 1. Config directory migration
+    if let Some(new_config_dir) = config_dir() {
+        let legacy_candidates = [
+            dirs::config_dir().map(|d| d.join(LEGACY_APP_NAME)),
+            dirs::home_dir().map(|h| h.join(".config").join(LEGACY_APP_NAME)),
+        ];
+        for legacy_opt in legacy_candidates.into_iter().flatten() {
+            if legacy_opt.exists() {
+                for file_name in &["config.json", "addons_config.json", "tv_config.json"] {
+                    let old_file = legacy_opt.join(file_name);
+                    let new_file = new_config_dir.join(file_name);
+                    if old_file.exists() && !new_file.exists() {
+                        let _ = std::fs::create_dir_all(&new_config_dir);
+                        let _ = std::fs::copy(&old_file, &new_file);
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. Data directory migration (history.json, favorites.json, playback/)
+    if let Some(new_data_dir) = data_dir() {
+        let legacy_data_candidates = [
+            dirs::data_dir().map(|d| d.join(LEGACY_APP_NAME)),
+            dirs::home_dir().map(|h| h.join(".local").join("share").join(LEGACY_APP_NAME)),
+        ];
+        for legacy_opt in legacy_data_candidates.into_iter().flatten() {
+            if legacy_opt.exists() {
+                for file_name in &["history.json", "favorites.json"] {
+                    let old_file = legacy_opt.join(file_name);
+                    let new_file = new_data_dir.join(file_name);
+                    if old_file.exists() && !new_file.exists() {
+                        let _ = std::fs::create_dir_all(&new_data_dir);
+                        let _ = std::fs::copy(&old_file, &new_file);
+                    }
+                }
+                let old_playback = legacy_opt.join("playback");
+                let new_playback = new_data_dir.join("playback");
+                if old_playback.exists() && !new_playback.exists() {
+                    let _ = std::fs::create_dir_all(&new_playback);
+                    if let Ok(entries) = std::fs::read_dir(&old_playback) {
+                        for entry in entries.flatten() {
+                            let dest = new_playback.join(entry.file_name());
+                            if !dest.exists() {
+                                let _ = std::fs::copy(entry.path(), dest);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 
 pub fn config_dir() -> Option<PathBuf> {
-    if let Ok(dir) = std::env::var("MOVIEBOX_CONFIG_DIR") {
+    if let Ok(dir) = std::env::var("SUMANMOVIES_CONFIG_DIR")
+        .or_else(|_| std::env::var("MOVIEBOX_CONFIG_DIR"))
+    {
         return Some(PathBuf::from(dir));
     }
     if let Some(dir) = dirs::config_dir() {
@@ -88,7 +150,9 @@ pub fn config_dir() -> Option<PathBuf> {
 }
 
 pub fn data_dir() -> Option<PathBuf> {
-    if let Ok(dir) = std::env::var("MOVIEBOX_DATA_DIR") {
+    if let Ok(dir) = std::env::var("SUMANMOVIES_DATA_DIR")
+        .or_else(|_| std::env::var("MOVIEBOX_DATA_DIR"))
+    {
         return Some(PathBuf::from(dir));
     }
     if let Some(dir) = dirs::data_dir() {
@@ -118,7 +182,9 @@ pub fn data_dir() -> Option<PathBuf> {
 }
 
 pub fn cache_dir() -> PathBuf {
-    if let Ok(dir) = std::env::var("MOVIEBOX_CACHE_DIR") {
+    if let Ok(dir) = std::env::var("SUMANMOVIES_CACHE_DIR")
+        .or_else(|_| std::env::var("MOVIEBOX_CACHE_DIR"))
+    {
         return PathBuf::from(dir);
     }
     if let Some(dir) = dirs::cache_dir() {
@@ -185,6 +251,7 @@ pub fn favorites_path() -> Option<PathBuf> {
 }
 
 pub fn load() -> Config {
+    migrate_legacy_directories();
     let Some(path) = config_path() else {
         return Config::default();
     };
